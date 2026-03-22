@@ -13,7 +13,8 @@ import {
   MapPin,
   Trophy,
   Maximize2,
-  Minimize2
+  Minimize2,
+  DollarSign
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Button } from '../components/Button';
@@ -281,7 +282,42 @@ export default function CalendarPage({ user }: CalendarProps) {
                   {pitches.find(p => p.id === selectedBooking.pitchId)?.name}
                 </p>
               </div>
+              {selectedBooking.depositAmount && (
+                <div className="p-4 bg-green-500/5 dark:bg-green-500/10 rounded-2xl space-y-1 border border-green-500/20">
+                  <p className="text-[10px] font-black text-green-600 dark:text-green-500 uppercase tracking-widest flex items-center gap-1">
+                    <DollarSign className="w-3 h-3" /> Seña
+                  </p>
+                  <p className="font-black text-green-600 dark:text-green-500 text-lg">
+                    ${selectedBooking.depositAmount}
+                  </p>
+                </div>
+              )}
             </div>
+
+            {selectedBooking.receiptUrl && (
+              <div className="space-y-2">
+                <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Comprobante de Pago</p>
+                <div className="relative group aspect-video rounded-3xl overflow-hidden border border-zinc-200 dark:border-zinc-800">
+                  <img 
+                    src={selectedBooking.receiptUrl} 
+                    alt="Comprobante" 
+                    className="w-full h-full object-cover"
+                    referrerPolicy="no-referrer"
+                  />
+                  <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                    <Button 
+                      variant="secondary" 
+                      size="sm" 
+                      className="rounded-xl"
+                      onClick={() => window.open(selectedBooking.receiptUrl, '_blank')}
+                    >
+                      <Maximize2 className="w-4 h-4 mr-2" />
+                      Ver Pantalla Completa
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {user.role === 'admin' && (
               <div className="pt-4 flex gap-3">

@@ -27,6 +27,8 @@ export interface Booking {
   endTime: Date;
   status: BookingStatus;
   createdAt: Date;
+  receiptUrl?: string;
+  depositAmount?: number;
 }
 
 export interface Product {
@@ -42,6 +44,14 @@ export interface Sale {
   quantity: number;
   totalPrice: number;
   date: Date;
+}
+
+export interface AuditLog {
+  id: string;
+  action: string;
+  details: string;
+  timestamp: Date;
+  user: string;
 }
 
 export type PitchStatus = 'available' | 'busy' | 'reserved';

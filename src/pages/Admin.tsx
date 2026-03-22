@@ -14,15 +14,20 @@ import {
   TrendingUp,
   Activity,
   Trophy,
-  User as UserIcon
+  User as UserIcon,
+  History,
+  Clock,
+  Search
 } from 'lucide-react';
+import { format } from 'date-fns';
+import { es } from 'date-fns/locale';
 import { motion, AnimatePresence } from 'motion/react';
 import { Button } from '../components/Button';
 import { Card, CardContent, CardHeader } from '../components/Card';
 import { Modal } from '../components/Modal';
 import { Badge } from '../components/Badge';
 import { dataService, api } from '../services/dataService';
-import { Pitch, Product } from '../types';
+import { Pitch, Product, AuditLog } from '../types';
 import { cn } from '../lib/utils';
 
 export default function Admin() {
@@ -33,6 +38,9 @@ export default function Admin() {
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [editingPitch, setEditingPitch] = useState<Pitch | null>(null);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [isAuditModalOpen, setIsAuditModalOpen] = useState(false);
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
+  const [isDeleteMode, setIsDeleteMode] = useState(false);
   
   const [pitchForm, setPitchForm] = useState({
     name: '',
@@ -51,20 +59,24 @@ export default function Admin() {
     setPitches(dataService.getPitches());
     setProducts(dataService.getProducts());
     setRanking(dataService.getRanking());
+    setAuditLogs(dataService.getAuditLogs());
   }, []);
+
+  const refreshData = () => {
+    setPitches(dataService.getPitches());
+    setProducts(dataService.getProducts());
+    setAuditLogs(dataService.getAuditLogs());
+  };
 
   const handleSavePitch = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const currentPitches = dataService.getPitches();
       if (editingPitch) {
-        const updated = currentPitches.map(p => p.id === editingPitch.id ? { ...p, ...pitchForm } : p);
-        dataService.savePitches(updated);
+        await api.updatePitch(editingPitch.id, pitchForm);
       } else {
-        const newPitch = { ...pitchForm, id: Math.random().toString(36).substr(2, 9) };
-        dataService.savePitches([...currentPitches, newPitch]);
+        await api.addPitch(pitchForm);
       }
-      setPitches(dataService.getPitches());
+      refreshData();
       setIsPitchModalOpen(false);
       setEditingPitch(null);
       setPitchForm({ name: '', type: 'F5', price: 0, active: true });
@@ -81,7 +93,7 @@ export default function Admin() {
       } else {
         await api.addProduct(productForm);
       }
-      setProducts(dataService.getProducts());
+      refreshData();
       setIsProductModalOpen(false);
       setEditingProduct(null);
       setProductForm({ name: '', price: 0, category: 'bebida' });
@@ -91,17 +103,16 @@ export default function Admin() {
   };
 
   const handleDeletePitch = async (id: string) => {
-    if (window.confirm('¿Eliminar esta cancha?')) {
-      const updated = pitches.filter(p => p.id !== id);
-      dataService.savePitches(updated);
-      setPitches(updated);
+    if (window.confirm('¿Eliminar esta cancha definitivamente?')) {
+      await api.deletePitch(id);
+      refreshData();
     }
   };
 
   const handleDeleteProduct = async (id: string) => {
-    if (window.confirm('¿Eliminar este producto?')) {
+    if (window.confirm('¿Eliminar este producto definitivamente?')) {
       await api.deleteProduct(id);
-      setProducts(dataService.getProducts());
+      refreshData();
     }
   };
 
@@ -112,7 +123,15 @@ export default function Admin() {
           <h1 className="text-4xl font-black text-zinc-900 dark:text-zinc-100 tracking-tighter">Configuración</h1>
           <p className="text-zinc-500 dark:text-zinc-400 font-medium">Administra tu complejo deportivo</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <Button 
+            variant={isDeleteMode ? 'danger' : 'outline'} 
+            onClick={() => setIsDeleteMode(!isDeleteMode)}
+            className="gap-2 px-6 py-4 rounded-2xl border-zinc-200 dark:border-zinc-800"
+          >
+            <Trash2 className="w-5 h-5" />
+            {isDeleteMode ? 'CANCELAR BORRADO' : 'MODO BORRAR'}
+          </Button>
           <Button onClick={() => setIsPitchModalOpen(true)} className="gap-2 px-6 py-4 rounded-2xl shadow-xl shadow-green-500/20">
             <Plus className="w-5 h-5" />
             Nueva Cancha
@@ -177,7 +196,15 @@ export default function Admin() {
                 <p className="text-zinc-400 text-sm font-medium">Tienes acceso total para modificar precios, canchas y productos.</p>
               </div>
               <div className="pt-4">
-                <Button variant="outline" className="w-full border-zinc-700 text-white hover:bg-zinc-800">
+                <Button 
+                  variant="outline" 
+                  className="w-full border-zinc-700 text-white hover:bg-zinc-800 gap-2"
+                  onClick={() => {
+                    setAuditLogs(dataService.getAuditLogs());
+                    setIsAuditModalOpen(true);
+                  }}
+                >
+                  <History className="w-4 h-4" />
                   Ver Logs de Auditoría
                 </Button>
               </div>
@@ -300,7 +327,10 @@ export default function Admin() {
                         <Button 
                           variant="ghost" 
                           size="sm"
-                          className="w-10 h-10 rounded-xl text-red-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
+                          className={cn(
+                            "w-10 h-10 rounded-xl transition-all",
+                            isDeleteMode ? "bg-red-500 text-white hover:bg-red-600 shadow-lg shadow-red-500/20" : "text-red-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
+                          )}
                           onClick={() => handleDeletePitch(pitch.id)}
                         >
                           <Trash2 className="w-4 h-4" />
@@ -357,7 +387,10 @@ export default function Admin() {
                         <Button 
                           variant="ghost" 
                           size="sm"
-                          className="w-10 h-10 rounded-xl text-red-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
+                          className={cn(
+                            "w-10 h-10 rounded-xl transition-all",
+                            isDeleteMode ? "bg-red-500 text-white hover:bg-red-600 shadow-lg shadow-red-500/20" : "text-red-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
+                          )}
                           onClick={() => handleDeleteProduct(product.id)}
                         >
                           <Trash2 className="w-4 h-4" />
@@ -371,6 +404,48 @@ export default function Admin() {
           </div>
         </div>
       </div>
+
+      {/* Audit Logs Modal */}
+      <Modal
+        isOpen={isAuditModalOpen}
+        onClose={() => setIsAuditModalOpen(false)}
+        title="Logs de Auditoría"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">
+            El registro de auditoría rastrea todas las acciones importantes realizadas por los administradores para mantener la seguridad y el control del complejo.
+          </p>
+          <div className="max-h-[400px] overflow-y-auto space-y-3 pr-2 custom-scrollbar">
+            {auditLogs.map((log) => (
+              <div key={log.id} className="p-4 bg-zinc-50 dark:bg-zinc-800/50 rounded-2xl border border-zinc-100 dark:border-zinc-800 space-y-2">
+                <div className="flex items-center justify-between">
+                  <Badge variant="neutral" className="text-[10px] font-black uppercase tracking-widest">
+                    {log.action}
+                  </Badge>
+                  <div className="flex items-center gap-1 text-[10px] font-bold text-zinc-400">
+                    <Clock className="w-3 h-3" />
+                    {format(log.timestamp, "d MMM, HH:mm", { locale: es })}
+                  </div>
+                </div>
+                <p className="text-sm font-bold text-zinc-900 dark:text-zinc-100">{log.details}</p>
+                <div className="flex items-center gap-2 text-[10px] font-black text-zinc-400 uppercase tracking-widest">
+                  <UserIcon className="w-3 h-3" />
+                  Realizado por: {log.user}
+                </div>
+              </div>
+            ))}
+            {auditLogs.length === 0 && (
+              <div className="py-12 text-center">
+                <History className="w-12 h-12 text-zinc-200 dark:text-zinc-800 mx-auto mb-3" />
+                <p className="text-zinc-400 font-bold">No hay registros de actividad aún</p>
+              </div>
+            )}
+          </div>
+          <Button variant="outline" className="w-full py-4 rounded-2xl" onClick={() => setIsAuditModalOpen(false)}>
+            CERRAR
+          </Button>
+        </div>
+      </Modal>
 
       {/* Pitch Modal */}
       <Modal

@@ -120,6 +120,10 @@ export default function AIChatFloating() {
         3. Cambiar precios de bebidas usando la herramienta 'updateProductPrice'.
         4. Cancelar reservas de canchas usando la herramienta 'cancelBooking'.
         
+        Novedades:
+        - Todas las reservas ahora requieren una seña anticipada y la carga de un comprobante de transferencia (MP, etc.).
+        - El horario de atención es de 14:00 a 01:00 hs.
+        
         Limitaciones IMPORTANTES:
         - NO puedes cambiar nada de la interfaz (UI), diseño o código de la página. Explica que eso solo lo pueden hacer los programadores.
         - Solo puedes cambiar precios de canchas, productos y cancelar reservas.

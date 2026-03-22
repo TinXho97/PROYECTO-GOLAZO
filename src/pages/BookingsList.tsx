@@ -11,7 +11,10 @@ import {
   MapPin,
   Filter,
   ChevronRight,
-  Trophy
+  Trophy,
+  DollarSign,
+  Image as ImageIcon,
+  ExternalLink
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Card, CardContent } from '../components/Card';
@@ -174,10 +177,27 @@ export default function BookingsList({ user }: BookingsListProps) {
                                 <MapPin className="w-4 h-4 text-green-500" />
                                 {pitch?.name || 'Cancha eliminada'} ({pitch?.type})
                               </div>
+                              {booking.depositAmount && (
+                                <div className="flex items-center gap-2 text-green-600 dark:text-green-500 font-bold text-sm">
+                                  <DollarSign className="w-4 h-4" />
+                                  Seña: ${booking.depositAmount}
+                                </div>
+                              )}
                             </div>
                           </div>
 
                           <div className="flex items-center gap-3">
+                            {booking.receiptUrl && (
+                              <Button 
+                                variant="outline" 
+                                size="sm" 
+                                className="px-6 py-3 rounded-xl border-zinc-100 dark:border-zinc-800 text-zinc-500 hover:bg-zinc-50 dark:hover:bg-zinc-800 font-bold"
+                                onClick={() => window.open(booking.receiptUrl, '_blank')}
+                              >
+                                <ImageIcon className="w-4 h-4 mr-2" />
+                                Ver Comprobante
+                              </Button>
+                            )}
                             {booking.status === 'confirmed' && !isPast && (
                               <Button 
                                 variant="outline" 

@@ -1,4 +1,4 @@
-import { Pitch, Booking, Product, Sale, User } from '../types';
+import { Pitch, Booking, Product, Sale, User, AuditLog } from '../types';
 import { addHours, startOfDay, endOfDay, isSameDay } from 'date-fns';
 
 // Initial Mock Data
@@ -107,6 +107,22 @@ export const dataService = {
     });
 
     return Object.values(userStats).sort((a, b) => b.points - a.points);
+  },
+
+  // Audit Logs
+  getAuditLogs: () => getStorage<AuditLog[]>('golazo_audit_logs', []),
+  saveAuditLogs: (logs: AuditLog[]) => setStorage('golazo_audit_logs', logs),
+  logAction: (action: string, details: string) => {
+    const logs = dataService.getAuditLogs();
+    const user = dataService.getCurrentUser();
+    const newLog: AuditLog = {
+      id: Math.random().toString(36).substr(2, 9),
+      action,
+      details,
+      timestamp: new Date(),
+      user: user?.name || 'Sistema'
+    };
+    dataService.saveAuditLogs([newLog, ...logs].slice(0, 100)); // Keep last 100
   }
 };
 
@@ -168,24 +184,46 @@ export const api = {
     const products = dataService.getProducts();
     const newProduct = { ...product, id: Math.random().toString(36).substr(2, 9) };
     dataService.saveProducts([...products, newProduct]);
+    dataService.logAction('Producto Creado', `Se creó el producto ${product.name}`);
     return newProduct;
   },
 
   updateProduct: async (id: string, updates: Partial<Product>) => {
     const products = dataService.getProducts();
+    const product = products.find(p => p.id === id);
     const updated = products.map(p => p.id === id ? { ...p, ...updates } : p);
     dataService.saveProducts(updated);
+    dataService.logAction('Producto Actualizado', `Se actualizó el producto ${product?.name || id}`);
   },
 
   deleteProduct: async (id: string) => {
     const products = dataService.getProducts();
+    const product = products.find(p => p.id === id);
     dataService.saveProducts(products.filter(p => p.id !== id));
+    dataService.logAction('Producto Eliminado', `Se eliminó el producto ${product?.name || id}`);
   },
 
   // Pitches CRUD
+  addPitch: async (pitch: Omit<Pitch, 'id'>) => {
+    const pitches = dataService.getPitches();
+    const newPitch = { ...pitch, id: Math.random().toString(36).substr(2, 9) };
+    dataService.savePitches([...pitches, newPitch]);
+    dataService.logAction('Cancha Creada', `Se creó la cancha ${pitch.name}`);
+    return newPitch;
+  },
+
   updatePitch: async (id: string, updates: Partial<Pitch>) => {
     const pitches = dataService.getPitches();
+    const pitch = pitches.find(p => p.id === id);
     const updated = pitches.map(p => p.id === id ? { ...p, ...updates } : p);
     dataService.savePitches(updated);
+    dataService.logAction('Cancha Actualizada', `Se actualizó la cancha ${pitch?.name || id}`);
+  },
+
+  deletePitch: async (id: string) => {
+    const pitches = dataService.getPitches();
+    const pitch = pitches.find(p => p.id === id);
+    dataService.savePitches(pitches.filter(p => p.id !== id));
+    dataService.logAction('Cancha Eliminada', `Se eliminó la cancha ${pitch?.name || id}`);
   }
 };

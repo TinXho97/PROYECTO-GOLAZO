@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  LayoutGrid, 
+  Home, 
   Calendar as CalendarIcon, 
   Settings, 
   Moon, 
@@ -55,7 +55,7 @@ export default function App() {
   };
 
   const navItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: LayoutGrid, roles: ['admin', 'client'] },
+    { id: 'dashboard', label: 'Inicio ⚽', icon: Home, roles: ['admin', 'client'] },
     { id: 'bookings', label: 'Mis Reservas', icon: CalendarIcon, roles: ['admin', 'client'] },
     { id: 'calendar', label: 'Calendario', icon: CalendarIcon, roles: ['admin', 'client'] },
     { id: 'ranking', label: 'Ranking & Puntos', icon: Trophy, roles: ['admin', 'client'] },
