@@ -85,8 +85,14 @@ export const dataService = {
   // Loyalty & Ranking
   getUserPoints: (userId: string) => {
     const bookings = dataService.getBookings();
-    // 1 point per confirmed booking
-    return bookings.filter(b => b.userId === userId && b.status === 'confirmed').length;
+    // 1 point per confirmed booking, 1.5 for promotional hours (10-16)
+    return bookings
+      .filter(b => b.userId === userId && b.status === 'confirmed')
+      .reduce((acc, b) => {
+        const hour = b.startTime.getHours();
+        const isPromo = hour >= 10 && hour <= 16;
+        return acc + (isPromo ? 1.5 : 1);
+      }, 0);
   },
 
   getRanking: () => {
@@ -103,7 +109,9 @@ export const dataService = {
           points: 0 
         };
       }
-      userStats[b.userId].points += 1;
+      const hour = b.startTime.getHours();
+      const isPromo = hour >= 10 && hour <= 16;
+      userStats[b.userId].points += isPromo ? 1.5 : 1;
     });
 
     return Object.values(userStats).sort((a, b) => b.points - a.points);

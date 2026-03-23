@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { toast } from 'sonner';
 import { format, addHours, isSameDay, startOfMonth, endOfMonth, startOfWeek, addDays, eachDayOfInterval } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { DayPicker } from 'react-day-picker';
@@ -88,6 +89,9 @@ export default function Dashboard({ user }: DashboardProps) {
     const endTime = addHours(startTime, 1);
 
     try {
+      const isPromo = h >= 10 && h <= 16;
+      const points = isPromo ? 1.5 : 1;
+
       await api.addBooking({
         pitchId: selectedPitch.id,
         userId: user.id,
@@ -107,9 +111,14 @@ export default function Dashboard({ user }: DashboardProps) {
         receipt: null, 
         depositAmount: '' 
       });
-      alert('Reserva confirmada con éxito.');
+      
+      toast.success('¡Reserva confirmada!', {
+        description: isPromo 
+          ? `¡Sumaste +${points} puntos por horario promocional! 🔥`
+          : `¡Sumaste +${points} puntos!`,
+      });
     } catch (error: any) {
-      alert(error.message);
+      toast.error(error.message);
     }
   };
 

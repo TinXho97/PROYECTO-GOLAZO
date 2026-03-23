@@ -18,6 +18,7 @@ import {
   Star
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { Toaster } from 'sonner';
 import Dashboard from './pages/Dashboard';
 import Admin from './pages/Admin';
 import BookingsList from './pages/BookingsList';
@@ -344,6 +345,7 @@ export default function App() {
       </main>
 
       {user.role === 'admin' && <AIChatFloating />}
+      <Toaster position="top-center" richColors />
     </div>
   );
 }
