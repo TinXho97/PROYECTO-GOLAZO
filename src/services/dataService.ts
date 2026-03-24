@@ -1,4 +1,4 @@
-import { Pitch, Booking, Product, Sale, User, AuditLog } from '../types';
+import { Pitch, Booking, Product, Sale, User, AuditLog, BookingStatus } from '../types';
 import { addHours, startOfDay, endOfDay, isSameDay } from 'date-fns';
 
 // Initial Mock Data
@@ -13,6 +13,48 @@ const MOCK_PRODUCTS: Product[] = [
   { id: 'pr2', name: 'Gatorade 500ml', price: 350, category: 'bebida' },
   { id: 'pr3', name: 'Coca Cola 500ml', price: 300, category: 'bebida' },
   { id: 'pr4', name: 'Cerveza 1L', price: 800, category: 'bebida' },
+];
+
+const MOCK_BOOKINGS: Booking[] = [
+  {
+    id: 'b1',
+    pitchId: 'p1',
+    userId: 'cliente@gmail.com',
+    clientName: 'Juan Pérez',
+    clientPhone: '1122334455',
+    startTime: new Date(new Date().setHours(new Date().getHours() - 2)),
+    endTime: new Date(new Date().setHours(new Date().getHours() - 1)),
+    status: 'confirmed',
+    createdAt: new Date(),
+    depositAmount: 500,
+    isPaid: true
+  },
+  {
+    id: 'b2',
+    pitchId: 'p2',
+    userId: 'cliente@gmail.com',
+    clientName: 'María García',
+    clientPhone: '1199887766',
+    startTime: new Date(new Date().setHours(new Date().getHours() + 1)),
+    endTime: new Date(new Date().setHours(new Date().getHours() + 2)),
+    status: 'pending',
+    createdAt: new Date(),
+    depositAmount: 500,
+    isPaid: false
+  },
+  {
+    id: 'b3',
+    pitchId: 'p3',
+    userId: 'cliente2@gmail.com',
+    clientName: 'Roberto Gómez',
+    clientPhone: '1155667788',
+    startTime: new Date(new Date().setHours(new Date().getHours() + 4)),
+    endTime: new Date(new Date().setHours(new Date().getHours() + 5)),
+    status: 'confirmed',
+    createdAt: new Date(),
+    depositAmount: 500,
+    isPaid: true
+  }
 ];
 
 // Helper to get from localStorage or use mock
@@ -45,7 +87,25 @@ export const dataService = {
   savePitches: (pitches: Pitch[]) => setStorage('golazo_pitches', pitches),
   
   // Bookings
-  getBookings: () => getStorage<Booking[]>('golazo_bookings', []),
+  getBookings: () => {
+    const bookings = getStorage<Booking[]>('golazo_bookings', MOCK_BOOKINGS);
+    const now = new Date();
+    let hasChanges = false;
+
+    const updatedBookings = bookings.map(b => {
+      if ((b.status === 'confirmed' || b.status === 'pending') && b.endTime < now) {
+        hasChanges = true;
+        return { ...b, status: 'finished' as const };
+      }
+      return b;
+    });
+
+    if (hasChanges) {
+      dataService.saveBookings(updatedBookings);
+    }
+
+    return updatedBookings;
+  },
   saveBookings: (bookings: Booking[]) => setStorage('golazo_bookings', bookings),
   
   // Products
@@ -87,7 +147,7 @@ export const dataService = {
     const bookings = dataService.getBookings();
     // 1 point per confirmed booking, 1.5 for promotional hours (10-16)
     return bookings
-      .filter(b => b.userId === userId && b.status === 'confirmed')
+      .filter(b => b.userId === userId && (b.status === 'confirmed' || b.status === 'finished'))
       .reduce((acc, b) => {
         const hour = b.startTime.getHours();
         const isPromo = hour >= 10 && hour <= 16;
@@ -97,7 +157,7 @@ export const dataService = {
 
   getRanking: () => {
     const bookings = dataService.getBookings();
-    const confirmedBookings = bookings.filter(b => b.status === 'confirmed');
+    const confirmedBookings = bookings.filter(b => b.status === 'confirmed' || b.status === 'finished');
     
     const userStats: Record<string, { id: string, name: string, points: number }> = {};
     
@@ -166,6 +226,20 @@ export const api = {
     const bookings = dataService.getBookings();
     const updated = bookings.map(b => b.id === id ? { ...b, status: 'cancelled' as const } : b);
     dataService.saveBookings(updated);
+  },
+
+  updateBookingStatus: async (id: string, status: BookingStatus) => {
+    const bookings = dataService.getBookings();
+    const updated = bookings.map(b => b.id === id ? { ...b, status } : b);
+    dataService.saveBookings(updated);
+    dataService.logAction('Estado de Reserva Actualizado', `Reserva ${id} cambiada a ${status}`);
+  },
+
+  toggleBookingPayment: async (id: string) => {
+    const bookings = dataService.getBookings();
+    const updated = bookings.map(b => b.id === id ? { ...b, isPaid: !b.isPaid } : b);
+    dataService.saveBookings(updated);
+    dataService.logAction('Pago de Reserva Actualizado', `Estado de pago de reserva ${id} cambiado`);
   },
 
   // Sales

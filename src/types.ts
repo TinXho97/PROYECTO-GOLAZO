@@ -1,5 +1,5 @@
 export type PitchType = 'F5' | 'F7' | 'F11';
-export type BookingStatus = 'confirmed' | 'cancelled' | 'pending';
+export type BookingStatus = 'confirmed' | 'cancelled' | 'pending' | 'finished';
 export type UserRole = 'admin' | 'client';
 
 export interface User {
@@ -29,6 +29,7 @@ export interface Booking {
   createdAt: Date;
   receiptUrl?: string;
   depositAmount?: number;
+  isPaid?: boolean;
 }
 
 export interface Product {
