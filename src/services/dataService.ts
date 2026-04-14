@@ -1,6 +1,7 @@
-import { Pitch, Booking, Product, Sale, User, AuditLog, BookingStatus } from '../types';
+import { Pitch, Booking, Product, Sale, User, AuditLog, BookingStatus, Client } from '../types';
 import { addHours, startOfDay, endOfDay, isSameDay } from 'date-fns';
 import { supabaseService } from './supabaseService';
+import { supabase } from '../lib/supabase';
 
 // Initial Mock Data (Fallback)
 const MOCK_PITCHES: Pitch[] = [
@@ -64,15 +65,18 @@ const getStorage = <T>(key: string, initial: T): T => {
   if (!stored) return initial;
   try {
     const parsed = JSON.parse(stored);
-    // Convert date strings back to Date objects
-    return parsed.map((item: any) => {
-      const newItem = { ...item };
-      if (newItem.startTime) newItem.startTime = new Date(newItem.startTime);
-      if (newItem.endTime) newItem.endTime = new Date(newItem.endTime);
-      if (newItem.createdAt) newItem.createdAt = new Date(newItem.createdAt);
-      if (newItem.date) newItem.date = new Date(newItem.date);
-      return newItem;
-    });
+    if (Array.isArray(parsed)) {
+      // Convert date strings back to Date objects
+      return parsed.map((item: any) => {
+        const newItem = { ...item };
+        if (newItem.startTime) newItem.startTime = new Date(newItem.startTime);
+        if (newItem.endTime) newItem.endTime = new Date(newItem.endTime);
+        if (newItem.createdAt) newItem.createdAt = new Date(newItem.createdAt);
+        if (newItem.date) newItem.date = new Date(newItem.date);
+        return newItem;
+      }) as unknown as T;
+    }
+    return parsed as T;
   } catch {
     return initial;
   }
@@ -85,11 +89,18 @@ const setStorage = <T>(key: string, data: T) => {
 const isSupabaseConfigured = () => {
   const url = import.meta.env.VITE_SUPABASE_URL;
   const key = import.meta.env.VITE_SUPABASE_ANON_KEY;
-  const configured = !!url && !!key && url !== "" && key !== "";
+  const isDummyUrl = url?.includes('your-project.supabase.co') || url?.includes('TODO_');
+  const hasEnvVars = !!url && !!key && url !== "" && key !== "" && !isDummyUrl;
+  
+  // If we've explicitly determined it's unreachable via health check, treat as unconfigured
+  const isReachable = (window as any)._supabaseReachable !== false;
+  
+  const configured = hasEnvVars && isReachable;
+  
   if (!configured) {
     // Only log once to avoid spam
     if (!(window as any)._supabaseWarned) {
-      console.warn('[DataService] Supabase not configured. Using LocalStorage fallback.');
+      console.warn('[DataService] Supabase not configured or unreachable. Using LocalStorage fallback.');
       (window as any)._supabaseWarned = true;
     }
   }
@@ -102,11 +113,28 @@ export const dataService = {
     if (!isSupabaseConfigured()) return false;
     return await supabaseService.testConnection();
   },
+  getClientConfig: async (clientId?: string) => {
+    if (isSupabaseConfigured()) {
+      let query = supabase.from('clients').select('id, name, status, created_at, features');
+      if (clientId) {
+        query = query.eq('id', clientId);
+      }
+      const { data, error } = await query.limit(1).single();
+      if (error) {
+        if (error.code !== 'PGRST116') {
+          console.error('Error fetching client config:', error);
+        }
+        return null;
+      }
+      return data as Client;
+    }
+    return null;
+  },
   // Pitches
-  getPitches: async () => {
+  getPitches: async (clientId?: string) => {
     if (isSupabaseConfigured()) {
       try {
-        return await supabaseService.getPitches();
+        return await supabaseService.getPitches(clientId);
       } catch (error) {
         console.error('Error fetching pitches from Supabase:', error);
       }
@@ -119,12 +147,41 @@ export const dataService = {
     }
     setStorage('golazo_pitches', pitches);
   },
+  uploadPitchImage: async (file: File, pitchId: string, clientId?: string) => {
+    if (isSupabaseConfigured()) {
+      return await supabaseService.uploadPitchImage(file, pitchId, clientId);
+    }
+    // Fallback for local storage: convert to base64
+    return new Promise<string>((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        resolve(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    });
+  },
   
   // Bookings
-  getBookings: async () => {
+  hasCompletedBookings: async (identifier: string, clientId?: string) => {
     if (isSupabaseConfigured()) {
       try {
-        return await supabaseService.getBookings();
+        return await supabaseService.hasCompletedBookings(identifier, clientId);
+      } catch (error) {
+        console.error('Error checking completed bookings from Supabase:', error);
+      }
+    }
+    const bookings = getStorage<Booking[]>('golazo_bookings', MOCK_BOOKINGS);
+    return bookings.some(b => 
+      (!clientId || b.client_id === clientId) && 
+      b.status === 'completed' && 
+      (b.userId === identifier || b.clientPhone === identifier || b.playerId === identifier)
+    );
+  },
+
+  getBookings: async (clientId?: string, startDate?: string, endDate?: string) => {
+    if (isSupabaseConfigured()) {
+      try {
+        return await supabaseService.getBookings(clientId, startDate, endDate);
       } catch (error) {
         console.error('Error fetching bookings from Supabase:', error);
       }
@@ -136,7 +193,7 @@ export const dataService = {
     const updatedBookings = bookings.map(b => {
       if ((b.status === 'confirmed' || b.status === 'pending') && b.endTime < now) {
         hasChanges = true;
-        return { ...b, status: 'finished' as const };
+        return { ...b, status: 'completed' as const };
       }
       return b;
     });
@@ -145,15 +202,21 @@ export const dataService = {
       dataService.saveBookings(updatedBookings);
     }
 
-    return updatedBookings;
+    return updatedBookings.filter(b => {
+      let match = true;
+      if (clientId && b.client_id !== clientId) match = false;
+      if (startDate && b.startTime < new Date(startDate)) match = false;
+      if (endDate && b.startTime > new Date(endDate)) match = false;
+      return match;
+    });
   },
   saveBookings: async (bookings: Booking[]) => setStorage('golazo_bookings', bookings),
   
   // Products
-  getProducts: async () => {
+  getProducts: async (clientId?: string) => {
     if (isSupabaseConfigured()) {
       try {
-        return await supabaseService.getProducts();
+        return await supabaseService.getProducts(clientId);
       } catch (error) {
         console.error('Error fetching products from Supabase:', error);
       }
@@ -163,10 +226,10 @@ export const dataService = {
   saveProducts: async (products: Product[]) => setStorage('golazo_products', products),
   
   // Sales
-  getSales: async () => {
+  getSales: async (clientId?: string) => {
     if (isSupabaseConfigured()) {
       try {
-        return await supabaseService.getSales();
+        return await supabaseService.getSales(clientId);
       } catch (error) {
         console.error('Error fetching sales from Supabase:', error);
       }
@@ -180,64 +243,48 @@ export const dataService = {
   saveSales: async (sales: Sale[]) => setStorage('golazo_sales', sales),
 
   // Auth Simulation (Supabase Auth can be integrated later)
-  getCurrentUser: () => {
-    const user = localStorage.getItem('golazo_user');
-    if (!user) return null;
-    try {
-      return JSON.parse(user) as User;
-    } catch {
-      return null;
-    }
+  getCurrentUser: async () => {
+    if (!isSupabaseConfigured()) return null;
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.user) return null;
+    
+    return {
+      id: session.user.id,
+      email: session.user.email,
+      name: session.user.user_metadata?.name || 'Usuario',
+      role: session.user.user_metadata?.role || 'admin',
+      client_id: session.user.user_metadata?.client_id
+    } as User;
   },
   login: async (identifier: string, password?: string) => {
-    // Super Admin check
-    if (identifier === 'superman@gmail.com') {
-      const user: User = {
-        id: identifier,
-        email: identifier,
-        name: 'Super Admin Golazo',
-        role: 'superadmin'
-      };
-      localStorage.setItem('golazo_user', JSON.stringify(user));
-      dataService.trackOnlineUser(user);
-      return user;
+    if (!isSupabaseConfigured()) {
+      throw new Error('Supabase no está configurado');
     }
 
-    // Admin check
-    if (identifier === 'admin@gmail.com') {
-      if (password !== 'admin123') {
-        throw new Error('Contraseña de administrador incorrecta');
-      }
-      const user: User = { 
-        id: identifier,
-        email: identifier,
-        name: 'Administrador',
-        role: 'admin' 
-      };
-      localStorage.setItem('golazo_user', JSON.stringify(user));
-      dataService.trackOnlineUser(user);
-      return user;
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: identifier,
+      password: password || '',
+    });
+
+    if (error || !data.user) {
+      throw new Error('Correo o contraseña incorrectos');
     }
 
-    // Client check (Email or Phone)
-    const isEmail = identifier.includes('@');
     const user: User = {
-      id: identifier,
-      email: isEmail ? identifier : undefined,
-      phone: !isEmail ? identifier : undefined,
-      name: identifier.split('@')[0],
-      role: 'client'
+      id: data.user.id,
+      email: identifier,
+      name: data.user.user_metadata?.name || 'Usuario',
+      role: data.user.user_metadata?.role || 'admin',
+      client_id: data.user.user_metadata?.client_id
     };
-    localStorage.setItem('golazo_user', JSON.stringify(user));
+    
     dataService.trackOnlineUser(user);
     return user;
   },
-  logout: () => {
-    const user = dataService.getCurrentUser();
-    if (user) {
-      dataService.untrackOnlineUser(user.id);
+  logout: async () => {
+    if (isSupabaseConfigured()) {
+      await supabase.auth.signOut();
     }
-    localStorage.removeItem('golazo_user');
   },
 
   // Online Users Tracking (Simulation)
@@ -254,45 +301,75 @@ export const dataService = {
   },
 
   // Loyalty & Ranking
-  getUserPoints: async (userId: string) => {
-    const bookings = await dataService.getBookings();
-    // 1 point per confirmed booking, 1.5 for promotional hours (10-16)
-    return bookings
-      .filter(b => b.userId === userId && (b.status === 'confirmed' || b.status === 'finished'))
+  getUserPoints: async (identifier: string, clientId?: string) => {
+    const bookings = await dataService.getBookings(clientId);
+    let relevantBookings = bookings.filter(b => (b.playerId === identifier || b.clientPhone === identifier || b.userId === identifier) && (b.status === 'completed' || b.status === 'no_show'));
+    
+    // Apply ranking reset date if available
+    try {
+      const clientConfig = await dataService.getClientConfig(clientId);
+      if (clientConfig?.ranking_reset_date) {
+        const resetDate = new Date(clientConfig.ranking_reset_date);
+        relevantBookings = relevantBookings.filter(b => new Date(b.createdAt) >= resetDate);
+      }
+    } catch (e) {
+      console.error('Error fetching client config for ranking reset date', e);
+    }
+
+    // +10 per completed, -15 per no_show
+    return relevantBookings
       .reduce((acc, b) => {
-        const hour = b.startTime.getHours();
-        const isPromo = hour >= 10 && hour <= 16;
-        return acc + (isPromo ? 1.5 : 1);
+        if (b.status === 'completed') return acc + 10;
+        if (b.status === 'no_show') return acc - 15;
+        return acc;
       }, 0);
   },
 
-  getRanking: async () => {
-    const bookings = await dataService.getBookings();
-    const confirmedBookings = bookings.filter(b => b.status === 'confirmed' || b.status === 'finished');
+  getRanking: async (clientId?: string) => {
+    const bookings = await dataService.getBookings(clientId);
+    let relevantBookings = bookings.filter(b => b.status === 'completed' || b.status === 'no_show');
     
-    const userStats: Record<string, { id: string, name: string, points: number }> = {};
+    // Apply ranking reset date if available
+    try {
+      const clientConfig = await dataService.getClientConfig(clientId);
+      if (clientConfig?.ranking_reset_date) {
+        const resetDate = new Date(clientConfig.ranking_reset_date);
+        relevantBookings = relevantBookings.filter(b => new Date(b.createdAt) >= resetDate);
+      }
+    } catch (e) {
+      console.error('Error fetching client config for ranking reset date', e);
+    }
     
-    confirmedBookings.forEach(b => {
-      if (!userStats[b.userId]) {
-        userStats[b.userId] = { 
-          id: b.userId, 
-          name: b.clientName || b.userId.split('@')[0], 
+    const playerStats: Record<string, { id: string, name: string, points: number }> = {};
+    
+    relevantBookings.forEach(b => {
+      // Use playerId if available, fallback to clientPhone, fallback to userId
+      const identifier = b.playerId || b.clientPhone || b.userId;
+      
+      if (!playerStats[identifier]) {
+        playerStats[identifier] = { 
+          id: identifier, 
+          name: b.clientName || 'Jugador', 
           points: 0 
         };
       }
-      const hour = b.startTime.getHours();
-      const isPromo = hour >= 10 && hour <= 16;
-      userStats[b.userId].points += isPromo ? 1.5 : 1;
+      
+      // Points logic: +10 per completed, -15 per no_show
+      if (b.status === 'completed') {
+        playerStats[identifier].points += 10;
+      } else if (b.status === 'no_show') {
+        playerStats[identifier].points -= 15;
+      }
     });
 
-    return Object.values(userStats).sort((a, b) => b.points - a.points);
+    return Object.values(playerStats).sort((a, b) => b.points - a.points);
   },
 
   // Audit Logs
-  getAuditLogs: async () => {
+  getAuditLogs: async (clientId?: string) => {
     if (isSupabaseConfigured()) {
       try {
-        return await supabaseService.getAuditLogs();
+        return await supabaseService.getAuditLogs(clientId);
       } catch (error) {
         console.error('Error fetching audit logs from Supabase:', error);
       }
@@ -304,31 +381,39 @@ export const dataService = {
     }));
   },
   saveAuditLogs: async (logs: AuditLog[]) => setStorage('golazo_audit_logs', logs),
-  logAction: async (action: string, details: string) => {
-    const user = dataService.getCurrentUser();
+  logAction: async (action: string, details: string, clientId?: string) => {
+    const user = await dataService.getCurrentUser();
+    const targetClientId = clientId || user?.client_id;
+    
+    if (!targetClientId) {
+      console.warn('No client_id available for logAction. Skipping log.');
+      return;
+    }
+    
     if (isSupabaseConfigured()) {
       try {
-        await supabaseService.logAction(action, details, user?.name);
+        await supabaseService.logAction(action, details, user?.name, targetClientId);
       } catch (error) {
         console.error('Error logging action to Supabase:', error);
       }
     }
-    const logs = await dataService.getAuditLogs();
+    const logs = await dataService.getAuditLogs(targetClientId);
     const newLog: AuditLog = {
       id: Math.random().toString(36).substr(2, 9),
       action,
       details,
       timestamp: new Date(),
-      user: user?.name || 'Sistema'
+      user: user?.name || 'Sistema',
+      client_id: targetClientId
     };
     dataService.saveAuditLogs([newLog, ...logs].slice(0, 100)); // Keep last 100
   },
 
   // Deactivated Slots
-  getDeactivatedSlots: async () => {
+  getDeactivatedSlots: async (clientId?: string) => {
     if (isSupabaseConfigured()) {
       try {
-        const slots = await supabaseService.getDeactivatedSlots();
+        const slots = await supabaseService.getDeactivatedSlots(clientId);
         return new Set(slots.map(s => `${s.slot_date}-${s.slot_hour}-${s.pitch_id}`));
       } catch (error) {
         console.error('Error fetching deactivated slots from Supabase:', error);
@@ -336,10 +421,10 @@ export const dataService = {
     }
     return new Set<string>();
   },
-  toggleDeactivatedSlot: async (pitchId: string, date: string, hour: number) => {
+  toggleDeactivatedSlot: async (pitchId: string, date: string, hour: number, clientId?: string) => {
     if (isSupabaseConfigured()) {
       try {
-        await supabaseService.toggleDeactivatedSlot(pitchId, date, hour);
+        await supabaseService.toggleDeactivatedSlot(pitchId, date, hour, clientId);
       } catch (error) {
         console.error('Error toggling deactivated slot in Supabase:', error);
       }
@@ -350,16 +435,23 @@ export const dataService = {
 // High level API
 export const api = {
   // Bookings
-  addBooking: async (booking: Omit<Booking, 'id' | 'createdAt'>) => {
+  addBooking: async (booking: Omit<Booking, 'id' | 'createdAt'>, clientId?: string) => {
+    const user = await dataService.getCurrentUser();
+    const targetClientId = clientId || booking.client_id || user?.client_id;
+    
+    if (!targetClientId) {
+      throw new Error('Debe seleccionar un cliente para registrar una reserva');
+    }
+    
     if (isSupabaseConfigured()) {
       try {
-        return await supabaseService.addBooking(booking);
+        return await supabaseService.addBooking({ ...booking, client_id: targetClientId });
       } catch (error) {
         console.error('Error adding booking to Supabase:', error);
         throw error;
       }
     }
-    const bookings = await dataService.getBookings();
+    const bookings = await dataService.getBookings(targetClientId);
     
     // Overlap check
     const hasOverlap = bookings.some(existing => {
@@ -377,13 +469,14 @@ export const api = {
       ...booking,
       id: Math.random().toString(36).substr(2, 9),
       createdAt: new Date(),
+      client_id: targetClientId
     };
     
     dataService.saveBookings([...bookings, newBooking]);
     return newBooking;
   },
 
-  cancelBooking: async (id: string) => {
+  cancelBooking: async (id: string, clientId?: string) => {
     if (isSupabaseConfigured()) {
       try {
         return await supabaseService.cancelBooking(id);
@@ -391,12 +484,12 @@ export const api = {
         console.error('Error cancelling booking in Supabase:', error);
       }
     }
-    const bookings = await dataService.getBookings();
+    const bookings = await dataService.getBookings(clientId);
     const updated = bookings.map(b => b.id === id ? { ...b, status: 'cancelled' as const } : b);
     dataService.saveBookings(updated);
   },
 
-  updateBookingStatus: async (id: string, status: BookingStatus) => {
+  updateBookingStatus: async (id: string, status: BookingStatus, clientId?: string) => {
     if (isSupabaseConfigured()) {
       try {
         return await supabaseService.updateBookingStatus(id, status);
@@ -404,14 +497,14 @@ export const api = {
         console.error('Error updating booking status in Supabase:', error);
       }
     }
-    const bookings = await dataService.getBookings();
+    const bookings = await dataService.getBookings(clientId);
     const updated = bookings.map(b => b.id === id ? { ...b, status } : b);
     dataService.saveBookings(updated);
-    dataService.logAction('Estado de Reserva Actualizado', `Reserva ${id} cambiada a ${status}`);
+    dataService.logAction('Estado de Reserva Actualizado', `Reserva ${id} cambiada a ${status}`, clientId);
   },
 
-  toggleBookingPayment: async (id: string) => {
-    const bookings = await dataService.getBookings();
+  toggleBookingPayment: async (id: string, clientId?: string) => {
+    const bookings = await dataService.getBookings(clientId);
     const booking = bookings.find(b => b.id === id);
     if (!booking) return;
 
@@ -424,12 +517,19 @@ export const api = {
     }
     const updated = bookings.map(b => b.id === id ? { ...b, isPaid: !b.isPaid } : b);
     dataService.saveBookings(updated);
-    dataService.logAction('Pago de Reserva Actualizado', `Estado de pago de reserva ${id} cambiado`);
+    dataService.logAction('Pago de Reserva Actualizado', `Estado de pago de reserva ${id} cambiado`, clientId);
   },
 
   // Sales
-  addSale: async (productId: string, quantity: number, paymentMethod?: 'efectivo' | 'transferencia') => {
-    const products = await dataService.getProducts();
+  addSale: async (productId: string, quantity: number, paymentMethod?: 'efectivo' | 'transferencia', clientId?: string) => {
+    const user = await dataService.getCurrentUser();
+    const targetClientId = clientId || user?.client_id;
+    
+    if (!targetClientId) {
+      throw new Error('Debe seleccionar un cliente para registrar una venta');
+    }
+
+    const products = await dataService.getProducts(targetClientId);
     const product = products.find(p => p.id === productId);
     if (!product) throw new Error('Producto no encontrado');
 
@@ -444,7 +544,8 @@ export const api = {
           quantity,
           totalPrice: product.price * quantity,
           date: new Date(),
-          paymentMethod
+          paymentMethod,
+          client_id: targetClientId
         });
       } catch (error) {
         console.error('Error adding sale to Supabase:', error);
@@ -458,7 +559,7 @@ export const api = {
     );
     await dataService.saveProducts(updatedProducts);
 
-    const sales = await dataService.getSales();
+    const sales = await dataService.getSales(targetClientId);
     const saleId = Math.random().toString(36).substr(2, 9);
     const newSale: Sale = {
       id: saleId,
@@ -467,6 +568,7 @@ export const api = {
       totalPrice: product.price * quantity,
       date: new Date(),
       paymentMethod,
+      client_id: targetClientId,
       items: [{
         id: Math.random().toString(36).substr(2, 9),
         saleId,
@@ -480,7 +582,7 @@ export const api = {
     return newSale;
   },
 
-  deleteSale: async (id: string) => {
+  deleteSale: async (id: string, clientId?: string) => {
     if (isSupabaseConfigured()) {
       try {
         return await supabaseService.deleteSale(id);
@@ -488,12 +590,12 @@ export const api = {
         console.error('Error deleting sale from Supabase:', error);
       }
     }
-    const sales = await dataService.getSales();
+    const sales = await dataService.getSales(clientId);
     const sale = sales.find(s => s.id === id);
     
     if (sale) {
       // Restore stock locally
-      const products = await dataService.getProducts();
+      const products = await dataService.getProducts(clientId);
       const updatedProducts = products.map(p => 
         p.id === sale.productId ? { ...p, stock: p.stock + sale.quantity } : p
       );
@@ -501,26 +603,33 @@ export const api = {
     }
 
     dataService.saveSales(sales.filter(s => s.id !== id));
-    dataService.logAction('Venta Eliminada', `Se eliminó la venta de ${sale?.productId || id}`);
+    dataService.logAction('Venta Eliminada', `Se eliminó la venta de ${sale?.productId || id}`, clientId);
   },
 
   // Products CRUD
-  addProduct: async (product: Omit<Product, 'id'>) => {
+  addProduct: async (product: Omit<Product, 'id'>, clientId?: string) => {
+    const user = await dataService.getCurrentUser();
+    const targetClientId = clientId || product.client_id || user?.client_id;
+    
+    if (!targetClientId) {
+      throw new Error('Debe seleccionar un cliente para registrar un producto');
+    }
+    
     if (isSupabaseConfigured()) {
       try {
-        return await supabaseService.addProduct(product);
+        return await supabaseService.addProduct({ ...product, client_id: targetClientId });
       } catch (error) {
         console.error('Error adding product to Supabase:', error);
       }
     }
-    const products = await dataService.getProducts();
-    const newProduct = { ...product, id: Math.random().toString(36).substr(2, 9) };
+    const products = await dataService.getProducts(targetClientId);
+    const newProduct = { ...product, id: Math.random().toString(36).substr(2, 9), client_id: targetClientId };
     dataService.saveProducts([...products, newProduct]);
-    dataService.logAction('Producto Creado', `Se creó el producto ${product.name}`);
+    dataService.logAction('Producto Creado', `Se creó el producto ${product.name}`, targetClientId);
     return newProduct;
   },
 
-  updateProduct: async (id: string, updates: Partial<Product>) => {
+  updateProduct: async (id: string, updates: Partial<Product>, clientId?: string) => {
     if (isSupabaseConfigured()) {
       try {
         return await supabaseService.updateProduct(id, updates);
@@ -528,14 +637,14 @@ export const api = {
         console.error('Error updating product in Supabase:', error);
       }
     }
-    const products = await dataService.getProducts();
+    const products = await dataService.getProducts(clientId);
     const product = products.find(p => p.id === id);
     const updated = products.map(p => p.id === id ? { ...p, ...updates } : p);
     dataService.saveProducts(updated);
-    dataService.logAction('Producto Actualizado', `Se actualizó el producto ${product?.name || id}`);
+    dataService.logAction('Producto Actualizado', `Se actualizó el producto ${product?.name || id}`, clientId);
   },
 
-  deleteProduct: async (id: string) => {
+  deleteProduct: async (id: string, clientId?: string) => {
     if (isSupabaseConfigured()) {
       try {
         return await supabaseService.deleteProduct(id);
@@ -543,23 +652,23 @@ export const api = {
         console.error('Error deleting product from Supabase:', error);
       }
     }
-    const products = await dataService.getProducts();
+    const products = await dataService.getProducts(clientId);
     const product = products.find(p => p.id === id);
     dataService.saveProducts(products.filter(p => p.id !== id));
-    dataService.logAction('Producto Eliminado', `Se eliminó el producto ${product?.name || id}`);
+    dataService.logAction('Producto Eliminado', `Se eliminó el producto ${product?.name || id}`, clientId);
   },
 
-  bulkUpdateStock: async (updates: { productId: string; quantityToAdd: number; newStock: number }[]) => {
+  bulkUpdateStock: async (updates: { productId: string; quantityToAdd: number; newStock: number }[], clientId?: string) => {
     if (isSupabaseConfigured()) {
       try {
-        return await supabaseService.bulkUpdateStock(updates);
+        return await supabaseService.bulkUpdateStock(updates, clientId);
       } catch (error) {
         console.error('Error in bulk stock update in Supabase:', error);
         throw error;
       }
     }
     
-    const products = await dataService.getProducts();
+    const products = await dataService.getProducts(clientId);
     const updatedProducts = products.map(p => {
       const update = updates.find(u => u.productId === p.id);
       if (update) {
@@ -569,26 +678,33 @@ export const api = {
     });
     
     await dataService.saveProducts(updatedProducts);
-    dataService.logAction('Stock Actualizado', `Se actualizó el stock de ${updates.length} productos`);
+    dataService.logAction('Stock Actualizado', `Se actualizó el stock de ${updates.length} productos`, clientId);
   },
 
   // Pitches CRUD
-  addPitch: async (pitch: Omit<Pitch, 'id'>) => {
+  addPitch: async (pitch: Omit<Pitch, 'id'>, clientId?: string) => {
+    const user = await dataService.getCurrentUser();
+    const targetClientId = clientId || pitch.client_id || user?.client_id;
+    
+    if (!targetClientId) {
+      throw new Error('Debe seleccionar un cliente para registrar una cancha');
+    }
+    
     if (isSupabaseConfigured()) {
       try {
-        return await supabaseService.addPitch(pitch);
+        return await supabaseService.addPitch({ ...pitch, client_id: targetClientId });
       } catch (error) {
         console.error('Error adding pitch to Supabase:', error);
       }
     }
-    const pitches = await dataService.getPitches();
-    const newPitch = { ...pitch, id: Math.random().toString(36).substr(2, 9) };
+    const pitches = await dataService.getPitches(targetClientId);
+    const newPitch = { ...pitch, id: Math.random().toString(36).substr(2, 9), client_id: targetClientId };
     dataService.savePitches([...pitches, newPitch]);
-    dataService.logAction('Cancha Creada', `Se creó la cancha ${pitch.name}`);
+    dataService.logAction('Cancha Creada', `Se creó la cancha ${pitch.name}`, targetClientId);
     return newPitch;
   },
 
-  updatePitch: async (id: string, updates: Partial<Pitch>) => {
+  updatePitch: async (id: string, updates: Partial<Pitch>, clientId?: string) => {
     if (isSupabaseConfigured()) {
       try {
         return await supabaseService.updatePitch(id, updates);
@@ -596,14 +712,14 @@ export const api = {
         console.error('Error updating pitch in Supabase:', error);
       }
     }
-    const pitches = await dataService.getPitches();
+    const pitches = await dataService.getPitches(clientId);
     const pitch = pitches.find(p => p.id === id);
     const updated = pitches.map(p => p.id === id ? { ...p, ...updates } : p);
     dataService.savePitches(updated);
-    dataService.logAction('Cancha Actualizada', `Se actualizó la cancha ${pitch?.name || id}`);
+    dataService.logAction('Cancha Actualizada', `Se actualizó la cancha ${pitch?.name || id}`, clientId);
   },
 
-  deletePitch: async (id: string) => {
+  deletePitch: async (id: string, clientId?: string) => {
     if (isSupabaseConfigured()) {
       try {
         return await supabaseService.deletePitch(id);
@@ -611,9 +727,9 @@ export const api = {
         console.error('Error deleting pitch from Supabase:', error);
       }
     }
-    const pitches = await dataService.getPitches();
+    const pitches = await dataService.getPitches(clientId);
     const pitch = pitches.find(p => p.id === id);
     dataService.savePitches(pitches.filter(p => p.id !== id));
-    dataService.logAction('Cancha Eliminada', `Se eliminó la cancha ${pitch?.name || id}`);
+    dataService.logAction('Cancha Eliminada', `Se eliminó la cancha ${pitch?.name || id}`, clientId);
   }
 };

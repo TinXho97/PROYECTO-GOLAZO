@@ -12,24 +12,36 @@ import {
   Star
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { GoogleGenAI, Type, FunctionDeclaration } from "@google/genai";
 import { dataService, api } from '../services/dataService';
 import { supabase } from '../lib/supabase';
 import { cn } from '../lib/utils';
+import { processMessage } from '../bot';
+import { BotResponse } from '../bot/responses';
 
 interface Message {
   role: 'user' | 'bot';
   text: string;
+  options?: { label: string; value: string }[];
 }
 
 export default function AIChatFloating() {
   const [isOpen, setIsOpen] = useState(false);
   const [chatInput, setChatInput] = useState('');
   const [chatMessages, setChatMessages] = useState<Message[]>([
-    { role: 'bot', text: '¡Buenas, fanatico! Soy LIO. Estoy acá para darte una mano con las estadísticas, sacarte cualquier duda o hasta cambiar los precios de las canchas y las bebidas si me lo pedís. ¿En qué te puedo ayudar hoy?' }
+    { 
+      role: 'bot', 
+      text: '¡Hola! Soy el asistente virtual de reservas. ¿En qué te puedo ayudar hoy?',
+      options: [
+        { label: 'Reservar Cancha', value: 'reservar' },
+        { label: 'Ayuda', value: 'ayuda' }
+      ]
+    }
   ]);
   const [isTyping, setIsTyping] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
+  
+  // Fake user id for the bot session
+  const [sessionId] = useState(() => Math.random().toString(36).substring(7));
 
   useEffect(() => {
     if (isOpen) {
@@ -37,160 +49,30 @@ export default function AIChatFloating() {
     }
   }, [chatMessages, isOpen]);
 
-  useEffect(() => {
-    const subscription = supabase
-      .channel('bot:notifications')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications' }, payload => {
-        const type = payload.new.type;
-        if (type === 'booking') {
-          const message = payload.new.message.split('|')[0];
-          setChatMessages(prev => [...prev, { role: 'bot', text: `¡Che! ${message}. Revisá el panel para más detalles.` }]);
-        } else if (type === 'stock') {
-          setChatMessages(prev => [...prev, { role: 'bot', text: '¡Atención! Hay productos con stock bajo, ¿querés reponerlos?' }]);
-        }
-      })
-      .subscribe();
+  const handleSendMessage = async (e?: React.FormEvent, textValue?: string) => {
+    if (e) e.preventDefault();
+    const userMsg = textValue || chatInput;
+    if (!userMsg.trim()) return;
 
-    return () => {
-      supabase.removeChannel(subscription);
-    };
-  }, []);
-
-  const updatePitchPrice: FunctionDeclaration = {
-    name: "updatePitchPrice",
-    parameters: {
-      type: Type.OBJECT,
-      description: "Actualiza el precio de una cancha de fútbol.",
-      properties: {
-        pitchId: {
-          type: Type.STRING,
-          description: "El ID de la cancha (ej: p1, p2, p3).",
-        },
-        newPrice: {
-          type: Type.NUMBER,
-          description: "El nuevo precio para la cancha.",
-        },
-      },
-      required: ["pitchId", "newPrice"],
-    },
-  };
-
-  const updateProductPrice: FunctionDeclaration = {
-    name: "updateProductPrice",
-    parameters: {
-      type: Type.OBJECT,
-      description: "Actualiza el precio de un producto del bar (bebida).",
-      properties: {
-        productId: {
-          type: Type.STRING,
-          description: "El ID del producto (ej: pr1, pr2).",
-        },
-        newPrice: {
-          type: Type.NUMBER,
-          description: "El nuevo precio para el producto.",
-        },
-      },
-      required: ["productId", "newPrice"],
-    },
-  };
-
-  const cancelBooking: FunctionDeclaration = {
-    name: "cancelBooking",
-    parameters: {
-      type: Type.OBJECT,
-      description: "Cancela una reserva de cancha existente.",
-      properties: {
-        pitchId: {
-          type: Type.STRING,
-          description: "El ID de la cancha (ej: p1, p2, p3).",
-        },
-        date: {
-          type: Type.STRING,
-          description: "La fecha de la reserva en formato YYYY-MM-DD.",
-        },
-        hour: {
-          type: Type.NUMBER,
-          description: "La hora de inicio de la reserva (ej: 14, 15, 20).",
-        },
-      },
-      required: ["pitchId", "date", "hour"],
-    },
-  };
-
-  const handleSendMessage = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!chatInput.trim()) return;
-
-    const userMsg = chatInput;
     setChatMessages(prev => [...prev, { role: 'user', text: userMsg }]);
     setChatInput('');
     setIsTyping(true);
 
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
+      // Get client info from localStorage or use defaults
+      const clientName = localStorage.getItem('golazo_guest_name') || 'Cliente';
+      const clientPhone = localStorage.getItem('golazo_guest_phone') || '0000000000';
       
-      const [pitches, products, bookingsRaw] = await Promise.all([
-        dataService.getPitches(),
-        dataService.getProducts(),
-        dataService.getBookings()
-      ]);
-      const bookings = bookingsRaw;
-
-      const systemInstruction = `
-       Eres LIO, asistente argentino para dueños de fútbol 5.
-Hablas informal (che, viste, crack).
-Puedes:
-- Ver estadísticas
-- Cambiar precios
-- Cancelar reservas
-No puedes modificar UI.
-      `;
-
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: userMsg,
-        config: { 
-          systemInstruction,
-          tools: [{ functionDeclarations: [updatePitchPrice, updateProductPrice, cancelBooking] }]
-        }
-      });
-
-      const functionCalls = response.functionCalls;
-      if (functionCalls) {
-        for (const call of functionCalls) {
-          if (call.name === "updatePitchPrice") {
-            const { pitchId, newPrice } = call.args as { pitchId: string, newPrice: number };
-            await api.updatePitch(pitchId, { price: newPrice });
-            setChatMessages(prev => [...prev, { role: 'bot', text: `He actualizado el precio de la cancha ${pitchId} a $${newPrice} correctamente.` }]);
-          } else if (call.name === "updateProductPrice") {
-            const { productId, newPrice } = call.args as { productId: string, newPrice: number };
-            await api.updateProduct(productId, { price: newPrice });
-            setChatMessages(prev => [...prev, { role: 'bot', text: `He actualizado el precio del producto ${productId} a $${newPrice} correctamente.` }]);
-          } else if (call.name === "cancelBooking") {
-            const { pitchId, date, hour } = call.args as { pitchId: string, date: string, hour: number };
-            const currentBookings = await dataService.getBookings();
-            const bookingToCancel = currentBookings.find(b => 
-              b.pitchId === pitchId && 
-              b.status === 'confirmed' &&
-              b.startTime.toISOString().startsWith(date) &&
-              b.startTime.getHours() === hour
-            );
-
-            if (bookingToCancel) {
-              await api.cancelBooking(bookingToCancel.id);
-              setChatMessages(prev => [...prev, { role: 'bot', text: `He cancelado la reserva de la cancha ${pitchId} para el día ${date} a las ${hour}:00 hs.` }]);
-            } else {
-              setChatMessages(prev => [...prev, { role: 'bot', text: `No encontré ninguna reserva confirmada para la cancha ${pitchId} el día ${date} a las ${hour}:00 hs.` }]);
-            }
-          }
-        }
-      } else {
-        const botResponse = response.text || "Lo siento, no pude procesar tu solicitud.";
-        setChatMessages(prev => [...prev, { role: 'bot', text: botResponse }]);
-      }
+      const response = await processMessage(sessionId, userMsg, clientName, clientPhone);
+      
+      setChatMessages(prev => [...prev, { 
+        role: 'bot', 
+        text: response.text,
+        options: response.options
+      }]);
     } catch (error) {
-      console.error("AI Error:", error);
-      setChatMessages(prev => [...prev, { role: 'bot', text: "Hubo un error al conectar con el asistente. Por favor, intenta de nuevo más tarde." }]);
+      console.error("Bot Error:", error);
+      setChatMessages(prev => [...prev, { role: 'bot', text: "Hubo un error al procesar tu solicitud. Por favor, intenta de nuevo." }]);
     } finally {
       setIsTyping(false);
     }
@@ -309,6 +191,19 @@ No puedes modificar UI.
                   )}>
                     {msg.text}
                   </div>
+                  {msg.options && msg.options.length > 0 && (
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      {msg.options.map((opt, idx) => (
+                        <button
+                          key={idx}
+                          onClick={() => handleSendMessage(undefined, opt.value)}
+                          className="text-xs font-bold bg-white border border-sky-200 text-sky-600 px-3 py-1.5 rounded-xl hover:bg-sky-50 transition-colors"
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                   <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-tighter mt-1.5 px-1">
                     {msg.role === 'user' ? 'Tú' : 'Lio'} • {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </span>
@@ -329,23 +224,6 @@ No puedes modificar UI.
 
             {/* Input Area */}
             <div className="p-4 bg-white border-t border-zinc-100">
-              {/* Quick Actions - Minimal Pills */}
-              <div className="mb-4 flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
-                {[
-                  { label: "Precios", text: "Cambia el precio de la Cancha 1 a $1800" },
-                  { label: "Ventas", text: "¿Cómo van las ventas?" },
-                  { label: "Cancelar", text: "Cancela el turno de la Cancha 1 para hoy a las 20hs" }
-                ].map((action, idx) => (
-                  <button 
-                    key={idx}
-                    onClick={() => setChatInput(action.text)}
-                    className="whitespace-nowrap text-[10px] font-bold text-zinc-500 uppercase tracking-widest border border-zinc-200 px-3 py-2 rounded-full hover:bg-sky-50 hover:border-sky-200 hover:text-sky-600 transition-all"
-                  >
-                    {action.label}
-                  </button>
-                ))}
-              </div>
-
               <form onSubmit={handleSendMessage} className="relative flex items-center gap-2">
                 <div className="relative flex-1">
                   <input 

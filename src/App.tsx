@@ -22,7 +22,7 @@ import {
   Lightbulb
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Toaster } from 'sonner';
+import { toast, Toaster } from 'sonner';
 import Dashboard from './pages/Dashboard';
 import Admin from './pages/Admin';
 import BookingsList from './pages/BookingsList';
@@ -32,6 +32,7 @@ import RankingPage from './pages/Ranking';
 import SmartStats from './pages/SmartStats';
 import BusinessAnalysis from './pages/BusinessAnalysis';
 import SuperAdminDashboard from './pages/SuperAdminDashboard';
+import SuperAdminSaaS from './pages/SuperAdminSaaS';
 import AIChatFloating from './components/AIChatFloating';
 import { ArgentinaLogo } from './components/ArgentinaLogo';
 import { Button } from './components/Button';
@@ -39,33 +40,126 @@ import { Modal } from './components/Modal';
 import { ConfirmModal } from './components/ConfirmModal';
 import { cn } from './lib/utils';
 import { dataService } from './services/dataService';
-import { User } from './types';
+import { User, Client } from './types';
+import { supabase, checkSupabaseConnection } from './lib/supabase';
 
 type Page = 'dashboard' | 'bookings' | 'calendar' | 'sales' | 'admin' | 'ranking' | 'stats';
 
 export default function App() {
   const [currentPage, setCurrentPage] = useState<Page>('dashboard');
+  const [selectedBookingId, setSelectedBookingId] = useState<string | null>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [showSplash, setShowSplash] = useState(false);
   const [loginIdentifier, setLoginIdentifier] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
-  const [loginType, setLoginType] = useState<'client' | 'admin'>('client');
+  const [loginType, setLoginType] = useState<'client' | 'admin'>(
+    window.location.pathname === '/admin-acceso-seguro-123' ? 'admin' : 'client'
+  );
   const [customLogo, setCustomLogo] = useState<string | null>(localStorage.getItem('golazo_custom_logo'));
   const [isLogoModalOpen, setIsLogoModalOpen] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
+  const [clientConfig, setClientConfig] = useState<Client | null>(null);
+  const [isClientLoading, setIsClientLoading] = useState(true);
 
   useEffect(() => {
-    const currentUser = dataService.getCurrentUser();
-    if (currentUser) setUser(currentUser);
+    const initApp = async () => {
+      // Check Supabase connection first
+      if (dataService.isSupabaseConfigured()) {
+        const isConnected = await checkSupabaseConnection();
+        if (!isConnected) {
+          toast.error('Error de conexión a Supabase. Verifica si el proyecto está pausado o la URL es incorrecta.', {
+            duration: 10000,
+            action: {
+              label: 'Entendido',
+              onClick: () => {}
+            }
+          });
+        }
+      }
+
+      const currentUser = await dataService.getCurrentUser();
+      if (currentUser) {
+        setUser(currentUser);
+      }
+
+      try {
+        // Fetch client config based on user's client_id if available
+        const data = await dataService.getClientConfig(currentUser?.client_id);
+        if (data) {
+          setClientConfig(data);
+        } else if (dataService.isSupabaseConfigured() && !currentUser) {
+          // If no user and supabase is configured, fetch the first one as default for public view
+          const { data: firstClient } = await supabase.from('clients').select('id, name, status, created_at, features').limit(1).single();
+          if (firstClient) {
+            setClientConfig(firstClient);
+          } else {
+            // Create default if none exists
+            const newClient = {
+              name: 'GOLAZO Default Client',
+              status: 'active',
+              features: {
+                reservas: true,
+                ventas: true,
+                ranking: true,
+                estadisticas: true
+              }
+            };
+            const { data: insertedData } = await supabase.from('clients').insert(newClient).select().single();
+            if (insertedData) {
+              setClientConfig(insertedData);
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Error fetching client config:', err);
+      } finally {
+        setIsClientLoading(false);
+      }
+    };
+    
+    initApp();
+    
+    // Protect admin routes
+    const path = window.location.pathname;
+    const adminPaths = ['/admin', '/dashboard', '/ventas', '/configuracion', '/admin-acceso-seguro-123'];
+    
+    if (adminPaths.includes(path)) {
+      dataService.getCurrentUser().then(currentUser => {
+        if (currentUser && currentUser.role !== 'admin' && currentUser.role !== 'superadmin') {
+          window.location.href = '/';
+        } else if (!currentUser && path !== '/admin-acceso-seguro-123') {
+          window.location.href = '/';
+        }
+      });
+    }
 
     const handleStorageChange = () => {
       setCustomLogo(localStorage.getItem('golazo_custom_logo'));
     };
 
+    const handleGuestInfoUpdate = () => {
+      setUser(prev => {
+        if (prev && prev.role === 'client') {
+          const savedName = localStorage.getItem('golazo_guest_name');
+          const savedPhone = localStorage.getItem('golazo_guest_phone');
+          return {
+            ...prev,
+            name: savedName ? `Hola, ${savedName}` : 'Cliente Invitado',
+            phone: savedPhone || ''
+          };
+        }
+        return prev;
+      });
+    };
+
     window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
+    window.addEventListener('guest_info_updated', handleGuestInfoUpdate);
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('guest_info_updated', handleGuestInfoUpdate);
+    };
   }, []);
 
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -81,14 +175,42 @@ export default function App() {
     }
   };
 
+  const handleClientDirectLogin = () => {
+    // Create a mock client user for direct access
+    const clientUser: User = {
+      id: 'client-' + Math.random().toString(36).substr(2, 9),
+      name: 'Cliente Invitado',
+      email: 'cliente@golazo.app',
+      role: 'client',
+      phone: ''
+    };
+    
+    // Show splash screen presentation
+    setShowSplash(true);
+    
+    // After presentation, set user and hide splash
+    setTimeout(() => {
+      setUser(clientUser);
+      setShowSplash(false);
+    }, 2500);
+  };
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError(null);
-    if (!loginIdentifier) return;
+    if (!loginIdentifier && loginType === 'admin') return;
     
     try {
       const newUser = await dataService.login(loginIdentifier, loginType === 'admin' ? loginPassword : undefined);
       
+      // Fetch client config for the logged in user
+      if (newUser.client_id) {
+        const config = await dataService.getClientConfig(newUser.client_id);
+        if (config) {
+          setClientConfig(config);
+        }
+      }
+
       // Show splash screen presentation
       setShowSplash(true);
       
@@ -102,23 +224,30 @@ export default function App() {
     }
   };
 
-  const handleLogout = () => {
-    dataService.logout();
+  const handleLogout = async () => {
+    await dataService.logout();
     setUser(null);
     setCurrentPage('dashboard');
   };
 
   const navItems = [
     { id: 'dashboard', label: 'Inicio', icon: Home, roles: ['admin', 'client'] },
-    { id: 'bookings', label: 'Reservas', icon: CalendarIcon, roles: ['admin', 'client'] },
-    { id: 'calendar', label: 'Calendario', icon: CalendarIcon, roles: ['admin', 'client'] },
-    { id: 'ranking', label: 'Ranking', icon: Trophy, roles: ['admin', 'client'] },
-    { id: 'stats', label: 'Estadísticas', icon: BarChart3, roles: ['admin'] },
-    { id: 'sales', label: 'Ventas', icon: ShoppingBag, roles: ['admin'] },
+    { id: 'bookings', label: 'Reservas', icon: CalendarIcon, roles: ['admin', 'client'], featureKey: 'reservas' },
+    { id: 'calendar', label: 'Calendario', icon: CalendarIcon, roles: ['admin', 'client'], featureKey: 'reservas' },
+    { id: 'ranking', label: 'Ranking', icon: Trophy, roles: ['admin', 'client'], featureKey: 'ranking' },
+    { id: 'stats', label: 'Estadísticas', icon: BarChart3, roles: ['admin'], featureKey: 'estadisticas' },
+    { id: 'sales', label: 'Ventas', icon: ShoppingBag, roles: ['admin'], featureKey: 'ventas' },
     { id: 'admin', label: 'Configuración', icon: Settings, roles: ['admin'] },
   ];
 
-  const filteredNavItems = navItems.filter(item => item.roles.includes(user?.role || ''));
+  const filteredNavItems = navItems.filter(item => {
+    if (!item.roles.includes(user?.role || '')) return false;
+    if (item.featureKey && clientConfig) {
+      if (!clientConfig.features) return true; // Asumir todas activas si no hay config
+      return clientConfig.features[item.featureKey] !== false; // Solo ocultar si está explícitamente en false
+    }
+    return true;
+  });
 
   const BACKGROUND_IMAGES = [
     "https://iili.io/q6oJgJ2.jpg", // Imagen proporcionada por el usuario 1
@@ -129,6 +258,42 @@ export default function App() {
   useEffect(() => {
     // No rotation needed
   }, []);
+
+  // SuperAdmin SaaS Route
+  if (window.location.pathname.startsWith('/panel-interno-golazo-')) {
+    return <SuperAdminSaaS />;
+  }
+
+  // Blocking logic
+  if (isClientLoading) {
+    return (
+      <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-sky-500"></div>
+      </div>
+    );
+  }
+
+  if (clientConfig && (clientConfig.status === 'suspended' || (clientConfig.expires_at && new Date(clientConfig.expires_at) < new Date()))) {
+    return (
+      <div className="min-h-screen bg-zinc-950 flex items-center justify-center p-4">
+        <div className="bg-zinc-900 border border-red-500/20 p-8 rounded-3xl max-w-md w-full text-center">
+          <div className="w-20 h-20 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-6">
+            <ShieldCheck className="w-10 h-10 text-red-500" />
+          </div>
+          <h1 className="text-2xl font-black text-white uppercase tracking-tight mb-4">Servicio Suspendido</h1>
+          <p className="text-zinc-400 mb-8">
+            El servicio se encuentra temporalmente suspendido o ha expirado. Por favor, contacta al administrador del sistema para regularizar la situación.
+          </p>
+          <Button 
+            onClick={() => window.location.reload()}
+            className="w-full bg-zinc-800 hover:bg-zinc-700 text-white rounded-xl py-4 font-bold"
+          >
+            Reintentar
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   if (showSplash) {
     return (
@@ -224,47 +389,36 @@ export default function App() {
             <p className="text-zinc-700 font-black mt-4 tracking-[0.3em] uppercase text-[9px]">Gestión de Canchas</p>
           </div>
 
-          <div className="flex bg-white/30 backdrop-blur-md p-1 rounded-2xl mb-8 border border-white/20">
-            <button 
-              onClick={() => { setLoginType('client'); setLoginError(null); }}
-              className={cn(
-                "flex-1 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all",
-                loginType === 'client' ? "bg-white text-zinc-900 shadow-lg" : "text-zinc-700 hover:bg-white/20"
-              )}
-            >
-              Cliente
-            </button>
-            <button 
-              onClick={() => { setLoginType('admin'); setLoginError(null); }}
-              className={cn(
-                "flex-1 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all",
-                loginType === 'admin' ? "bg-white text-zinc-900 shadow-lg" : "text-zinc-700 hover:bg-white/20"
-              )}
-            >
-              Admin
-            </button>
-          </div>
-
-          <form onSubmit={handleLogin} className="space-y-6">
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-zinc-700 uppercase tracking-[0.2em] ml-1">
-                  {loginType === 'client' ? 'Email o Teléfono' : 'Email de Administrador'}
-                </label>
-                <div className="relative">
-                  <UserIcon className="absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-500" />
-                  <input 
-                    type="text" 
-                    required
-                    placeholder={loginType === 'client' ? "ej@gmail.com o 11..." : "admin@gmail.com"}
-                    className="w-full pl-14 pr-6 py-5 bg-zinc-50/80 border border-zinc-200 text-zinc-900 rounded-3xl focus:ring-2 focus:ring-sky-500 outline-none transition-all placeholder:text-zinc-400"
-                    value={loginIdentifier}
-                    onChange={e => setLoginIdentifier(e.target.value)}
-                  />
+          {loginType === 'client' ? (
+            <div className="space-y-6">
+              <Button 
+                onClick={handleClientDirectLogin}
+                className="w-full py-6 text-lg font-black tracking-widest shadow-2xl shadow-sky-500/20 rounded-[24px] bg-sky-500 hover:bg-sky-400 text-white flex items-center justify-center gap-3"
+              >
+                Entrar como cliente
+                <ChevronRight className="w-6 h-6" />
+              </Button>
+            </div>
+          ) : (
+            <form onSubmit={handleLogin} className="space-y-6">
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-zinc-700 uppercase tracking-[0.2em] ml-1">
+                    Email de Administrador
+                  </label>
+                  <div className="relative">
+                    <UserIcon className="absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-500" />
+                    <input 
+                      type="text" 
+                      required
+                      placeholder="admin@gmail.com"
+                      className="w-full pl-14 pr-6 py-5 bg-zinc-50/80 border border-zinc-200 text-zinc-900 rounded-3xl focus:ring-2 focus:ring-sky-500 outline-none transition-all placeholder:text-zinc-400"
+                      value={loginIdentifier}
+                      onChange={e => setLoginIdentifier(e.target.value)}
+                    />
+                  </div>
                 </div>
-              </div>
 
-              {loginType === 'admin' && (
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-zinc-700 uppercase tracking-[0.2em] ml-1">Contraseña</label>
                   <div className="relative">
@@ -279,26 +433,24 @@ export default function App() {
                     />
                   </div>
                 </div>
-              )}
 
-              {loginError && (
-                <p className="text-red-500 text-[10px] font-black uppercase tracking-widest text-center bg-red-500/10 py-2 rounded-xl border border-red-500/20">
-                  {loginError}
-                </p>
-              )}
-            </div>
+                {loginError && (
+                  <p className="text-red-500 text-[10px] font-black uppercase tracking-widest text-center bg-red-500/10 py-2 rounded-xl border border-red-500/20">
+                    {loginError}
+                  </p>
+                )}
+              </div>
 
-            <Button type="submit" className="w-full py-6 text-lg font-black tracking-widest shadow-2xl shadow-sky-500/20 rounded-[24px] bg-argentina text-zinc-900">
-              ENTRAR
-            </Button>
+              <Button type="submit" className="w-full py-6 text-lg font-black tracking-widest shadow-2xl shadow-sky-500/20 rounded-[24px] bg-argentina text-zinc-900">
+                ENTRAR
+              </Button>
 
-            {loginType === 'admin' && (
               <p className="text-[9px] text-zinc-700 font-bold uppercase tracking-widest text-center">
                 Usa admin@gmail.com / admin123 <br />
                 Super Admin: superman@gmail.com
               </p>
-            )}
-          </form>
+            </form>
+          )}
         </motion.div>
       </div>
     );
@@ -323,15 +475,27 @@ export default function App() {
   }
 
   const renderPage = () => {
+    const isAdmin = user.role === 'admin' || user.role === 'superadmin';
+    
     switch (currentPage) {
-      case 'dashboard': return <Dashboard user={user} onNavigate={(page) => setCurrentPage(page as Page)} />;
-      case 'bookings': return <BookingsList user={user} />;
-      case 'calendar': return <CalendarPage user={user} />;
-      case 'ranking': return <RankingPage user={user} />;
-      case 'stats': return <SmartStats />;
-      case 'sales': return <SalesPage />;
-      case 'admin': return user.role === 'admin' ? <Admin onLogout={handleLogout} /> : <Dashboard user={user} onNavigate={(page) => setCurrentPage(page as Page)} />;
-      default: return <Dashboard user={user} onNavigate={(page) => setCurrentPage(page as Page)} />;
+      case 'dashboard': return <Dashboard user={user} onNavigate={(page) => setCurrentPage(page as Page)} onNotificationClick={(id) => { setSelectedBookingId(id); setCurrentPage('calendar'); }} clientConfig={clientConfig} />;
+      case 'bookings': 
+        if (clientConfig && clientConfig.features?.reservas === false) return <Dashboard user={user} onNavigate={(page) => setCurrentPage(page as Page)} clientConfig={clientConfig} />;
+        return <BookingsList user={user} />;
+      case 'calendar': 
+        if (clientConfig && clientConfig.features?.reservas === false) return <Dashboard user={user} onNavigate={(page) => setCurrentPage(page as Page)} clientConfig={clientConfig} />;
+        return <CalendarPage user={user} initialBookingId={selectedBookingId} onClearInitialBooking={() => setSelectedBookingId(null)} />;
+      case 'ranking': 
+        if (clientConfig && clientConfig.features?.ranking === false) return <Dashboard user={user} onNavigate={(page) => setCurrentPage(page as Page)} clientConfig={clientConfig} />;
+        return <RankingPage user={user} />;
+      case 'stats': 
+        if (clientConfig && clientConfig.features?.estadisticas === false) return <Dashboard user={user} onNavigate={(page) => setCurrentPage(page as Page)} clientConfig={clientConfig} />;
+        return isAdmin ? <SmartStats /> : <Dashboard user={user} onNavigate={(page) => setCurrentPage(page as Page)} clientConfig={clientConfig} />;
+      case 'sales': 
+        if (clientConfig && clientConfig.features?.ventas === false) return <Dashboard user={user} onNavigate={(page) => setCurrentPage(page as Page)} clientConfig={clientConfig} />;
+        return isAdmin ? <SalesPage /> : <Dashboard user={user} onNavigate={(page) => setCurrentPage(page as Page)} clientConfig={clientConfig} />;
+      case 'admin': return isAdmin ? <Admin onLogout={handleLogout} /> : <Dashboard user={user} onNavigate={(page) => setCurrentPage(page as Page)} clientConfig={clientConfig} />;
+      default: return <Dashboard user={user} onNavigate={(page) => setCurrentPage(page as Page)} clientConfig={clientConfig} />;
     }
   };
 
@@ -339,7 +503,7 @@ export default function App() {
     <div className="h-screen flex flex-col lg:flex-row bg-zinc-50 text-zinc-900 overflow-hidden">
       {/* Sidebar / Desktop Nav */}
       <aside className="z-40 hidden lg:flex flex-col shrink-0 fixed left-0 top-0 h-screen w-56 bg-slate-900 border-r border-slate-800 shadow-xl transition-all duration-300">
-        <div className="p-4 flex justify-center">
+        <div className="p-4 flex flex-col items-center gap-2">
           <div className="relative group block w-24">
             {user.role === 'admin' && (
               <input 
@@ -370,6 +534,14 @@ export default function App() {
                 </div>
               )}
             </div>
+          </div>
+          <div className="text-center mt-2 px-2">
+            <h3 className="text-white font-black text-[10px] uppercase tracking-tighter leading-tight">
+              {clientConfig?.name || 'Complejo'}
+            </h3>
+            <p className="text-sky-400 font-bold text-[8px] uppercase tracking-[0.2em] mt-0.5">
+              GOLAZO <span className="text-zinc-500 font-medium">by SUR Byte'S</span>
+            </p>
           </div>
         </div>
 
@@ -429,12 +601,24 @@ export default function App() {
             <div className="flex items-center gap-3">
               <img src={customLogo} alt="Logo" className="w-10 h-10 object-cover rounded-xl border border-zinc-100 shadow-sm" />
               <div className="flex flex-col">
-                <span className="text-xs font-black text-zinc-400 uppercase tracking-widest leading-none mb-1">App</span>
-                <span className="text-xl font-black tracking-tighter text-zinc-900 leading-none">GOLAZO</span>
+                <span className="text-[8px] font-black text-zinc-400 uppercase tracking-widest leading-none mb-1">
+                  {clientConfig?.name || 'Complejo'}
+                </span>
+                <span className="text-lg font-black tracking-tighter text-zinc-900 leading-none">GOLAZO</span>
+                <span className="text-[6px] text-zinc-500 font-medium uppercase tracking-widest mt-0.5">by SUR Byte'S</span>
               </div>
             </div>
           ) : (
-            <ArgentinaLogo size="md" />
+            <div className="flex items-center gap-3">
+              <ArgentinaLogo size="md" />
+              <div className="flex flex-col">
+                <span className="text-[8px] font-black text-zinc-400 uppercase tracking-widest leading-none mb-1">
+                  {clientConfig?.name || 'Complejo'}
+                </span>
+                <span className="text-lg font-black tracking-tighter text-zinc-900 leading-none">GOLAZO</span>
+                <span className="text-[6px] text-zinc-500 font-medium uppercase tracking-widest mt-0.5">by SUR Byte'S</span>
+              </div>
+            </div>
           )}
         </div>
         <button 

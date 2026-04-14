@@ -19,6 +19,7 @@ import {
   Info
 } from 'lucide-react';
 import { analyticsService, AnalyticsData } from '../services/analyticsService';
+import { dataService } from '../services/dataService';
 import { cn } from '../lib/utils';
 import { 
   BarChart, 
@@ -39,12 +40,18 @@ const SmartStats: React.FC = () => {
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [days, setDays] = useState(30);
+  const [user, setUser] = useState<any>(null);
+
+  useEffect(() => {
+    dataService.getCurrentUser().then(setUser);
+  }, []);
 
   useEffect(() => {
     const fetchData = async () => {
+      if (!user) return;
       setLoading(true);
       try {
-        const analytics = await analyticsService.getAnalytics(days);
+        const analytics = await analyticsService.getAnalytics(days, user?.client_id);
         setData(analytics);
       } catch (error) {
         console.error('Error fetching analytics:', error);
@@ -54,9 +61,7 @@ const SmartStats: React.FC = () => {
     };
 
     fetchData();
-    const interval = setInterval(fetchData, 30000);
-    return () => clearInterval(interval);
-  }, [days]);
+  }, [days, user]);
 
   if (loading || !data) {
     return (
@@ -174,7 +179,7 @@ const SmartStats: React.FC = () => {
             </div>
           </div>
           <div className="h-[300px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height="100%" minWidth={0}>
               <AreaChart data={chartData}>
                 <defs>
                   <linearGradient id="colorIncome" x1="0" y1="0" x2="0" y2="1">
@@ -266,7 +271,7 @@ const SmartStats: React.FC = () => {
             Ocupación por Día
           </h3>
           <div className="h-[250px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height="100%" minWidth={0}>
               <BarChart data={dayOfWeekData}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f4f4f5" />
                 <XAxis 

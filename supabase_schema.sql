@@ -3,6 +3,19 @@
 -- Enable pgcrypto for gen_random_uuid() if needed
 -- CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
+-- Clients Table (SaaS Management)
+CREATE TABLE clients (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('active', 'suspended')),
+  expires_at TIMESTAMP WITH TIME ZONE,
+  enable_ranking BOOLEAN NOT NULL DEFAULT true,
+  enable_sales BOOLEAN NOT NULL DEFAULT true,
+  enable_reservations BOOLEAN NOT NULL DEFAULT true,
+  ranking_reset_date TIMESTAMP WITH TIME ZONE,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
 -- Pitches Table
 CREATE TABLE pitches (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -10,7 +23,18 @@ CREATE TABLE pitches (
   type TEXT NOT NULL,
   price NUMERIC NOT NULL,
   active BOOLEAN DEFAULT true,
+  image_url TEXT,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Players Table
+CREATE TABLE players (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL,
+  phone TEXT NOT NULL,
+  client_id TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  UNIQUE(phone, client_id)
 );
 
 -- Bookings Table
@@ -18,13 +42,14 @@ CREATE TABLE bookings (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   pitch_id UUID REFERENCES pitches(id) ON DELETE CASCADE,
   user_id TEXT,
+  player_id UUID REFERENCES players(id) ON DELETE SET NULL,
   client_name TEXT NOT NULL,
   client_phone TEXT,
   date DATE NOT NULL,
   time TIME NOT NULL,
   start_time TIMESTAMP WITH TIME ZONE NOT NULL,
   end_time TIMESTAMP WITH TIME ZONE NOT NULL,
-  status TEXT NOT NULL CHECK (status IN ('confirmed', 'cancelled', 'pending', 'finished')),
+  status TEXT NOT NULL CHECK (status IN ('confirmed', 'cancelled', 'pending', 'completed', 'no_show')),
   deposit_amount NUMERIC DEFAULT 0,
   is_paid BOOLEAN DEFAULT false,
   receipt_url TEXT,
@@ -113,10 +138,23 @@ ALTER TABLE stock_movements ENABLE ROW LEVEL SECURITY;
 ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE deactivated_slots ENABLE ROW LEVEL SECURITY;
 ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
+ALTER TABLE players ENABLE ROW LEVEL SECURITY;
+ALTER TABLE clients ENABLE ROW LEVEL SECURITY;
 
 -- Create Policies (Allow all for anon and authenticated for testing/mock auth)
+-- IMPORTANT: For production, you should restrict the clients table to superadmins only.
+-- Example:
+-- CREATE POLICY "Superadmins can manage clients" ON clients FOR ALL TO authenticated USING (auth.jwt() ->> 'role' = 'superadmin');
+-- CREATE POLICY "Clients can read their own config" ON clients FOR SELECT TO authenticated USING (id::text = auth.jwt() ->> 'client_id');
+
 CREATE POLICY "Allow all for anon" ON pitches FOR ALL TO anon USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all for authenticated" ON pitches FOR ALL TO authenticated USING (true) WITH CHECK (true);
+
+CREATE POLICY "Allow all for anon" ON clients FOR ALL TO anon USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all for authenticated" ON clients FOR ALL TO authenticated USING (true) WITH CHECK (true);
+
+CREATE POLICY "Allow all for anon" ON players FOR ALL TO anon USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all for authenticated" ON players FOR ALL TO authenticated USING (true) WITH CHECK (true);
 
 CREATE POLICY "Allow all for anon" ON bookings FOR ALL TO anon USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all for authenticated" ON bookings FOR ALL TO authenticated USING (true) WITH CHECK (true);
@@ -141,3 +179,11 @@ CREATE POLICY "Allow all for authenticated" ON deactivated_slots FOR ALL TO auth
 
 CREATE POLICY "Allow all for anon" ON notifications FOR ALL TO anon USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all for authenticated" ON notifications FOR ALL TO authenticated USING (true) WITH CHECK (true);
+
+-- Storage Setup
+INSERT INTO storage.buckets (id, name, public) VALUES ('pitch-images', 'pitch-images', true) ON CONFLICT (id) DO NOTHING;
+
+CREATE POLICY "Public Access to pitch-images" ON storage.objects FOR SELECT USING (bucket_id = 'pitch-images');
+CREATE POLICY "Allow uploads to pitch-images" ON storage.objects FOR INSERT WITH CHECK (bucket_id = 'pitch-images');
+CREATE POLICY "Allow updates to pitch-images" ON storage.objects FOR UPDATE USING (bucket_id = 'pitch-images');
+CREATE POLICY "Allow deletes to pitch-images" ON storage.objects FOR DELETE USING (bucket_id = 'pitch-images');

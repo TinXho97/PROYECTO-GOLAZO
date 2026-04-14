@@ -31,7 +31,8 @@ import {
   Zap,
   ShoppingBag,
   Package,
-  Settings
+  Settings,
+  Banknote
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { domToPng } from 'modern-screenshot';
@@ -43,16 +44,18 @@ import ArgentinaCountdown from '../components/ArgentinaCountdown';
 import { ArgentinaLogo } from '../components/ArgentinaLogo';
 import { NotificationsPanel } from '../components/NotificationsPanel';
 import { dataService, api } from '../services/dataService';
-import { Pitch, Booking, User as UserType, Sale, Product } from '../types';
+import { Pitch, Booking, User as UserType, Sale, Product, Client } from '../types';
 import { cn } from '../lib/utils';
 
 interface DashboardProps {
   user: UserType;
   onNavigate?: (page: string) => void;
   onLogout?: () => void;
+  onNotificationClick?: (bookingId: string) => void;
+  clientConfig?: Client | null;
 }
 
-export default function Dashboard({ user, onNavigate, onLogout }: DashboardProps) {
+export default function Dashboard({ user, onNavigate, onLogout, onNotificationClick, clientConfig }: DashboardProps) {
   const [pitches, setPitches] = useState<Pitch[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [sales, setSales] = useState<Sale[]>([]);
@@ -66,13 +69,14 @@ export default function Dashboard({ user, onNavigate, onLogout }: DashboardProps
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
   const [isBookingDetailModalOpen, setIsBookingDetailModalOpen] = useState(false);
+  const [selectedReceipt, setSelectedReceipt] = useState<string | null>(null);
   const [isPitchScheduleModalOpen, setIsPitchScheduleModalOpen] = useState(false);
   const [isSharing, setIsSharing] = useState(false);
   const gridRef = useRef<HTMLDivElement>(null);
   
   const [formData, setFormData] = useState({
-    clientName: user.role === 'client' ? user.name : '',
-    clientPhone: '',
+    clientName: user.role === 'client' ? (localStorage.getItem('golazo_guest_name') || '') : '',
+    clientPhone: user.role === 'client' ? (localStorage.getItem('golazo_guest_phone') || '') : '',
     receipt: null as string | null,
     depositAmount: '',
     paymentMethod: 'transferencia' as 'transferencia' | 'mercadopago',
@@ -83,11 +87,14 @@ export default function Dashboard({ user, onNavigate, onLogout }: DashboardProps
 
   useEffect(() => {
     const fetchData = async () => {
-      const p = await dataService.getPitches();
-      const b = await dataService.getBookings();
-      const s = await dataService.getSales();
-      const prods = await dataService.getProducts();
-      const points = await dataService.getUserPoints(user.id);
+      const clientId = user.client_id;
+      const p = await dataService.getPitches(clientId);
+      const b = await dataService.getBookings(clientId);
+      const s = await dataService.getSales(clientId);
+      const prods = await dataService.getProducts(clientId);
+      
+      const identifier = user.role === 'client' && user.phone ? user.phone : user.id;
+      const points = await dataService.getUserPoints(identifier, clientId);
       
       setPitches(p);
       setBookings(b);
@@ -96,7 +103,7 @@ export default function Dashboard({ user, onNavigate, onLogout }: DashboardProps
       setUserPoints(points);
     };
     fetchData();
-  }, [selectedDate, user.id]);
+  }, [user.id, user.phone, user.role, user.client_id]);
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
@@ -133,9 +140,6 @@ export default function Dashboard({ user, onNavigate, onLogout }: DashboardProps
     const endTime = addHours(startTime, 1);
 
     try {
-      const isPromo = h >= 10 && h <= 16;
-      const points = isPromo ? 1.5 : 1;
-
       await api.addBooking({
         pitchId: selectedPitch.id,
         userId: user.id,
@@ -148,14 +152,24 @@ export default function Dashboard({ user, onNavigate, onLogout }: DashboardProps
         depositAmount: Number(formData.depositAmount) || 0,
         paymentUrl: formData.paymentMethod === 'mercadopago' ? formData.paymentUrl : undefined
       });
-      const updatedBookings = await dataService.getBookings();
+      
+      // Save client info to localStorage for future use
+      if (user.role === 'client') {
+        localStorage.setItem('golazo_guest_name', formData.clientName);
+        localStorage.setItem('golazo_guest_phone', formData.clientPhone);
+        // Dispatch custom event to update App.tsx state if needed
+        window.dispatchEvent(new Event('guest_info_updated'));
+      }
+
+      const updatedBookings = await dataService.getBookings(user.client_id);
       setBookings(updatedBookings);
-      const updatedPoints = await dataService.getUserPoints(user.id);
+      const identifier = user.role === 'client' && formData.clientPhone ? formData.clientPhone : user.id;
+      const updatedPoints = await dataService.getUserPoints(identifier, user.client_id);
       setUserPoints(updatedPoints);
       setIsBookingModalOpen(false);
       setFormData({ 
-        clientName: user.role === 'client' ? user.name : '', 
-        clientPhone: '', 
+        clientName: user.role === 'client' ? formData.clientName : '', 
+        clientPhone: user.role === 'client' ? formData.clientPhone : '', 
         receipt: null, 
         depositAmount: '',
         paymentMethod: 'transferencia',
@@ -163,12 +177,38 @@ export default function Dashboard({ user, onNavigate, onLogout }: DashboardProps
       });
       
       toast.success('¡Reserva confirmada!', {
-        description: isPromo 
-          ? `¡Sumaste +${points} puntos por horario promocional! 🔥`
-          : `¡Sumaste +${points} puntos!`,
+        description: '¡Sigue jugando para sumar más puntos en el ranking!'
       });
     } catch (error: any) {
-      toast.error(error.message);
+      if (error.message === 'name_mismatch') {
+        toast('Este número ya está registrado con otro nombre, pero la reserva se ha creado.', {
+          icon: '⚠️',
+        });
+        
+        // Save to localStorage
+        if (user.role === 'client') {
+          localStorage.setItem('golazo_guest_name', formData.clientName);
+          localStorage.setItem('golazo_guest_phone', formData.clientPhone);
+          window.dispatchEvent(new Event('guest_info_updated'));
+        }
+
+        const updatedBookings = await dataService.getBookings();
+        setBookings(updatedBookings);
+        const identifier = user.role === 'client' && formData.clientPhone ? formData.clientPhone : user.id;
+        const updatedPoints = await dataService.getUserPoints(identifier);
+        setUserPoints(updatedPoints);
+        setIsBookingModalOpen(false);
+        setFormData({ 
+          clientName: user.role === 'client' ? formData.clientName : '', 
+          clientPhone: user.role === 'client' ? formData.clientPhone : '', 
+          receipt: null, 
+          depositAmount: '',
+          paymentMethod: 'transferencia',
+          paymentUrl: ''
+        });
+      } else {
+        toast.error(error.message);
+      }
     }
   };
 
@@ -388,16 +428,18 @@ export default function Dashboard({ user, onNavigate, onLogout }: DashboardProps
             </button>
           </motion.div>
 
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
-            <button 
-              onClick={() => onNavigate && onNavigate('ranking')}
-              className="w-full text-left bg-white p-6 rounded-[24px] shadow-sm border border-zinc-100 hover:border-yellow-200 hover:shadow-md transition-all group relative overflow-hidden"
-            >
-              <Trophy className="w-8 h-8 text-yellow-500 mb-4" />
-              <h3 className="text-2xl font-black text-zinc-900 tracking-tighter uppercase italic">Ranking</h3>
-              <p className="text-zinc-500 text-xs font-bold mt-1">Mis puntos: {userPoints}</p>
-            </button>
-          </motion.div>
+          {(!clientConfig || clientConfig.features?.ranking !== false) && (
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
+              <button 
+                onClick={() => onNavigate && onNavigate('ranking')}
+                className="w-full text-left bg-white p-6 rounded-[24px] shadow-sm border border-zinc-100 hover:border-yellow-200 hover:shadow-md transition-all group relative overflow-hidden"
+              >
+                <Trophy className="w-8 h-8 text-yellow-500 mb-4" />
+                <h3 className="text-2xl font-black text-zinc-900 tracking-tighter uppercase italic">Ranking</h3>
+                <p className="text-zinc-500 text-xs font-bold mt-1">Mis puntos: {userPoints}</p>
+              </button>
+            </motion.div>
+          )}
 
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}>
             <button 
@@ -434,46 +476,54 @@ export default function Dashboard({ user, onNavigate, onLogout }: DashboardProps
         <div className="flex items-center gap-4">
           <div className="hidden md:block mr-4">
             <NotificationsPanel onNotificationClick={async (bookingId) => {
-              let booking = bookings.find(b => b.id === bookingId);
-              if (!booking) {
-                const latestBookings = await dataService.getBookings();
-                setBookings(latestBookings);
-                booking = latestBookings.find(b => b.id === bookingId);
-              }
-              if (booking) {
-                setSelectedBooking(booking);
-                setIsBookingDetailModalOpen(true);
+              if (onNotificationClick) {
+                onNotificationClick(bookingId);
               } else {
-                toast.error('No se pudo encontrar la reserva');
+                let booking = bookings.find(b => b.id === bookingId);
+                if (!booking) {
+                  const latestBookings = await dataService.getBookings(user.client_id);
+                  setBookings(latestBookings);
+                  booking = latestBookings.find(b => b.id === bookingId);
+                }
+                if (booking) {
+                  setSelectedBooking(booking);
+                  setIsBookingDetailModalOpen(true);
+                } else {
+                  toast.error('No se pudo encontrar la reserva');
+                }
               }
             }} />
           </div>
-          <Button 
-            onClick={() => onNavigate && onNavigate('calendar')}
-            className="rounded-2xl py-6 px-6 font-black uppercase tracking-widest text-xs shadow-lg shadow-sky-500/20 hover:scale-105 transition-transform"
-          >
-            <Plus className="w-5 h-5 mr-2" />
-            Nueva Reserva
-          </Button>
-          <Button 
-            variant="outline"
-            onClick={() => onNavigate && onNavigate('sales')}
-            className="rounded-2xl py-6 px-6 font-black uppercase tracking-widest text-xs border-zinc-200 hover:bg-zinc-50 hover:scale-105 transition-transform"
-          >
-            <ShoppingBag className="w-5 h-5 mr-2" />
-            Nueva Venta
-          </Button>
+          {(!clientConfig || clientConfig.features?.reservas !== false) && (
+            <Button 
+              onClick={() => onNavigate && onNavigate('calendar')}
+              className="rounded-2xl py-6 px-6 font-black uppercase tracking-widest text-xs shadow-lg shadow-sky-500/20 hover:scale-105 transition-transform"
+            >
+              <Plus className="w-5 h-5 mr-2" />
+              Nueva Reserva
+            </Button>
+          )}
+          {(!clientConfig || clientConfig.features?.ventas !== false) && (
+            <Button 
+              variant="outline"
+              onClick={() => onNavigate && onNavigate('sales')}
+              className="rounded-2xl py-6 px-6 font-black uppercase tracking-widest text-xs border-zinc-200 hover:bg-zinc-50 hover:scale-105 transition-transform"
+            >
+              <ShoppingBag className="w-5 h-5 mr-2" />
+              Nueva Venta
+            </Button>
+          )}
         </div>
       </header>
 
       {/* 2. MÉTRICAS CLAVE */}
       <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         {[
-          { label: 'Turnos del día', value: todayBookings.length, icon: CalendarIcon, color: 'text-blue-500', bg: 'bg-blue-50' },
-          { label: 'Ingresos del día', value: `$${todayTotalIncome}`, icon: DollarSign, color: 'text-emerald-500', bg: 'bg-emerald-50' },
-          { label: 'Ventas del día', value: todaySales.length, icon: ShoppingBag, color: 'text-purple-500', bg: 'bg-purple-50' },
-          { label: 'Ocupación', value: `${occupancyPercentage}%`, icon: Activity, color: 'text-orange-500', bg: 'bg-orange-50' },
-        ].map((stat, i) => (
+          (!clientConfig || clientConfig.features?.reservas !== false) && { label: 'Turnos del día', value: todayBookings.length, icon: CalendarIcon, color: 'text-blue-500', bg: 'bg-blue-50' },
+          (!clientConfig || clientConfig.features?.ventas !== false) && { label: 'Ingresos del día', value: `$${todayTotalIncome}`, icon: DollarSign, color: 'text-emerald-500', bg: 'bg-emerald-50' },
+          (!clientConfig || clientConfig.features?.ventas !== false) && { label: 'Ventas del día', value: todaySales.length, icon: ShoppingBag, color: 'text-purple-500', bg: 'bg-purple-50' },
+          (!clientConfig || clientConfig.features?.reservas !== false) && { label: 'Ocupación', value: `${occupancyPercentage}%`, icon: Activity, color: 'text-orange-500', bg: 'bg-orange-50' },
+        ].filter(Boolean).map((stat: any, i) => (
           <motion.div
             key={stat.label}
             initial={{ opacity: 0, y: 20 }}
@@ -505,86 +555,92 @@ export default function Dashboard({ user, onNavigate, onLogout }: DashboardProps
           
           <div className="grid grid-cols-1 gap-4">
             {/* Próxima Reserva */}
-            <div className="bg-white p-6 rounded-[24px] shadow-sm border border-zinc-100 flex items-center justify-between group hover:border-sky-200 transition-colors">
-              <div className="flex items-center gap-5">
-                <div className="w-12 h-12 rounded-full bg-sky-50 flex items-center justify-center text-sky-500">
-                  <Clock className="w-6 h-6" />
+            {(!clientConfig || clientConfig.features?.reservas !== false) && (
+              <div className="bg-white p-6 rounded-[24px] shadow-sm border border-zinc-100 flex items-center justify-between group hover:border-sky-200 transition-colors">
+                <div className="flex items-center gap-5">
+                  <div className="w-12 h-12 rounded-full bg-sky-50 flex items-center justify-center text-sky-500">
+                    <Clock className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-zinc-400 uppercase tracking-widest mb-1">Próxima Reserva</p>
+                    {nextBooking ? (
+                      <div className="flex items-center gap-2">
+                        <span className="text-lg font-black text-zinc-900">{format(nextBooking.startTime, 'HH:mm')}</span>
+                        <span className="text-zinc-300">•</span>
+                        <span className="font-medium text-zinc-600">{pitches.find(p => p.id === nextBooking.pitchId)?.name}</span>
+                        <span className="text-zinc-300">•</span>
+                        <span className="font-medium text-zinc-600">{nextBooking.clientName}</span>
+                      </div>
+                    ) : (
+                      <p className="text-lg font-medium text-zinc-500">No hay reservas próximas</p>
+                    )}
+                  </div>
                 </div>
-                <div>
-                  <p className="text-xs font-bold text-zinc-400 uppercase tracking-widest mb-1">Próxima Reserva</p>
-                  {nextBooking ? (
-                    <div className="flex items-center gap-2">
-                      <span className="text-lg font-black text-zinc-900">{format(nextBooking.startTime, 'HH:mm')}</span>
-                      <span className="text-zinc-300">•</span>
-                      <span className="font-medium text-zinc-600">{pitches.find(p => p.id === nextBooking.pitchId)?.name}</span>
-                      <span className="text-zinc-300">•</span>
-                      <span className="font-medium text-zinc-600">{nextBooking.clientName}</span>
-                    </div>
-                  ) : (
-                    <p className="text-lg font-medium text-zinc-500">No hay reservas próximas</p>
-                  )}
-                </div>
+                {nextBooking && (
+                  <Button variant="ghost" className="rounded-xl" onClick={() => {
+                    setSelectedBooking(nextBooking);
+                    setIsBookingDetailModalOpen(true);
+                  }}>
+                    Ver detalle
+                  </Button>
+                )}
               </div>
-              {nextBooking && (
-                <Button variant="ghost" className="rounded-xl" onClick={() => {
-                  setSelectedBooking(nextBooking);
-                  setIsBookingDetailModalOpen(true);
-                }}>
-                  Ver detalle
-                </Button>
-              )}
-            </div>
+            )}
 
             {/* Stock Bajo */}
-            <div className="bg-white p-6 rounded-[24px] shadow-sm border border-zinc-100 flex items-center justify-between group hover:border-orange-200 transition-colors">
-              <div className="flex items-center gap-5">
-                <div className="w-12 h-12 rounded-full bg-orange-50 flex items-center justify-center text-orange-500">
-                  <Package className="w-6 h-6" />
+            {(!clientConfig || clientConfig.features?.ventas !== false) && (
+              <div className="bg-white p-6 rounded-[24px] shadow-sm border border-zinc-100 flex items-center justify-between group hover:border-orange-200 transition-colors">
+                <div className="flex items-center gap-5">
+                  <div className="w-12 h-12 rounded-full bg-orange-50 flex items-center justify-center text-orange-500">
+                    <Package className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-zinc-400 uppercase tracking-widest mb-1">Alertas de Stock</p>
+                    {lowStockProducts.length > 0 ? (
+                      <div className="flex items-center gap-2">
+                        <span className="text-lg font-black text-orange-600">{lowStockProducts.length} productos</span>
+                        <span className="font-medium text-zinc-600">por debajo del mínimo</span>
+                      </div>
+                    ) : (
+                      <p className="text-lg font-medium text-zinc-500">Stock en niveles normales</p>
+                    )}
+                  </div>
                 </div>
-                <div>
-                  <p className="text-xs font-bold text-zinc-400 uppercase tracking-widest mb-1">Alertas de Stock</p>
-                  {lowStockProducts.length > 0 ? (
-                    <div className="flex items-center gap-2">
-                      <span className="text-lg font-black text-orange-600">{lowStockProducts.length} productos</span>
-                      <span className="font-medium text-zinc-600">por debajo del mínimo</span>
-                    </div>
-                  ) : (
-                    <p className="text-lg font-medium text-zinc-500">Stock en niveles normales</p>
-                  )}
-                </div>
+                {lowStockProducts.length > 0 && (
+                  <Button variant="ghost" className="rounded-xl text-orange-600 hover:text-orange-700 hover:bg-orange-50" onClick={() => onNavigate && onNavigate('admin')}>
+                    Reponer
+                  </Button>
+                )}
               </div>
-              {lowStockProducts.length > 0 && (
-                <Button variant="ghost" className="rounded-xl text-orange-600 hover:text-orange-700 hover:bg-orange-50" onClick={() => onNavigate && onNavigate('admin')}>
-                  Reponer
-                </Button>
-              )}
-            </div>
+            )}
 
             {/* Última Venta */}
-            <div className="bg-white p-6 rounded-[24px] shadow-sm border border-zinc-100 flex items-center justify-between group hover:border-emerald-200 transition-colors">
-              <div className="flex items-center gap-5">
-                <div className="w-12 h-12 rounded-full bg-emerald-50 flex items-center justify-center text-emerald-500">
-                  <DollarSign className="w-6 h-6" />
+            {(!clientConfig || clientConfig.features?.ventas !== false) && (
+              <div className="bg-white p-6 rounded-[24px] shadow-sm border border-zinc-100 flex items-center justify-between group hover:border-emerald-200 transition-colors">
+                <div className="flex items-center gap-5">
+                  <div className="w-12 h-12 rounded-full bg-emerald-50 flex items-center justify-center text-emerald-500">
+                    <DollarSign className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-zinc-400 uppercase tracking-widest mb-1">Última Venta</p>
+                    {lastSale ? (
+                      <div className="flex items-center gap-2">
+                        <span className="text-lg font-black text-emerald-600">${lastSale.totalPrice}</span>
+                        <span className="text-zinc-300">•</span>
+                        <span className="font-medium text-zinc-600">{formatDistanceToNow(new Date(lastSale.date), { addSuffix: true, locale: es })}</span>
+                      </div>
+                    ) : (
+                      <p className="text-lg font-medium text-zinc-500">No hay ventas recientes</p>
+                    )}
+                  </div>
                 </div>
-                <div>
-                  <p className="text-xs font-bold text-zinc-400 uppercase tracking-widest mb-1">Última Venta</p>
-                  {lastSale ? (
-                    <div className="flex items-center gap-2">
-                      <span className="text-lg font-black text-emerald-600">${lastSale.totalPrice}</span>
-                      <span className="text-zinc-300">•</span>
-                      <span className="font-medium text-zinc-600">{formatDistanceToNow(new Date(lastSale.date), { addSuffix: true, locale: es })}</span>
-                    </div>
-                  ) : (
-                    <p className="text-lg font-medium text-zinc-500">No hay ventas recientes</p>
-                  )}
-                </div>
+                {lastSale && (
+                  <Button variant="ghost" className="rounded-xl" onClick={() => onNavigate && onNavigate('sales')}>
+                    Ver ventas
+                  </Button>
+                )}
               </div>
-              {lastSale && (
-                <Button variant="ghost" className="rounded-xl" onClick={() => onNavigate && onNavigate('sales')}>
-                  Ver ventas
-                </Button>
-              )}
-            </div>
+            )}
           </div>
         </section>
 
@@ -596,33 +652,37 @@ export default function Dashboard({ user, onNavigate, onLogout }: DashboardProps
           </h2>
           
           <div className="grid grid-cols-1 gap-4">
-            <button 
-              onClick={() => onNavigate && onNavigate('calendar')}
-              className="w-full flex items-center gap-4 p-5 bg-white rounded-[24px] border border-zinc-100 hover:border-sky-200 hover:shadow-md transition-all group"
-            >
-              <div className="w-10 h-10 rounded-xl bg-sky-50 text-sky-500 flex items-center justify-center group-hover:scale-110 transition-transform">
-                <CalendarIcon className="w-5 h-5" />
-              </div>
-              <div className="text-left">
-                <h3 className="font-bold text-zinc-900">Ir a Reservas</h3>
-                <p className="text-xs text-zinc-500">Gestionar turnos de canchas</p>
-              </div>
-              <ChevronRight className="w-5 h-5 text-zinc-300 ml-auto group-hover:text-sky-500 transition-colors" />
-            </button>
+            {(!clientConfig || clientConfig.features?.reservas !== false) && (
+              <button 
+                onClick={() => onNavigate && onNavigate('calendar')}
+                className="w-full flex items-center gap-4 p-5 bg-white rounded-[24px] border border-zinc-100 hover:border-sky-200 hover:shadow-md transition-all group"
+              >
+                <div className="w-10 h-10 rounded-xl bg-sky-50 text-sky-500 flex items-center justify-center group-hover:scale-110 transition-transform">
+                  <CalendarIcon className="w-5 h-5" />
+                </div>
+                <div className="text-left">
+                  <h3 className="font-bold text-zinc-900">Ir a Reservas</h3>
+                  <p className="text-xs text-zinc-500">Gestionar turnos de canchas</p>
+                </div>
+                <ChevronRight className="w-5 h-5 text-zinc-300 ml-auto group-hover:text-sky-500 transition-colors" />
+              </button>
+            )}
 
-            <button 
-              onClick={() => onNavigate && onNavigate('sales')}
-              className="w-full flex items-center gap-4 p-5 bg-white rounded-[24px] border border-zinc-100 hover:border-purple-200 hover:shadow-md transition-all group"
-            >
-              <div className="w-10 h-10 rounded-xl bg-purple-50 text-purple-500 flex items-center justify-center group-hover:scale-110 transition-transform">
-                <ShoppingBag className="w-5 h-5" />
-              </div>
-              <div className="text-left">
-                <h3 className="font-bold text-zinc-900">Ir a Ventas</h3>
-                <p className="text-xs text-zinc-500">Kiosco y productos</p>
-              </div>
-              <ChevronRight className="w-5 h-5 text-zinc-300 ml-auto group-hover:text-purple-500 transition-colors" />
-            </button>
+            {(!clientConfig || clientConfig.features?.ventas !== false) && (
+              <button 
+                onClick={() => onNavigate && onNavigate('sales')}
+                className="w-full flex items-center gap-4 p-5 bg-white rounded-[24px] border border-zinc-100 hover:border-purple-200 hover:shadow-md transition-all group"
+              >
+                <div className="w-10 h-10 rounded-xl bg-purple-50 text-purple-500 flex items-center justify-center group-hover:scale-110 transition-transform">
+                  <ShoppingBag className="w-5 h-5" />
+                </div>
+                <div className="text-left">
+                  <h3 className="font-bold text-zinc-900">Ir a Ventas</h3>
+                  <p className="text-xs text-zinc-500">Kiosco y productos</p>
+                </div>
+                <ChevronRight className="w-5 h-5 text-zinc-300 ml-auto group-hover:text-purple-500 transition-colors" />
+              </button>
+            )}
 
             <button 
               onClick={() => onNavigate && onNavigate('admin')}
@@ -782,7 +842,12 @@ export default function Dashboard({ user, onNavigate, onLogout }: DashboardProps
                   placeholder="Ej: Juan Pérez"
                   className="w-full pl-12 pr-4 py-4 bg-zinc-50 border border-zinc-200 rounded-2xl focus:ring-2 focus:ring-sky-500 outline-none transition-all text-zinc-900"
                   value={formData.clientName}
-                  onChange={e => setFormData({ ...formData, clientName: e.target.value })}
+                  onChange={e => {
+                    const val = e.target.value;
+                    if (/^[a-zA-Z\s]*$/.test(val)) {
+                      setFormData({ ...formData, clientName: val });
+                    }
+                  }}
                 />
               </div>
             </div>
@@ -794,10 +859,15 @@ export default function Dashboard({ user, onNavigate, onLogout }: DashboardProps
                 <input
                   required
                   type="tel"
-                  placeholder="Ej: 11 1234 5678"
+                  placeholder="Ej: 1112345678"
                   className="w-full pl-12 pr-4 py-4 bg-zinc-50 border border-zinc-200 rounded-2xl focus:ring-2 focus:ring-sky-500 outline-none transition-all text-zinc-900"
                   value={formData.clientPhone}
-                  onChange={e => setFormData({ ...formData, clientPhone: e.target.value })}
+                  onChange={e => {
+                    const val = e.target.value;
+                    if (/^[0-9]*$/.test(val)) {
+                      setFormData({ ...formData, clientPhone: val });
+                    }
+                  }}
                 />
               </div>
             </div>
@@ -808,11 +878,16 @@ export default function Dashboard({ user, onNavigate, onLogout }: DashboardProps
                 <DollarSign className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-400" />
                 <input
                   required
-                  type="number"
-                  placeholder="Ej: 500"
+                  type="text"
+                  placeholder="Ej: 500.50"
                   className="w-full pl-12 pr-4 py-4 bg-zinc-50 border border-zinc-200 rounded-2xl focus:ring-2 focus:ring-sky-500 outline-none transition-all text-zinc-900"
                   value={formData.depositAmount}
-                  onChange={e => setFormData({ ...formData, depositAmount: e.target.value })}
+                  onChange={e => {
+                    const val = e.target.value;
+                    if (/^\d*\.?\d*$/.test(val)) {
+                      setFormData({ ...formData, depositAmount: val });
+                    }
+                  }}
                 />
               </div>
             </div>
@@ -838,90 +913,83 @@ export default function Dashboard({ user, onNavigate, onLogout }: DashboardProps
                   className={cn(
                     "flex-1 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all border",
                     formData.paymentMethod === 'mercadopago' 
-                      ? "bg-sky-50 text-sky-600 border-sky-200" 
+                      ? "bg-emerald-50 text-emerald-600 border-emerald-200" 
                       : "bg-white text-zinc-500 border-zinc-200 hover:bg-zinc-50"
                   )}
                 >
-                  Mercado Pago
+                  Efectivo
                 </button>
               </div>
             </div>
 
             {formData.paymentMethod === 'transferencia' ? (
-              <div className="space-y-2">
-                <label className="text-sm font-bold text-zinc-700 ml-1">Comprobante de transferencia</label>
-                <div 
-                  className={cn(
-                    "relative border-2 border-dashed rounded-2xl p-4 transition-all flex flex-col items-center justify-center gap-2 cursor-pointer group",
-                    formData.receipt ? "border-sky-500 bg-sky-500/5" : "border-zinc-200 hover:border-sky-500 hover:bg-sky-500/5"
-                  )}
-                  onClick={() => document.getElementById('receipt-upload')?.click()}
-                >
-                  <input 
-                    id="receipt-upload"
-                    type="file" 
-                    accept="image/*,application/pdf" 
-                    className="hidden" 
-                    onChange={handleFileChange}
-                  />
-                  
-                  {formData.receipt ? (
-                    <>
-                      <div className="w-10 h-10 bg-sky-500 rounded-full flex items-center justify-center text-white shadow-lg">
-                        <CheckCircle2 className="w-5 h-5" />
-                      </div>
-                      <p className="text-xs font-black text-sky-600 uppercase tracking-widest">¡Comprobante cargado!</p>
-                      <button 
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setFormData(prev => ({ ...prev, receipt: null }));
-                        }}
-                        className="text-[9px] font-black text-zinc-400 hover:text-red-500 uppercase tracking-widest"
-                      >
-                        Cambiar imagen
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      <div className="w-10 h-10 bg-zinc-100 rounded-2xl flex items-center justify-center text-zinc-400 group-hover:text-sky-500 transition-colors">
-                        <Upload className="w-5 h-5" />
-                      </div>
-                      <div className="text-center">
-                        <p className="text-xs font-bold text-zinc-600">Haz clic para subir el comprobante</p>
-                        <p className="text-[9px] font-black text-zinc-400 uppercase tracking-widest mt-1">MP, Transferencia, etc.</p>
-                      </div>
-                    </>
-                  )}
+              <div className="space-y-4">
+                <div className="bg-sky-50/50 p-4 rounded-2xl border border-sky-100 space-y-2">
+                  <p className="text-sm font-bold text-sky-800">Datos Bancarios</p>
+                  <div className="text-xs text-sky-700 space-y-1">
+                    <p><span className="font-semibold">Banco:</span> Banco Nación</p>
+                    <p><span className="font-semibold">Titular:</span> Complejo Golazo</p>
+                    <p><span className="font-semibold">CBU:</span> 1234567890123456789012</p>
+                    <p><span className="font-semibold">Alias:</span> GOLAZO.CANCHA</p>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-bold text-zinc-700 ml-1">Comprobante de transferencia</label>
+                  <div 
+                    className={cn(
+                      "relative border-2 border-dashed rounded-2xl p-4 transition-all flex flex-col items-center justify-center gap-2 cursor-pointer group",
+                      formData.receipt ? "border-sky-500 bg-sky-500/5" : "border-zinc-200 hover:border-sky-500 hover:bg-sky-500/5"
+                    )}
+                    onClick={() => document.getElementById('receipt-upload')?.click()}
+                  >
+                    <input 
+                      id="receipt-upload"
+                      type="file" 
+                      accept="image/*,application/pdf" 
+                      className="hidden" 
+                      onChange={handleFileChange}
+                    />
+                    
+                    {formData.receipt ? (
+                      <>
+                        <div className="w-10 h-10 bg-sky-500 rounded-full flex items-center justify-center text-white shadow-lg">
+                          <CheckCircle2 className="w-5 h-5" />
+                        </div>
+                        <p className="text-xs font-black text-sky-600 uppercase tracking-widest">¡Comprobante cargado!</p>
+                        <button 
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setFormData(prev => ({ ...prev, receipt: null }));
+                          }}
+                          className="text-[9px] font-black text-zinc-400 hover:text-red-500 uppercase tracking-widest"
+                        >
+                          Cambiar imagen
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <div className="w-10 h-10 bg-zinc-100 rounded-2xl flex items-center justify-center text-zinc-400 group-hover:text-sky-500 transition-colors">
+                          <Upload className="w-5 h-5" />
+                        </div>
+                        <div className="text-center">
+                          <p className="text-xs font-bold text-zinc-600">Haz clic para subir el comprobante</p>
+                          <p className="text-[9px] font-black text-zinc-400 uppercase tracking-widest mt-1">MP, Transferencia, etc.</p>
+                        </div>
+                      </>
+                    )}
+                  </div>
                 </div>
               </div>
             ) : (
-              <div className="space-y-4 bg-sky-50/50 p-4 rounded-2xl border border-sky-100">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-bold text-zinc-700">Link de pago generado:</span>
-                  <a 
-                    href={`https://link.mercadopago.com.ar/golazo${Math.random().toString(36).substring(7)}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-xs font-black text-sky-600 hover:text-sky-700 underline"
-                  >
-                    Abrir Mercado Pago
-                  </a>
+              <div className="bg-emerald-50/50 p-4 rounded-2xl border border-emerald-100 flex items-center gap-4">
+                <div className="w-12 h-12 bg-emerald-100 rounded-full flex items-center justify-center shrink-0">
+                  <Banknote className="w-6 h-6 text-emerald-600" />
                 </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-bold text-zinc-700 ml-1">ID de Pago o Referencia</label>
-                  <div className="relative">
-                    <CheckCircle2 className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-400" />
-                    <input
-                      required
-                      type="text"
-                      placeholder="Ej: 1234567890"
-                      className="w-full pl-12 pr-4 py-4 bg-white border border-zinc-200 rounded-2xl focus:ring-2 focus:ring-sky-500 outline-none transition-all text-zinc-900"
-                      value={formData.paymentUrl}
-                      onChange={e => setFormData({ ...formData, paymentUrl: e.target.value })}
-                    />
-                  </div>
-                </div>
+                <p className="text-sm font-medium text-emerald-800">
+                  El pago se realiza en la cancha antes del turno
+                </p>
               </div>
             )}
           </div>
@@ -950,14 +1018,26 @@ export default function Dashboard({ user, onNavigate, onLogout }: DashboardProps
                 </div>
               </div>
               
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-sm">
-                  <Phone className="w-6 h-6 text-sky-500" />
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-sm">
+                    <Phone className="w-6 h-6 text-sky-500" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-zinc-400 uppercase tracking-widest">Teléfono</p>
+                    <p className="text-xl font-black text-zinc-900">{selectedBooking.clientPhone}</p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-sm font-bold text-zinc-400 uppercase tracking-widest">Teléfono</p>
-                  <p className="text-xl font-black text-zinc-900">{selectedBooking.clientPhone}</p>
-                </div>
+                <Button 
+                  size="sm" 
+                  variant="outline"
+                  className="border-[#25D366]/30 text-[#25D366] hover:bg-[#25D366]/10 rounded-xl px-3"
+                  onClick={() => window.open(`https://wa.me/${selectedBooking.clientPhone.replace(/\D/g, '')}`, '_blank')}
+                >
+                  <svg viewBox="0 0 24 24" className="w-5 h-5 fill-current" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/>
+                  </svg>
+                </Button>
               </div>
 
               <div className="flex items-center gap-4">
@@ -1037,7 +1117,7 @@ export default function Dashboard({ user, onNavigate, onLogout }: DashboardProps
                             variant="secondary" 
                             size="sm" 
                             className="rounded-xl"
-                            onClick={() => window.open(selectedBooking.receiptUrl, '_blank')}
+                            onClick={() => setSelectedReceipt(selectedBooking.receiptUrl!)}
                           >
                             <Maximize2 className="w-4 h-4 mr-2" />
                             Ver Pantalla Completa
@@ -1077,6 +1157,46 @@ export default function Dashboard({ user, onNavigate, onLogout }: DashboardProps
             </div>
           </div>
         )}
+      </Modal>
+
+      {/* Receipt Modal */}
+      <Modal
+        isOpen={!!selectedReceipt}
+        onClose={() => setSelectedReceipt(null)}
+        title="Comprobante de Pago"
+      >
+        <div className="p-4">
+          {selectedReceipt && (
+            selectedReceipt.startsWith('data:application/pdf') ? (
+              <div className="w-full h-64 flex flex-col items-center justify-center p-6 text-center bg-zinc-100 rounded-2xl">
+                <FileText className="w-16 h-16 text-zinc-400 mb-4" />
+                <p className="text-zinc-500 font-bold mb-4">Comprobante en formato PDF</p>
+                <Button 
+                  variant="secondary" 
+                  className="rounded-xl"
+                  onClick={() => {
+                    const link = document.createElement('a');
+                    link.href = selectedReceipt;
+                    link.download = `comprobante.pdf`;
+                    link.click();
+                  }}
+                >
+                  <Download className="w-4 h-4 mr-2" />
+                  Descargar PDF
+                </Button>
+              </div>
+            ) : (
+              <div className="relative w-full rounded-2xl overflow-hidden bg-zinc-100 border border-zinc-200">
+                <img 
+                  src={selectedReceipt} 
+                  alt="Comprobante" 
+                  className="w-full h-auto object-contain max-h-[70vh]"
+                  referrerPolicy="no-referrer"
+                />
+              </div>
+            )
+          )}
+        </div>
       </Modal>
     </div>
   );

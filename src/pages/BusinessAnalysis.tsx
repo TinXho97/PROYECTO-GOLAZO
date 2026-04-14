@@ -18,6 +18,7 @@ import {
   Lightbulb
 } from 'lucide-react';
 import { analyticsService, AnalyticsData } from '../services/analyticsService';
+import { dataService } from '../services/dataService';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 
@@ -25,12 +26,18 @@ const BusinessAnalysis: React.FC = () => {
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [days, setDays] = useState(30);
+  const [user, setUser] = useState<any>(null);
+
+  useEffect(() => {
+    dataService.getCurrentUser().then(setUser);
+  }, []);
 
   useEffect(() => {
     const fetchData = async () => {
+      if (!user) return;
       setLoading(true);
       try {
-        const analytics = await analyticsService.getAnalytics(days);
+        const analytics = await analyticsService.getAnalytics(days, user?.client_id);
         setData(analytics);
       } catch (error) {
         console.error('Error fetching analytics:', error);
@@ -40,10 +47,7 @@ const BusinessAnalysis: React.FC = () => {
     };
 
     fetchData();
-    // Auto-update every 30 seconds
-    const interval = setInterval(fetchData, 30000);
-    return () => clearInterval(interval);
-  }, [days]);
+  }, [days, user?.client_id]);
 
   if (loading || !data) {
     return (

@@ -18,35 +18,31 @@ export default function RankingPage({ user }: RankingPageProps) {
 
   useEffect(() => {
     const fetchData = async () => {
-      const currentRanking = await dataService.getRanking();
+      const clientId = user.client_id;
+      const currentRanking = await dataService.getRanking(clientId);
       setRanking(currentRanking);
-      const points = await dataService.getUserPoints(user.id);
+      const identifier = user.role === 'client' && user.phone ? user.phone : user.id;
+      const points = await dataService.getUserPoints(identifier, clientId);
       setUserPoints(points);
       
       // Calculate last points
-      const bookings = await dataService.getBookings();
-      const userBookings = bookings
-        .filter(b => b.userId === user.id && b.status === 'confirmed')
-        .sort((a, b) => b.startTime.getTime() - a.startTime.getTime());
-      
-      if (userBookings.length > 0) {
-        const last = userBookings[0];
-        const hour = last.startTime.getHours();
-        const isPromo = hour >= 10 && hour <= 16;
-        setLastPoints({ points: isPromo ? 1.5 : 1, isPromo });
+      const hasCompleted = await dataService.hasCompletedBookings(identifier, clientId);
+      if (hasCompleted) {
+        setLastPoints({ points: 1, isPromo: false }); // Points logic simplified to 1 per completed booking
       }
     };
     fetchData();
-  }, [user.id]);
+  }, [user.id, user.phone, user.role, user.client_id]);
 
-  const userPosition = ranking.findIndex(p => p.id === user.id) + 1;
-  const pointsToFreeTurn = 10;
-  const progress = Math.min(100, (userPoints % pointsToFreeTurn) * 10);
+  const identifier = user.role === 'client' && user.phone ? user.phone : user.id;
+  const userPosition = ranking.findIndex(p => p.id === identifier) + 1;
+  const pointsToFreeTurn = 100;
+  const progress = Math.min(100, (userPoints % pointsToFreeTurn));
 
   const prizes = [
-    { id: 1, name: 'Bebida Gratis', points: 5, icon: Medal, description: 'Cualquier bebida de 500ml' },
-    { id: 2, name: 'Turno Gratis F5', points: 10, icon: Trophy, description: 'Válido para lunes a jueves' },
-    { id: 3, name: 'Camiseta Oficial', points: 50, icon: Star, description: 'Edición limitada Golazo' },
+    { id: 1, name: 'Bebida Gratis', points: 50, icon: Medal, description: 'Cualquier bebida de 500ml' },
+    { id: 2, name: 'Turno Gratis F5', points: 100, icon: Trophy, description: 'Válido para lunes a jueves' },
+    { id: 3, name: 'Camiseta Oficial', points: 500, icon: Star, description: 'Edición limitada Golazo' },
   ];
 
   return (

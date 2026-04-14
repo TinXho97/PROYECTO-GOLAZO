@@ -32,11 +32,11 @@ export interface AnalyticsData {
 }
 
 export const analyticsService = {
-  getAnalytics: async (days: number = 30): Promise<AnalyticsData> => {
+  getAnalytics: async (days: number = 30, clientId?: string): Promise<AnalyticsData> => {
     const [bookingsRaw, pitches, sales] = await Promise.all([
-      dataService.getBookings(),
-      dataService.getPitches(),
-      dataService.getSales()
+      dataService.getBookings(clientId),
+      dataService.getPitches(clientId),
+      dataService.getSales(clientId)
     ]);
     const bookings = bookingsRaw.filter(b => b.status !== 'cancelled');
     
