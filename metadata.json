@@ -1,0 +1,5 @@
+{
+  "name": "Golazo - Gestión de Canchas",
+  "description": "Aplicación intuitiva para la reserva y gestión de turnos de canchas de fútbol.",
+  "requestFramePermissions": ["geolocation"]
+}

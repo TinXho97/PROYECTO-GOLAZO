@@ -1,0 +1,43 @@
+{
+  "entities": {
+    "Pitch": {
+      "title": "Pitch",
+      "description": "A football pitch available for booking.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "type": { "type": "string", "enum": ["F5", "F7", "F11"] },
+        "price": { "type": "number" },
+        "active": { "type": "boolean" }
+      },
+      "required": ["name", "type", "price", "active"]
+    },
+    "Booking": {
+      "title": "Booking",
+      "description": "A reservation for a pitch.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "pitchId": { "type": "string" },
+        "clientName": { "type": "string" },
+        "clientPhone": { "type": "string" },
+        "startTime": { "type": "string", "format": "date-time" },
+        "endTime": { "type": "string", "format": "date-time" },
+        "status": { "type": "string", "enum": ["confirmed", "cancelled", "pending"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["pitchId", "clientName", "startTime", "endTime", "status"]
+    }
+  },
+  "firestore": {
+    "/pitches": {
+      "schema": "Pitch",
+      "description": "Collection of football pitches."
+    },
+    "/bookings": {
+      "schema": "Booking",
+      "description": "Collection of reservations."
+    }
+  }
+}

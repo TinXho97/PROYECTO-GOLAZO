@@ -1,0 +1,49 @@
+@import "tailwindcss";
+@import "react-day-picker/dist/style.css";
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --primary: #0061ff;
+  --argentina: #74acdf;
+  --sidebar-bg: #0f172a;
+  --content-bg: #f8fafc;
+
+  @keyframes shimmer {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+  }
+  @keyframes bounce-subtle {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-3px); }
+  }
+  --animate-shimmer: shimmer 2s infinite;
+  --animate-bounce-subtle: bounce-subtle 2s ease-in-out infinite;
+
+  --bg-flag-ar: linear-gradient(to bottom, #74acdf 33.3%, #ffffff 33.3%, #ffffff 66.6%, #74acdf 66.6%);
+}
+
+html, body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  font-family: var(--font-sans);
+  background-color: var(--content-bg);
+}
+
+#root {
+  height: 100%;
+}
+
+.shadow-saas {
+  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+}
+
+.shadow-saas-hover {
+  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+}
+
+.shadow-premium {
+  box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+}
