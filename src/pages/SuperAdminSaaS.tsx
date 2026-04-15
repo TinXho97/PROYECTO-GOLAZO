@@ -159,7 +159,7 @@ export default function SuperAdminSaaS() {
           }
         ]);
       } else {
-        setClients(data || []);
+        setClients(clientsData);
       }
     } catch (err) {
       console.error('Error fetching clients:', err);
