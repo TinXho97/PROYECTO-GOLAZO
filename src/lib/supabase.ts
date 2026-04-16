@@ -5,13 +5,31 @@ const rawUrl = import.meta.env.VITE_SUPABASE_URL || "";
 const supabaseUrl = rawUrl.trim().replace(/\/$/, ''); // Remove trailing spaces and slashes
 const supabaseAnonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY || "").trim();
 
-const isValidKey = (key: string) => key && key.startsWith('eyJ');
+
+// Supabase supports legacy JWT anon keys (eyJ...) and newer publishable keys (sb_publishable_...)
+const isValidKey = (key: string) =>
+  !!key && (key.startsWith('eyJ') || key.startsWith('sb_publishable_'));
 
 const isDummyUrl = supabaseUrl.includes('your-project.supabase.co') || supabaseUrl.includes('TODO_');
+const hasHttpsUrl = supabaseUrl.startsWith('https://');
+const hasUrl = !!supabaseUrl;
+const hasKey = !!supabaseAnonKey;
+const validKey = isValidKey(supabaseAnonKey);
 
-if (!supabaseUrl || !isValidKey(supabaseAnonKey) || isDummyUrl) {
-  console.warn('[Supabase] Missing, invalid, or dummy environment variables. Falling back to local storage mode.');
-} else if (!supabaseUrl.startsWith('https://')) {
+export const getSupabaseDiagnostics = () => ({
+  hasUrl,
+  hasKey,
+  validKey,
+  isDummyUrl,
+  hasHttpsUrl,
+  urlPreview: hasUrl ? `${supabaseUrl.slice(0, 28)}...` : '(empty)',
+  keyPreview: hasKey ? `${supabaseAnonKey.slice(0, 8)}...` : '(empty)',
+});
+
+if (!hasUrl || !validKey || isDummyUrl) {
+  console.warn('[Supabase] Missing, invalid, or dummy environment variables. Falling back to local storage mode.', getSupabaseDiagnostics());
+} else if (!hasHttpsUrl) {
+
   console.error('[Supabase] URL must start with https://. Current value:', supabaseUrl);
 }
 
@@ -36,7 +54,9 @@ const customFetch = async (url: RequestInfo | URL, options?: RequestInit) => {
 };
 
 // Singleton instance
-export const supabase = (supabaseUrl && isValidKey(supabaseAnonKey) && !isDummyUrl) 
+
+export const supabase = (hasUrl && validKey && !isDummyUrl) 
+
   ? createClient(supabaseUrl, supabaseAnonKey, {
       global: {
         fetch: customFetch
@@ -85,21 +105,27 @@ export const supabase = (supabaseUrl && isValidKey(supabaseAnonKey) && !isDummyU
 export const getSupabaseUrl = () => supabaseUrl;
 
 export const checkSupabaseConnection = async () => {
-  if (!supabaseUrl || !isValidKey(supabaseAnonKey) || isDummyUrl) {
+
+  if (!hasUrl || !validKey || isDummyUrl) {
+
     (window as any)._supabaseReachable = false;
     return false;
   }
   
   try {
-    // Simple health check to the REST API root
-    const res = await fetch(`${supabaseUrl}/rest/v1/`, {
+
+    // Health check against a real table endpoint instead of REST root
+    const res = await fetch(`${supabaseUrl}/rest/v1/clients?select=id&limit=1`, {
+
       method: 'GET',
       headers: {
         'apikey': supabaseAnonKey,
         'Authorization': `Bearer ${supabaseAnonKey}`
       }
     });
-    const isReachable = res.ok || res.status === 400 || res.status === 401; // 400/401 means server is reachable
+
+    const isReachable = res.ok || res.status === 401 || res.status === 403;
+
     (window as any)._supabaseReachable = isReachable;
     return isReachable;
   } catch (error) {

@@ -1,7 +1,9 @@
 import { Pitch, Booking, Product, Sale, User, AuditLog, BookingStatus, Client } from '../types';
 import { addHours, startOfDay, endOfDay, isSameDay } from 'date-fns';
 import { supabaseService } from './supabaseService';
-import { supabase } from '../lib/supabase';
+
+import { supabase, getSupabaseDiagnostics } from '../lib/supabase';
+
 
 // Initial Mock Data (Fallback)
 const MOCK_PITCHES: Pitch[] = [
@@ -85,12 +87,19 @@ const getStorage = <T>(key: string, initial: T): T => {
 const setStorage = <T>(key: string, data: T) => {
   localStorage.setItem(key, JSON.stringify(data));
 };
+const getSaleQuantity = (sale: Sale): number => {
+  if (typeof sale.quantity === 'number') return sale.quantity;
+  if (Array.isArray(sale.items) && sale.items.length > 0) {
+    return sale.items.reduce((acc, item) => acc + (item.quantity || 0), 0);
+  }
+  return 0;
+};
 
 const isSupabaseConfigured = () => {
-  const url = import.meta.env.VITE_SUPABASE_URL;
-  const key = import.meta.env.VITE_SUPABASE_ANON_KEY;
-  const isDummyUrl = url?.includes('your-project.supabase.co') || url?.includes('TODO_');
-  const hasEnvVars = !!url && !!key && url !== "" && key !== "" && !isDummyUrl;
+
+  const diagnostics = getSupabaseDiagnostics();
+  const hasEnvVars = diagnostics.hasUrl && diagnostics.hasKey && diagnostics.validKey && !diagnostics.isDummyUrl && diagnostics.hasHttpsUrl;
+
   
   // If we've explicitly determined it's unreachable via health check, treat as unconfigured
   const isReachable = (window as any)._supabaseReachable !== false;
@@ -100,7 +109,12 @@ const isSupabaseConfigured = () => {
   if (!configured) {
     // Only log once to avoid spam
     if (!(window as any)._supabaseWarned) {
-      console.warn('[DataService] Supabase not configured or unreachable. Using LocalStorage fallback.');
+
+      console.warn('[DataService] Supabase not configured or unreachable. Using LocalStorage fallback.', {
+        diagnostics,
+        isReachable
+      });
+
       (window as any)._supabaseWarned = true;
     }
   }
@@ -592,7 +606,13 @@ export const api = {
     }
     const sales = await dataService.getSales(clientId);
     const sale = sales.find(s => s.id === id);
+    // Dentro de deleteSale(...)
+    const saleQuantity = getSaleQuantity(sale);
+    const updatedProducts = products.map(p => 
+      p.id === sale.productId ? { ...p, stock: p.stock + saleQuantity } : p
+    );
     
+
     if (sale) {
       // Restore stock locally
       const products = await dataService.getProducts(clientId);

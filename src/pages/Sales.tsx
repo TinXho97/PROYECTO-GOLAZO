@@ -256,6 +256,7 @@ export default function SalesPage() {
                 ) : (
                   sales.slice().reverse().slice(0, 10).map((sale) => {
                     const product = products.find(p => p.id === sale.productId);
+                    const saleQuantity = sale.quantity ?? sale.items?.reduce((acc, item) => acc + item.quantity, 0) ?? 0;
                     return (
                       <div key={sale.id} className="p-4 flex items-center justify-between hover:bg-zinc-50 transition-colors">
                         <div className="flex items-center gap-3">
