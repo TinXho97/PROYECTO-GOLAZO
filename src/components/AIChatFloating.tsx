@@ -12,23 +12,36 @@ import {
   Star
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { GoogleGenAI, Type, FunctionDeclaration } from "@google/genai";
 import { dataService, api } from '../services/dataService';
+import { supabase } from '../lib/supabase';
 import { cn } from '../lib/utils';
+import { processMessage } from '../bot';
+import { BotResponse } from '../bot/responses';
 
 interface Message {
   role: 'user' | 'bot';
   text: string;
+  options?: { label: string; value: string }[];
 }
 
 export default function AIChatFloating() {
   const [isOpen, setIsOpen] = useState(false);
   const [chatInput, setChatInput] = useState('');
   const [chatMessages, setChatMessages] = useState<Message[]>([
-    { role: 'bot', text: '¡Buenas, fanatico! Soy LIO. Estoy acá para darte una mano con las estadísticas, sacarte cualquier duda o hasta cambiar los precios de las canchas y las bebidas si me lo pedís. ¿En qué te puedo ayudar hoy?' }
+    { 
+      role: 'bot', 
+      text: '¡Hola! Soy el asistente virtual de reservas. ¿En qué te puedo ayudar hoy?',
+      options: [
+        { label: 'Reservar Cancha', value: 'reservar' },
+        { label: 'Ayuda', value: 'ayuda' }
+      ]
+    }
   ]);
   const [isTyping, setIsTyping] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
+  
+  // Fake user id for the bot session
+  const [sessionId] = useState(() => Math.random().toString(36).substring(7));
 
   useEffect(() => {
     if (isOpen) {
@@ -36,163 +49,30 @@ export default function AIChatFloating() {
     }
   }, [chatMessages, isOpen]);
 
-  const updatePitchPrice: FunctionDeclaration = {
-    name: "updatePitchPrice",
-    parameters: {
-      type: Type.OBJECT,
-      description: "Actualiza el precio de una cancha de fútbol.",
-      properties: {
-        pitchId: {
-          type: Type.STRING,
-          description: "El ID de la cancha (ej: p1, p2, p3).",
-        },
-        newPrice: {
-          type: Type.NUMBER,
-          description: "El nuevo precio para la cancha.",
-        },
-      },
-      required: ["pitchId", "newPrice"],
-    },
-  };
+  const handleSendMessage = async (e?: React.FormEvent, textValue?: string) => {
+    if (e) e.preventDefault();
+    const userMsg = textValue || chatInput;
+    if (!userMsg.trim()) return;
 
-  const updateProductPrice: FunctionDeclaration = {
-    name: "updateProductPrice",
-    parameters: {
-      type: Type.OBJECT,
-      description: "Actualiza el precio de un producto del bar (bebida).",
-      properties: {
-        productId: {
-          type: Type.STRING,
-          description: "El ID del producto (ej: pr1, pr2).",
-        },
-        newPrice: {
-          type: Type.NUMBER,
-          description: "El nuevo precio para el producto.",
-        },
-      },
-      required: ["productId", "newPrice"],
-    },
-  };
-
-  const cancelBooking: FunctionDeclaration = {
-    name: "cancelBooking",
-    parameters: {
-      type: Type.OBJECT,
-      description: "Cancela una reserva de cancha existente.",
-      properties: {
-        pitchId: {
-          type: Type.STRING,
-          description: "El ID de la cancha (ej: p1, p2, p3).",
-        },
-        date: {
-          type: Type.STRING,
-          description: "La fecha de la reserva en formato YYYY-MM-DD.",
-        },
-        hour: {
-          type: Type.NUMBER,
-          description: "La hora de inicio de la reserva (ej: 14, 15, 20).",
-        },
-      },
-      required: ["pitchId", "date", "hour"],
-    },
-  };
-
-  const handleSendMessage = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!chatInput.trim()) return;
-
-    const userMsg = chatInput;
     setChatMessages(prev => [...prev, { role: 'user', text: userMsg }]);
     setChatInput('');
     setIsTyping(true);
 
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
+      // Get client info from localStorage or use defaults
+      const clientName = localStorage.getItem('golazo_guest_name') || 'Cliente';
+      const clientPhone = localStorage.getItem('golazo_guest_phone') || '0000000000';
       
-      const [pitches, products, bookingsRaw] = await Promise.all([
-        dataService.getPitches(),
-        dataService.getProducts(),
-        dataService.getBookings()
-      ]);
-      const bookings = bookingsRaw;
-
-      const systemInstruction = `
-        Eres "LIO", un asistente experto y muy argentino para dueños de complejos de fútbol 5.
-        
-        Tu personalidad:
-        - Hablas como un gaucho moderno, amable y servicial, pero con la humildad y el carisma de un grande.
-        - Usas expresiones argentinas como "fanatico", "che", "viste", "un lujo", "meta nomás".
-        - Eres muy profesional pero con ese toque campero y futbolero.
-        - Tu estado actual es "En la cancha...", listo para jugar.
-        
-        Tus capacidades:
-        1. Responder dudas sobre el negocio y estadísticas.
-        2. Cambiar precios de canchas usando la herramienta 'updatePitchPrice'.
-        3. Cambiar precios de bebidas usando la herramienta 'updateProductPrice'.
-        4. Cancelar reservas de canchas usando la herramienta 'cancelBooking'.
-        
-        Novedades:
-        - Todas las reservas ahora requieren una seña anticipada y la carga de un comprobante de transferencia (MP, etc.).
-        - El horario de atención es de 14:00 a 01:00 hs.
-        
-        Limitaciones IMPORTANTES:
-        - NO puedes cambiar nada de la interfaz (UI), diseño o código de la página. Explica que eso solo lo pueden hacer los programadores.
-        - Solo puedes cambiar precios de canchas, productos y cancelar reservas.
-        
-        Contexto actual:
-        - Canchas disponibles: ${JSON.stringify(pitches)}
-        - Productos disponibles: ${JSON.stringify(products)}
-        - Reservas actuales (solo confirmadas): ${JSON.stringify(bookings.filter(b => b.status === 'confirmed'))}
-        
-        Para cancelar una reserva, necesitas el pitchId, la fecha (YYYY-MM-DD) y la hora.
-        Responde siempre manteniendo tu personaje de Gaucho Argento.
-      `;
-
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: userMsg,
-        config: { 
-          systemInstruction,
-          tools: [{ functionDeclarations: [updatePitchPrice, updateProductPrice, cancelBooking] }]
-        }
-      });
-
-      const functionCalls = response.functionCalls;
-      if (functionCalls) {
-        for (const call of functionCalls) {
-          if (call.name === "updatePitchPrice") {
-            const { pitchId, newPrice } = call.args as { pitchId: string, newPrice: number };
-            await api.updatePitch(pitchId, { price: newPrice });
-            setChatMessages(prev => [...prev, { role: 'bot', text: `He actualizado el precio de la cancha ${pitchId} a $${newPrice} correctamente.` }]);
-          } else if (call.name === "updateProductPrice") {
-            const { productId, newPrice } = call.args as { productId: string, newPrice: number };
-            await api.updateProduct(productId, { price: newPrice });
-            setChatMessages(prev => [...prev, { role: 'bot', text: `He actualizado el precio del producto ${productId} a $${newPrice} correctamente.` }]);
-          } else if (call.name === "cancelBooking") {
-            const { pitchId, date, hour } = call.args as { pitchId: string, date: string, hour: number };
-            const currentBookings = await dataService.getBookings();
-            const bookingToCancel = currentBookings.find(b => 
-              b.pitchId === pitchId && 
-              b.status === 'confirmed' &&
-              b.startTime.toISOString().startsWith(date) &&
-              b.startTime.getHours() === hour
-            );
-
-            if (bookingToCancel) {
-              await api.cancelBooking(bookingToCancel.id);
-              setChatMessages(prev => [...prev, { role: 'bot', text: `He cancelado la reserva de la cancha ${pitchId} para el día ${date} a las ${hour}:00 hs.` }]);
-            } else {
-              setChatMessages(prev => [...prev, { role: 'bot', text: `No encontré ninguna reserva confirmada para la cancha ${pitchId} el día ${date} a las ${hour}:00 hs.` }]);
-            }
-          }
-        }
-      } else {
-        const botResponse = response.text || "Lo siento, no pude procesar tu solicitud.";
-        setChatMessages(prev => [...prev, { role: 'bot', text: botResponse }]);
-      }
+      const response = await processMessage(sessionId, userMsg, clientName, clientPhone);
+      
+      setChatMessages(prev => [...prev, { 
+        role: 'bot', 
+        text: response.text,
+        options: response.options
+      }]);
     } catch (error) {
-      console.error("AI Error:", error);
-      setChatMessages(prev => [...prev, { role: 'bot', text: "Hubo un error al conectar con el asistente. Por favor, intenta de nuevo más tarde." }]);
+      console.error("Bot Error:", error);
+      setChatMessages(prev => [...prev, { role: 'bot', text: "Hubo un error al procesar tu solicitud. Por favor, intenta de nuevo." }]);
     } finally {
       setIsTyping(false);
     }
@@ -311,6 +191,19 @@ export default function AIChatFloating() {
                   )}>
                     {msg.text}
                   </div>
+                  {msg.options && msg.options.length > 0 && (
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      {msg.options.map((opt, idx) => (
+                        <button
+                          key={idx}
+                          onClick={() => handleSendMessage(undefined, opt.value)}
+                          className="text-xs font-bold bg-white border border-sky-200 text-sky-600 px-3 py-1.5 rounded-xl hover:bg-sky-50 transition-colors"
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                   <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-tighter mt-1.5 px-1">
                     {msg.role === 'user' ? 'Tú' : 'Lio'} • {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </span>
@@ -331,23 +224,6 @@ export default function AIChatFloating() {
 
             {/* Input Area */}
             <div className="p-4 bg-white border-t border-zinc-100">
-              {/* Quick Actions - Minimal Pills */}
-              <div className="mb-4 flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
-                {[
-                  { label: "Precios", text: "Cambia el precio de la Cancha 1 a $1800" },
-                  { label: "Ventas", text: "¿Cómo van las ventas?" },
-                  { label: "Cancelar", text: "Cancela el turno de la Cancha 1 para hoy a las 20hs" }
-                ].map((action, idx) => (
-                  <button 
-                    key={idx}
-                    onClick={() => setChatInput(action.text)}
-                    className="whitespace-nowrap text-[10px] font-bold text-zinc-500 uppercase tracking-widest border border-zinc-200 px-3 py-2 rounded-full hover:bg-sky-50 hover:border-sky-200 hover:text-sky-600 transition-all"
-                  >
-                    {action.label}
-                  </button>
-                ))}
-              </div>
-
               <form onSubmit={handleSendMessage} className="relative flex items-center gap-2">
                 <div className="relative flex-1">
                   <input 

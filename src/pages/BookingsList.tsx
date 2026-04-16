@@ -45,24 +45,18 @@ export default function BookingsList({ user }: BookingsListProps) {
   const [filterStatus, setFilterStatus] = useState<BookingStatus | 'all'>('all');
   const [confirmCancel, setConfirmCancel] = useState<string | null>(null);
   const [selectedBookingForDetail, setSelectedBookingForDetail] = useState<Booking | null>(null);
+  const [selectedReceipt, setSelectedReceipt] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchData = async () => {
-      const p = await dataService.getPitches();
-      const b = await dataService.getBookings();
+      const clientId = user.client_id;
+      const p = await dataService.getPitches(clientId);
+      const b = await dataService.getBookings(clientId);
       setPitches(p);
       setBookings(b);
     };
     fetchData();
-
-    // Auto-refresh every minute to update statuses based on time
-    const interval = setInterval(async () => {
-      const b = await dataService.getBookings();
-      setBookings(b);
-    }, 60000);
-
-    return () => clearInterval(interval);
-  }, []);
+  }, [user.client_id]);
 
   const userBookingCounts = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -85,18 +79,53 @@ export default function BookingsList({ user }: BookingsListProps) {
 
   const groupedBookings = useMemo(() => {
     const today = startOfDay(new Date());
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
 
-    return {
-      today: filteredBookings.filter(b => isSameDay(b.startTime, today)),
-      upcoming: filteredBookings.filter(b => isAfter(b.startTime, endOfDay(today))),
-      history: filteredBookings.filter(b => isBefore(b.startTime, today))
-    };
+    const groups: Record<string, Booking[]> = {};
+
+    filteredBookings.forEach(b => {
+      const date = startOfDay(b.startTime);
+      let key = '';
+
+      if (isSameDay(date, today)) {
+        key = 'HOY';
+      } else if (isSameDay(date, yesterday)) {
+        key = 'AYER';
+      } else {
+        key = format(date, "d MMM", { locale: es }).toUpperCase();
+      }
+
+      if (!groups[key]) {
+        groups[key] = [];
+      }
+      groups[key].push(b);
+    });
+
+    // Sort groups: HOY first, then AYER, then by date descending
+    const sortedKeys = Object.keys(groups).sort((a, b) => {
+      if (a === 'HOY') return -1;
+      if (b === 'HOY') return 1;
+      if (a === 'AYER') return -1;
+      if (b === 'AYER') return 1;
+      
+      // For other dates, we need to parse them back or just use the first booking's date
+      const dateA = groups[a][0].startTime.getTime();
+      const dateB = groups[b][0].startTime.getTime();
+      return dateB - dateA; // Descending
+    });
+
+    return sortedKeys.map(key => ({
+      title: key,
+      bookings: groups[key].sort((a, b) => a.startTime.getTime() - b.startTime.getTime())
+    }));
   }, [filteredBookings]);
 
   const handleStatusUpdate = async (id: string, status: BookingStatus) => {
     try {
+      const clientId = user.client_id;
       await api.updateBookingStatus(id, status);
-      const b = await dataService.getBookings();
+      const b = await dataService.getBookings(clientId);
       setBookings(b);
     } catch (error) {
       console.error('Error updating status:', error);
@@ -105,8 +134,9 @@ export default function BookingsList({ user }: BookingsListProps) {
 
   const handleTogglePayment = async (id: string) => {
     try {
+      const clientId = user.client_id;
       await api.toggleBookingPayment(id);
-      const b = await dataService.getBookings();
+      const b = await dataService.getBookings(clientId);
       setBookings(b);
     } catch (error) {
       console.error('Error toggling payment:', error);
@@ -116,8 +146,9 @@ export default function BookingsList({ user }: BookingsListProps) {
   const executeCancel = async () => {
     if (!confirmCancel) return;
     try {
+      const clientId = user.client_id;
       await api.cancelBooking(confirmCancel);
-      const b = await dataService.getBookings();
+      const b = await dataService.getBookings(clientId);
       setBookings(b);
       setConfirmCancel(null);
     } catch (error) {
@@ -133,7 +164,11 @@ export default function BookingsList({ user }: BookingsListProps) {
     
     const now = new Date();
     const isInPlay = booking.status === 'confirmed' && now >= booking.startTime && now <= booking.endTime;
-    const isFinished = booking.status === 'finished' || (booking.status === 'confirmed' && now > booking.endTime);
+    const isFinished = booking.status === 'completed' || (booking.status === 'confirmed' && now > booking.endTime);
+
+    const total = pitch?.price || 0;
+    const deposit = booking.depositAmount || 0;
+    const debt = total - deposit;
 
     return (
       <motion.div
@@ -146,7 +181,7 @@ export default function BookingsList({ user }: BookingsListProps) {
         <Card 
           className={cn(
             "border-2 shadow-sm hover:shadow-md transition-all group overflow-hidden cursor-pointer relative",
-            booking.status === 'cancelled' ? "border-red-50 bg-red-50/10" : "border-zinc-100 bg-white",
+            (booking.status === 'cancelled' || booking.status === 'no_show') ? "border-red-50 bg-red-50/10" : "border-zinc-100 bg-white",
             isInPlay ? "border-emerald-500 ring-2 ring-emerald-500/20" : "hover:border-sky-200"
           )}
           onClick={() => setSelectedBookingForDetail(booking)}
@@ -160,11 +195,11 @@ export default function BookingsList({ user }: BookingsListProps) {
             <div className="flex flex-col md:flex-row">
               {/* Time Section */}
               <div className={cn(
-                "md:w-40 p-6 flex flex-col items-center justify-center text-center border-b md:border-b-0 md:border-r border-zinc-100",
+                "md:w-48 p-6 flex flex-col items-center justify-center text-center border-b md:border-b-0 md:border-r border-zinc-100",
                 isInPlay ? "bg-emerald-500 text-white" :
                 booking.status === 'confirmed' ? "bg-emerald-50/30" : 
                 booking.status === 'pending' ? "bg-amber-50/30" :
-                booking.status === 'finished' ? "bg-zinc-50/50" : "bg-red-50/30"
+                booking.status === 'completed' ? "bg-zinc-50/50" : "bg-red-50/30"
               )}>
                 {isInPlay ? (
                   <div className="flex flex-col items-center">
@@ -176,18 +211,18 @@ export default function BookingsList({ user }: BookingsListProps) {
                     "w-5 h-5 mb-2",
                     booking.status === 'confirmed' ? "text-emerald-500" : 
                     booking.status === 'pending' ? "text-amber-500" :
-                    booking.status === 'finished' ? "text-zinc-400" : "text-red-500"
+                    booking.status === 'completed' ? "text-zinc-400" : "text-red-500"
                   )} />
                 )}
                 <span className={cn(
-                  "text-xl font-black leading-none",
+                  "text-2xl font-black leading-none",
                   isInPlay ? "text-white" : "text-zinc-900"
                 )}>
                   {format(booking.startTime, 'HH:mm')}
                 </span>
                 <span className={cn(
-                  "text-[10px] font-black uppercase tracking-widest mt-1",
-                  isInPlay ? "text-emerald-100" : "text-zinc-400"
+                  "text-sm font-black uppercase tracking-widest mt-1",
+                  isInPlay ? "text-emerald-100" : "text-zinc-500"
                 )}>
                   a {format(booking.endTime, 'HH:mm')} hs
                 </span>
@@ -195,7 +230,7 @@ export default function BookingsList({ user }: BookingsListProps) {
 
               {/* Main Content */}
               <div className="flex-1 p-6 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-                <div className="space-y-4">
+                <div className="space-y-4 flex-1">
                   <div className="flex flex-wrap items-center gap-3">
                     <h4 className="text-xl font-black text-zinc-900">{booking.clientName}</h4>
                     <div className="flex gap-2">
@@ -205,8 +240,8 @@ export default function BookingsList({ user }: BookingsListProps) {
                         <>
                           {booking.status === 'confirmed' && <Badge variant="success">Confirmado</Badge>}
                           {booking.status === 'pending' && <Badge variant="warning">Pendiente</Badge>}
-                          {booking.status === 'finished' && <Badge variant="neutral">Finalizado</Badge>}
-                          {booking.status === 'cancelled' && <Badge variant="danger">Cancelado</Badge>}
+                          {booking.status === 'completed' && <Badge variant="neutral">Finalizado</Badge>}
+                          {(booking.status === 'cancelled' || booking.status === 'no_show') && <Badge variant="danger">Cancelado</Badge>}
                         </>
                       )}
                       
@@ -219,57 +254,87 @@ export default function BookingsList({ user }: BookingsListProps) {
                     </div>
                   </div>
 
-                  {isInPlay && !booking.isPaid && (
-                    <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-100 rounded-xl text-amber-700 text-xs font-black animate-bounce">
-                      <AlertCircle className="w-4 h-4" />
-                      ¡EL PARTIDO ESTÁ EN CURSO! RECORDAR COBRAR EL SALDO.
-                    </div>
-                  )}
+                  <div className="flex items-center gap-2 text-zinc-900 font-black text-lg">
+                    <MapPin className="w-5 h-5 text-sky-500" />
+                    {pitch?.name || 'Cancha eliminada'}
+                  </div>
 
-                  {isFinished && !booking.isPaid && booking.status !== 'cancelled' && (
-                    <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-100 rounded-xl text-red-700 text-xs font-black">
-                      <AlertCircle className="w-4 h-4" />
-                      PARTIDO FINALIZADO SIN REGISTRO DE PAGO TOTAL.
-                    </div>
-                  )}
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-2">
-                    <div className="flex items-center gap-2 text-zinc-500 font-bold text-sm">
-                      <MapPin className="w-4 h-4 text-sky-500" />
-                      {pitch?.name || 'Cancha eliminada'}
-                    </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-3">
                     <div className="flex items-center gap-2 text-zinc-500 font-bold text-sm">
                       <Phone className="w-4 h-4 text-sky-500" />
                       {booking.clientPhone}
                     </div>
-                    {booking.depositAmount && (
-                      <div className={cn(
-                        "flex items-center gap-2 font-black text-sm",
-                        booking.isPaid ? "text-emerald-600" : "text-amber-600"
-                      )}>
-                        <DollarSign className="w-4 h-4" />
-                        Seña: ${booking.depositAmount} 
-                        {booking.isPaid ? (
-                          <span className="flex items-center ml-1 text-[10px] uppercase tracking-tighter bg-emerald-100 px-1.5 py-0.5 rounded">Pagado</span>
-                        ) : (
-                          <span className="flex items-center ml-1 text-[10px] uppercase tracking-tighter bg-amber-100 px-1.5 py-0.5 rounded">Pendiente</span>
-                        )}
-                      </div>
-                    )}
+                    
+                    <div className="flex flex-col gap-1">
+                      {total > 0 ? (
+                        <>
+                          <div className="flex items-center gap-2 text-sm">
+                            <span className="text-zinc-500 font-medium w-12">Seña:</span>
+                            <span className="font-bold text-zinc-900">${deposit}</span>
+                          </div>
+                          <div className="flex items-center gap-2 text-sm">
+                            <span className="text-zinc-500 font-medium w-12">Total:</span>
+                            <span className="font-bold text-zinc-900">${total}</span>
+                          </div>
+                          <div className="flex items-center gap-2 text-sm">
+                            <span className="text-zinc-500 font-medium w-12">Debe:</span>
+                            <span className={cn(
+                              "font-black",
+                              booking.isPaid ? "text-emerald-600" : "text-amber-600"
+                            )}>
+                              ${debt > 0 ? debt : 0}
+                            </span>
+                            {booking.isPaid ? (
+                              <span className="ml-1 text-[10px] uppercase tracking-tighter bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded font-bold">Pagado</span>
+                            ) : (
+                              <span className="ml-1 text-[10px] uppercase tracking-tighter bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-bold">Pendiente</span>
+                            )}
+                          </div>
+                        </>
+                      ) : (
+                        <div className="flex items-center gap-2 text-sm">
+                          <span className="text-zinc-500 font-medium w-12">Seña:</span>
+                          <span className="font-bold text-zinc-900">${deposit}</span>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
 
                 {/* Quick Actions */}
-                <div className="flex flex-wrap items-center gap-2" onClick={e => e.stopPropagation()}>
+                <div className="flex flex-col sm:flex-row lg:flex-col gap-2" onClick={e => e.stopPropagation()}>
+                  <div className="flex gap-2">
+                    <Button 
+                      size="sm" 
+                      variant="outline"
+                      className="border-[#25D366]/30 text-[#25D366] hover:bg-[#25D366]/10 rounded-xl px-3"
+                      onClick={() => window.open(`https://wa.me/${booking.clientPhone.replace(/\D/g, '')}`, '_blank')}
+                    >
+                      <svg viewBox="0 0 24 24" className="w-4 h-4 fill-current" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/>
+                      </svg>
+                    </Button>
+                    {booking.receiptUrl && (
+                      <Button 
+                        size="sm" 
+                        variant="outline"
+                        className="border-sky-200 text-sky-600 hover:bg-sky-50 rounded-xl px-3"
+                        onClick={() => setSelectedReceipt(booking.receiptUrl!)}
+                      >
+                        <FileText className="w-4 h-4" />
+                      </Button>
+                    )}
+                  </div>
+
                   {user.role === 'admin' && (
-                    <>
+                    <div className="flex gap-2">
                       {!booking.isPaid && booking.status !== 'cancelled' && (
                         <Button 
                           size="sm" 
-                          className="bg-emerald-500 hover:bg-emerald-600 text-white font-black rounded-xl px-4 shadow-lg shadow-emerald-200"
+                          className="bg-emerald-500 hover:bg-emerald-600 text-white font-black rounded-xl px-4 shadow-lg shadow-emerald-200 flex-1"
                           onClick={() => handleTogglePayment(booking.id)}
                         >
-                          <DollarSign className="w-4 h-4 mr-2" />
+                          <DollarSign className="w-4 h-4 mr-1" />
                           COBRAR
                         </Button>
                       )}
@@ -277,10 +342,10 @@ export default function BookingsList({ user }: BookingsListProps) {
                         <Button 
                           size="sm" 
                           variant="outline"
-                          className="border-emerald-200 text-emerald-600 hover:bg-emerald-50 font-bold rounded-xl px-4"
+                          className="border-emerald-200 text-emerald-600 hover:bg-emerald-50 font-bold rounded-xl px-4 flex-1"
                           onClick={() => handleStatusUpdate(booking.id, 'confirmed')}
                         >
-                          <CheckCircle2 className="w-4 h-4 mr-2" />
+                          <CheckCircle2 className="w-4 h-4 mr-1" />
                           Confirmar
                         </Button>
                       )}
@@ -288,29 +353,26 @@ export default function BookingsList({ user }: BookingsListProps) {
                         <Button 
                           size="sm" 
                           variant="outline"
-                          className="border-zinc-200 text-zinc-600 hover:bg-zinc-50 font-bold rounded-xl px-4"
-                          onClick={() => handleStatusUpdate(booking.id, 'finished')}
+                          className="border-zinc-200 text-zinc-600 hover:bg-zinc-50 font-bold rounded-xl px-4 flex-1"
+                          onClick={() => handleStatusUpdate(booking.id, 'completed')}
                         >
-                          <Play className="w-4 h-4 mr-2" />
+                          <Play className="w-4 h-4 mr-1" />
                           Finalizar
                         </Button>
                       )}
-                      {booking.status !== 'cancelled' && booking.status !== 'finished' && !isInPlay && (
+                      {booking.status !== 'cancelled' && booking.status !== 'no_show' && booking.status !== 'completed' && !isInPlay && (
                         <Button 
                           size="sm" 
                           variant="outline"
-                          className="border-red-100 text-red-500 hover:bg-red-50 font-bold rounded-xl px-4"
+                          className="border-red-100 text-red-500 hover:bg-red-50 font-bold rounded-xl px-4 flex-1"
                           onClick={() => setConfirmCancel(booking.id)}
                         >
-                          <XCircle className="w-4 h-4 mr-2" />
+                          <XCircle className="w-4 h-4 mr-1" />
                           Cancelar
                         </Button>
                       )}
-                    </>
+                    </div>
                   )}
-                  <div className="w-8 h-8 bg-zinc-50 rounded-full flex items-center justify-center text-zinc-300 group-hover:bg-sky-50 group-hover:text-sky-500 transition-all ml-2">
-                    <ChevronRight className="w-5 h-5" />
-                  </div>
                 </div>
               </div>
             </div>
@@ -355,8 +417,9 @@ export default function BookingsList({ user }: BookingsListProps) {
                 <option value="all">Todos los estados</option>
                 <option value="pending">Pendientes</option>
                 <option value="confirmed">Confirmados</option>
-                <option value="finished">Finalizados</option>
+                <option value="completed">Finalizados</option>
                 <option value="cancelled">Cancelados</option>
+                <option value="no_show">No Show</option>
               </select>
             </div>
           </div>
@@ -364,56 +427,34 @@ export default function BookingsList({ user }: BookingsListProps) {
       </div>
 
       <div className="space-y-12">
-        {/* Today Section */}
-        {groupedBookings.today.length > 0 && (
-          <section className="space-y-6">
+        {groupedBookings.map((group, groupIndex) => (
+          <section key={group.title} className="space-y-6">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-emerald-500 rounded-xl flex items-center justify-center text-white shadow-lg shadow-emerald-200">
-                <CalendarIcon className="w-5 h-5" />
+              <div className={cn(
+                "w-10 h-10 rounded-xl flex items-center justify-center text-white shadow-lg",
+                group.title === 'HOY' ? "bg-emerald-500 shadow-emerald-200" :
+                group.title === 'AYER' ? "bg-sky-500 shadow-sky-200" :
+                "bg-zinc-400 shadow-zinc-200"
+              )}>
+                {group.title === 'HOY' ? <CalendarIcon className="w-5 h-5" /> :
+                 group.title === 'AYER' ? <History className="w-5 h-5" /> :
+                 <CalendarIcon className="w-5 h-5" />}
               </div>
-              <h2 className="text-2xl font-black text-zinc-900 tracking-tight uppercase">Hoy</h2>
-              <Badge variant="neutral" className="bg-emerald-100 text-emerald-700 border-none">
-                {groupedBookings.today.length} {groupedBookings.today.length === 1 ? 'reserva' : 'reservas'}
+              <h2 className="text-2xl font-black text-zinc-900 tracking-tight uppercase">{group.title}</h2>
+              <Badge variant="neutral" className={cn(
+                "border-none",
+                group.title === 'HOY' ? "bg-emerald-100 text-emerald-700" :
+                group.title === 'AYER' ? "bg-sky-100 text-sky-700" :
+                "bg-zinc-100 text-zinc-700"
+              )}>
+                {group.bookings.length} {group.bookings.length === 1 ? 'reserva' : 'reservas'}
               </Badge>
             </div>
             <div className="space-y-4">
-              {groupedBookings.today.map((booking, i) => renderBookingCard(booking, i))}
+              {group.bookings.map((booking, i) => renderBookingCard(booking, i))}
             </div>
           </section>
-        )}
-
-        {/* Upcoming Section */}
-        {groupedBookings.upcoming.length > 0 && (
-          <section className="space-y-6">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-sky-500 rounded-xl flex items-center justify-center text-white shadow-lg shadow-sky-200">
-                <TrendingUp className="w-5 h-5" />
-              </div>
-              <h2 className="text-2xl font-black text-zinc-900 tracking-tight uppercase">Próximas Reservas</h2>
-              <Badge variant="neutral" className="bg-sky-100 text-sky-700 border-none">
-                {groupedBookings.upcoming.length}
-              </Badge>
-            </div>
-            <div className="space-y-4">
-              {groupedBookings.upcoming.map((booking, i) => renderBookingCard(booking, i))}
-            </div>
-          </section>
-        )}
-
-        {/* History Section */}
-        {groupedBookings.history.length > 0 && (
-          <section className="space-y-6">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-zinc-400 rounded-xl flex items-center justify-center text-white shadow-lg shadow-zinc-200">
-                <History className="w-5 h-5" />
-              </div>
-              <h2 className="text-2xl font-black text-zinc-900 tracking-tight uppercase">Historial</h2>
-            </div>
-            <div className="space-y-4">
-              {groupedBookings.history.map((booking, i) => renderBookingCard(booking, i))}
-            </div>
-          </section>
-        )}
+        ))}
 
         {filteredBookings.length === 0 && (
           <motion.div 
@@ -442,13 +483,13 @@ export default function BookingsList({ user }: BookingsListProps) {
               "flex items-center gap-4 p-6 rounded-3xl border-2",
               selectedBookingForDetail.status === 'confirmed' ? "bg-emerald-50 border-emerald-100" : 
               selectedBookingForDetail.status === 'pending' ? "bg-amber-50 border-amber-100" :
-              selectedBookingForDetail.status === 'finished' ? "bg-zinc-50 border-zinc-100" : "bg-red-50 border-red-100"
+              selectedBookingForDetail.status === 'completed' ? "bg-zinc-50 border-zinc-100" : "bg-red-50 border-red-100"
             )}>
               <div className={cn(
                 "w-14 h-14 rounded-2xl flex items-center justify-center text-white shadow-lg",
                 selectedBookingForDetail.status === 'confirmed' ? "bg-emerald-500 shadow-emerald-200" : 
                 selectedBookingForDetail.status === 'pending' ? "bg-amber-500 shadow-amber-200" :
-                selectedBookingForDetail.status === 'finished' ? "bg-zinc-400 shadow-zinc-200" : "bg-red-500 shadow-red-200"
+                selectedBookingForDetail.status === 'completed' ? "bg-zinc-400 shadow-zinc-200" : "bg-red-500 shadow-red-200"
               )}>
                 <CalendarIcon className="w-7 h-7" />
               </div>
@@ -483,8 +524,8 @@ export default function BookingsList({ user }: BookingsListProps) {
                 <div className="mt-1">
                   {selectedBookingForDetail.status === 'confirmed' && <Badge variant="success">Confirmado</Badge>}
                   {selectedBookingForDetail.status === 'pending' && <Badge variant="warning">Pendiente</Badge>}
-                  {selectedBookingForDetail.status === 'finished' && <Badge variant="neutral">Finalizado</Badge>}
-                  {selectedBookingForDetail.status === 'cancelled' && <Badge variant="danger">Cancelado</Badge>}
+                  {selectedBookingForDetail.status === 'completed' && <Badge variant="neutral">Finalizado</Badge>}
+                  {(selectedBookingForDetail.status === 'cancelled' || selectedBookingForDetail.status === 'no_show') && <Badge variant="danger">Cancelado</Badge>}
                 </div>
               </div>
             </div>
@@ -506,6 +547,13 @@ export default function BookingsList({ user }: BookingsListProps) {
                 <span className="text-zinc-400 font-medium">Seña entregada</span>
                 <span className="text-2xl font-black text-white">${selectedBookingForDetail.depositAmount || 0}</span>
               </div>
+
+              {selectedBookingForDetail.paymentUrl && (
+                <div className="flex items-center justify-between pt-2 border-t border-zinc-700/50 mt-2">
+                  <span className="text-zinc-400 font-medium">Ref. Mercado Pago</span>
+                  <span className="text-sm font-black text-sky-400">{selectedBookingForDetail.paymentUrl}</span>
+                </div>
+              )}
 
               {user.role === 'admin' && !selectedBookingForDetail.isPaid && (
                 <Button 
@@ -557,7 +605,7 @@ export default function BookingsList({ user }: BookingsListProps) {
                           variant="secondary" 
                           size="sm" 
                           className="rounded-xl"
-                          onClick={() => window.open(selectedBookingForDetail.receiptUrl, '_blank')}
+                          onClick={() => setSelectedReceipt(selectedBookingForDetail.receiptUrl!)}
                         >
                           <Maximize2 className="w-4 h-4 mr-2" />
                           Ver Pantalla Completa
@@ -582,6 +630,46 @@ export default function BookingsList({ user }: BookingsListProps) {
         confirmText="CANCELAR TURNO"
         cancelText="VOLVER"
       />
+
+      {/* Receipt Modal */}
+      <Modal
+        isOpen={!!selectedReceipt}
+        onClose={() => setSelectedReceipt(null)}
+        title="Comprobante de Pago"
+      >
+        <div className="p-4">
+          {selectedReceipt && (
+            selectedReceipt.startsWith('data:application/pdf') ? (
+              <div className="w-full h-64 flex flex-col items-center justify-center p-6 text-center bg-zinc-100 rounded-2xl">
+                <FileText className="w-16 h-16 text-zinc-400 mb-4" />
+                <p className="text-zinc-500 font-bold mb-4">Comprobante en formato PDF</p>
+                <Button 
+                  variant="secondary" 
+                  className="rounded-xl"
+                  onClick={() => {
+                    const link = document.createElement('a');
+                    link.href = selectedReceipt;
+                    link.download = `comprobante.pdf`;
+                    link.click();
+                  }}
+                >
+                  <Download className="w-4 h-4 mr-2" />
+                  Descargar PDF
+                </Button>
+              </div>
+            ) : (
+              <div className="relative w-full rounded-2xl overflow-hidden bg-zinc-100 border border-zinc-200">
+                <img 
+                  src={selectedReceipt} 
+                  alt="Comprobante" 
+                  className="w-full h-auto object-contain max-h-[70vh]"
+                  referrerPolicy="no-referrer"
+                />
+              </div>
+            )
+          )}
+        </div>
+      </Modal>
     </div>
   );
 }

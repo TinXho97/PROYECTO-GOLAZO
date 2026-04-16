@@ -27,3 +27,4 @@ export function CardContent({ children, className, ...props }: CardProps) {
 export function CardFooter({ children, className, ...props }: CardProps) {
   return <div className={cn('px-6 py-4 bg-zinc-50/50 border-t border-zinc-100', className)} {...props}>{children}</div>;
 }
+///hola

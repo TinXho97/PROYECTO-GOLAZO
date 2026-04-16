@@ -36,18 +36,24 @@ export default function SalesPage() {
   const [paymentMethod, setPaymentMethod] = useState<'efectivo' | 'transferencia'>('efectivo');
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [confirmDeleteSale, setConfirmDeleteSale] = useState<string | null>(null);
-  const user = dataService.getCurrentUser();
+  const [user, setUser] = useState<any>(null);
   const isAdmin = user?.role === 'admin';
 
   useEffect(() => {
+    dataService.getCurrentUser().then(setUser);
+  }, []);
+
+  useEffect(() => {
     const fetchData = async () => {
-      const p = await dataService.getProducts();
-      const s = await dataService.getSales();
+      if (!user) return;
+      const clientId = user?.client_id;
+      const p = await dataService.getProducts(clientId);
+      const s = await dataService.getSales(clientId);
       setProducts(p);
       setSales(s);
     };
     fetchData();
-  }, []);
+  }, [user?.client_id]);
 
   const filteredProducts = products.filter(p => 
     p.name.toLowerCase().includes(searchTerm.toLowerCase())
@@ -58,9 +64,10 @@ export default function SalesPage() {
     if (!selectedProduct) return;
 
     try {
+      const clientId = user?.client_id;
       await api.addSale(selectedProduct.id, quantity, paymentMethod);
-      const updatedSales = await dataService.getSales();
-      const updatedProducts = await dataService.getProducts();
+      const updatedSales = await dataService.getSales(clientId);
+      const updatedProducts = await dataService.getProducts(clientId);
       setSales(updatedSales);
       setProducts(updatedProducts);
       setIsSaleModalOpen(false);
@@ -79,9 +86,10 @@ export default function SalesPage() {
 
   const executeDeleteSale = async () => {
     if (!confirmDeleteSale) return;
+    const clientId = user?.client_id;
     await api.deleteSale(confirmDeleteSale);
-    const updatedSales = await dataService.getSales();
-    const updatedProducts = await dataService.getProducts();
+    const updatedSales = await dataService.getSales(clientId);
+    const updatedProducts = await dataService.getProducts(clientId);
     setSales(updatedSales);
     setProducts(updatedProducts);
     setConfirmDeleteSale(null);

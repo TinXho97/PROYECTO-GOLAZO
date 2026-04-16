@@ -78,6 +78,7 @@ export default function Admin({ onLogout }: AdminProps) {
     type: 'F5' as Pitch['type'],
     price: 0,
     active: true,
+    image_url: '',
   });
 
   const [productForm, setProductForm] = useState({
@@ -87,22 +88,32 @@ export default function Admin({ onLogout }: AdminProps) {
     min_stock: 5,
   });
 
+  const [user, setUser] = useState<any>(null);
+
+  useEffect(() => {
+    dataService.getCurrentUser().then(setUser);
+  }, []);
+
   useEffect(() => {
     const fetchData = async () => {
-      const pi = await dataService.getPitches();
-      const pr = await dataService.getProducts();
-      const logs = await dataService.getAuditLogs();
+      if (!user) return;
+      const clientId = user?.client_id;
+      const pi = await dataService.getPitches(clientId);
+      const pr = await dataService.getProducts(clientId);
+      const logs = await dataService.getAuditLogs(clientId);
       setPitches(pi);
       setProducts(pr);
       setAuditLogs(logs);
     };
     fetchData();
-  }, []);
+  }, [user]);
 
   const refreshData = async () => {
-    const pi = await dataService.getPitches();
-    const pr = await dataService.getProducts();
-    const logs = await dataService.getAuditLogs();
+    if (!user) return;
+    const clientId = user?.client_id;
+    const pi = await dataService.getPitches(clientId);
+    const pr = await dataService.getProducts(clientId);
+    const logs = await dataService.getAuditLogs(clientId);
     setPitches(pi);
     setProducts(pr);
     setAuditLogs(logs);
@@ -119,7 +130,7 @@ export default function Admin({ onLogout }: AdminProps) {
       refreshData();
       setIsPitchModalOpen(false);
       setEditingPitch(null);
-      setPitchForm({ name: '', type: 'F5', price: 0, active: true });
+      setPitchForm({ name: '', type: 'F5', price: 0, active: true, image_url: '' });
       toast.success(editingPitch ? 'Cancha actualizada' : 'Cancha creada');
     } catch (error) {
       toast.error('Error al guardar la cancha');
@@ -197,7 +208,7 @@ export default function Admin({ onLogout }: AdminProps) {
         return;
       }
       
-      await dataService.bulkUpdateStock([{
+      await api.bulkUpdateStock([{
         productId: stockUpdateProduct.id,
         quantityToAdd: stockUpdateQuantity,
         newStock: newStock
@@ -215,13 +226,13 @@ export default function Admin({ onLogout }: AdminProps) {
 
   const handleBulkStockUpdate = async () => {
     const updates = Object.entries(bulkStockUpdates)
-      .filter(([_, qty]) => qty !== 0)
+      .filter(([_, qty]) => (qty as number) !== 0)
       .map(([productId, qty]) => {
         const product = products.find(p => p.id === productId);
         return {
           productId,
-          quantityToAdd: qty,
-          newStock: (product?.stock || 0) + qty
+          quantityToAdd: qty as number,
+          newStock: (product?.stock || 0) + (qty as number)
         };
       });
 
@@ -232,7 +243,7 @@ export default function Admin({ onLogout }: AdminProps) {
     }
 
     try {
-      await dataService.bulkUpdateStock(updates);
+      await api.bulkUpdateStock(updates);
       toast.success('Stock actualizado correctamente');
       setIsBulkStockPreviewOpen(false);
       setIsBulkStockModalOpen(false);
@@ -527,6 +538,7 @@ export default function Admin({ onLogout }: AdminProps) {
                                       type: pitch.type,
                                       price: pitch.price,
                                       active: pitch.active,
+                                      image_url: pitch.image_url || '',
                                     });
                                     setIsPitchModalOpen(true);
                                   }}
@@ -724,7 +736,8 @@ export default function Admin({ onLogout }: AdminProps) {
                           variant="outline" 
                           className="w-full py-6 border-zinc-200 text-zinc-900 hover:bg-zinc-50 gap-3 rounded-2xl font-black text-xs uppercase tracking-widest"
                           onClick={async () => {
-                            const logs = await dataService.getAuditLogs();
+                            const currentUser = await dataService.getCurrentUser();
+                            const logs = await dataService.getAuditLogs(currentUser?.client_id);
                             setAuditLogs(logs);
                             setIsAuditModalOpen(true);
                           }}
@@ -1101,7 +1114,7 @@ export default function Admin({ onLogout }: AdminProps) {
 
           {Object.entries(bulkStockUpdates).some(([id, qty]) => {
             const product = products.find(p => p.id === id);
-            return product && (product.stock + qty < 0);
+            return product && (product.stock + (qty as number) < 0);
           }) && (
             <div className="bg-red-50 border border-red-200 rounded-2xl p-4">
               <p className="text-xs font-bold text-red-800">
@@ -1112,11 +1125,12 @@ export default function Admin({ onLogout }: AdminProps) {
 
           <div className="max-h-[50vh] overflow-y-auto space-y-2 pr-2 custom-scrollbar">
             {Object.entries(bulkStockUpdates)
-              .filter(([_, qty]) => qty !== 0)
+              .filter(([_, qty]) => (qty as number) !== 0)
               .map(([productId, qty]) => {
+                const numQty = qty as number;
                 const product = products.find(p => p.id === productId);
                 if (!product) return null;
-                const finalStock = product.stock + qty;
+                const finalStock = product.stock + numQty;
                 
                 return (
                   <div key={productId} className="flex items-center justify-between bg-white p-3 rounded-xl border border-zinc-100">
@@ -1125,8 +1139,8 @@ export default function Admin({ onLogout }: AdminProps) {
                     </div>
                     <div className="flex items-center gap-3 text-xs font-bold">
                       <span className="text-zinc-500 w-8 text-right">{product.stock}</span>
-                      <span className={cn("w-12 text-center", qty > 0 ? "text-emerald-500" : "text-red-500")}>
-                        {qty > 0 ? `+${qty}` : qty}
+                      <span className={cn("w-12 text-center", numQty > 0 ? "text-emerald-500" : "text-red-500")}>
+                        {numQty > 0 ? `+${numQty}` : numQty}
                       </span>
                       <span className="text-zinc-900 w-8 text-right font-black">={finalStock}</span>
                     </div>

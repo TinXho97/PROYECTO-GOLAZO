@@ -40,10 +40,31 @@ import { Badge } from '../components/Badge';
 import { cn } from '../lib/utils';
 
 export default function StatsPage() {
-  const [timeRange, setTimeRange] = useState<'week' | 'month' | 'year'>('month');
-  const [bookings, setBookings] = useState(dataService.getBookings());
-  const [sales, setSales] = useState(dataService.getSales());
-  const [pitches, setPitches] = useState(dataService.getPitches());
+  const [user, setUser] = useState<any>(null);
+  const [timeRange, setTimeRange] = useState<'este_mes' | 'mes_anterior' | 'historico'>('este_mes');
+  const [bookings, setBookings] = useState<any[]>([]);
+  const [sales, setSales] = useState<any[]>([]);
+  const [pitches, setPitches] = useState<any[]>([]);
+  
+  useEffect(() => {
+    dataService.getCurrentUser().then(setUser);
+  }, []);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      if (!user) return;
+      const clientId = user?.client_id;
+      const [fetchedBookings, fetchedSales, fetchedPitches] = await Promise.all([
+        dataService.getBookings(clientId),
+        dataService.getSales(clientId),
+        dataService.getPitches(clientId)
+      ]);
+      setBookings(fetchedBookings);
+      setSales(fetchedSales);
+      setPitches(fetchedPitches);
+    };
+    fetchData();
+  }, [user]);
   
   // Real-time Analysis State
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -164,51 +185,87 @@ export default function StatsPage() {
     const now = new Date();
     let start: Date, end: Date;
 
-    if (timeRange === 'week') {
-      start = startOfWeek(now, { weekStartsOn: 1 });
-      end = endOfWeek(now, { weekStartsOn: 1 });
-    } else if (timeRange === 'month') {
+    if (timeRange === 'este_mes') {
       start = startOfMonth(now);
       end = endOfMonth(now);
+    } else if (timeRange === 'mes_anterior') {
+      const lastMonth = subMonths(now, 1);
+      start = startOfMonth(lastMonth);
+      end = endOfMonth(lastMonth);
     } else {
-      start = startOfYear(now);
-      end = endOfYear(now);
+      // historico
+      start = new Date(2020, 0, 1); // A date far in the past
+      end = now;
     }
 
-    const interval = eachDayOfInterval({ start, end });
-    const confirmedBookings = bookings.filter(b => b.status === 'confirmed' && b.startTime >= start && b.startTime <= end);
+    // For historical view, we might not want to show every single day in the chart if it's too long,
+    // but for simplicity we'll group by month if it's historical, or day otherwise.
+    const isHistorical = timeRange === 'historico';
+    
+    // Filter by createdAt for bookings as requested, but we still need to know when the booking was for occupancy.
+    // The prompt says "estadísticas por mes usando created_at". We will use createdAt for the period filtering.
+    const confirmedBookings = bookings.filter(b => b.status === 'confirmed' && b.createdAt >= start && b.createdAt <= end);
     const periodSales = sales.filter(s => s.date >= start && s.date <= end);
 
     // 1. Basic Chart Data
-    const chartData = interval.map(date => {
-      const dayBookings = confirmedBookings.filter(b => isSameDay(b.startTime, date));
-      const daySales = periodSales.filter(s => isSameDay(s.date, date));
-      
-      const bookingIncome = dayBookings.reduce((acc, b) => {
+    let chartData: any[] = [];
+    
+    if (isHistorical) {
+      // Group by month
+      const monthsMap: Record<string, any> = {};
+      confirmedBookings.forEach(b => {
+        const monthKey = format(b.createdAt, 'yyyy-MM');
+        if (!monthsMap[monthKey]) monthsMap[monthKey] = { name: format(b.createdAt, 'MMM yy', { locale: es }), ingresos: 0, reservas: 0, ventas: 0, ocupacion: 0, count: 0 };
         const pitch = pitches.find(p => p.id === b.pitchId);
-        return acc + (pitch?.price || 0);
-      }, 0);
-      
-      const productIncome = daySales.reduce((acc, s) => acc + s.totalPrice, 0);
-      const totalIncome = bookingIncome + productIncome;
+        monthsMap[monthKey].ingresos += (pitch?.price || 0);
+        monthsMap[monthKey].reservas += 1;
+        monthsMap[monthKey].count += 1;
+      });
+      periodSales.forEach(s => {
+        const monthKey = format(s.date, 'yyyy-MM');
+        if (!monthsMap[monthKey]) monthsMap[monthKey] = { name: format(s.date, 'MMM yy', { locale: es }), ingresos: 0, reservas: 0, ventas: 0, ocupacion: 0, count: 0 };
+        monthsMap[monthKey].ventas += s.totalPrice;
+        monthsMap[monthKey].ingresos += s.totalPrice;
+      });
+      chartData = Object.keys(monthsMap).sort().map(k => {
+        const data = monthsMap[k];
+        // Rough occupancy for a month
+        const totalPossibleSlots = pitches.length * 15 * 30;
+        data.ocupacion = Math.round((data.reservas / totalPossibleSlots) * 100);
+        return data;
+      });
+    } else {
+      const interval = eachDayOfInterval({ start, end });
+      chartData = interval.map(date => {
+        const dayBookings = confirmedBookings.filter(b => isSameDay(b.createdAt, date));
+        const daySales = periodSales.filter(s => isSameDay(s.date, date));
+        
+        const bookingIncome = dayBookings.reduce((acc, b) => {
+          const pitch = pitches.find(p => p.id === b.pitchId);
+          return acc + (pitch?.price || 0);
+        }, 0);
+        
+        const productIncome = daySales.reduce((acc, s) => acc + s.totalPrice, 0);
+        const totalIncome = bookingIncome + productIncome;
 
-      // Occupancy calculation (assuming 15 possible slots per day per pitch)
-      const totalPossibleSlots = pitches.length * 15;
-      const occupancyRate = (dayBookings.length / totalPossibleSlots) * 100;
+        // Occupancy calculation (assuming 15 possible slots per day per pitch)
+        const totalPossibleSlots = pitches.length * 15;
+        const occupancyRate = (dayBookings.length / totalPossibleSlots) * 100;
 
-      return {
-        name: format(date, timeRange === 'year' ? 'MMM' : 'dd/MM', { locale: es }),
-        ingresos: totalIncome,
-        reservas: dayBookings.length,
-        ventas: productIncome,
-        ocupacion: Math.round(occupancyRate)
-      };
-    });
+        return {
+          name: format(date, 'dd/MM', { locale: es }),
+          ingresos: totalIncome,
+          reservas: dayBookings.length,
+          ventas: productIncome,
+          ocupacion: Math.round(occupancyRate)
+        };
+      });
+    }
 
     // 2. Key Metrics
     const totalIncome = chartData.reduce((acc, d) => acc + d.ingresos, 0);
-    const avgDailyIncome = totalIncome / interval.length;
-    const avgOccupancy = chartData.reduce((acc, d) => acc + d.ocupacion, 0) / chartData.length;
+    const avgDailyIncome = chartData.length > 0 ? totalIncome / chartData.length : 0;
+    const avgOccupancy = chartData.length > 0 ? chartData.reduce((acc, d) => acc + d.ocupacion, 0) / chartData.length : 0;
 
     // 3. Hourly Analysis
     const hourCounts: Record<number, number> = {};
@@ -231,7 +288,8 @@ export default function StatsPage() {
     const pitchPerformance = pitches.map(p => {
       const pBookings = confirmedBookings.filter(b => b.pitchId === p.id);
       const income = pBookings.reduce((acc, b) => acc + p.price, 0);
-      const occupancy = (pBookings.length / (interval.length * 15)) * 100;
+      const daysCount = isHistorical ? 365 : eachDayOfInterval({ start, end }).length;
+      const occupancy = (pBookings.length / (daysCount * 15)) * 100;
       return {
         name: p.name,
         income,
@@ -240,7 +298,8 @@ export default function StatsPage() {
     }).sort((a, b) => b.income - a.income);
 
     // 5. Prediction (Simple linear extrapolation)
-    const daysPassed = interval.filter(d => d <= now).length;
+    const intervalDays = eachDayOfInterval({ start, end });
+    const daysPassed = intervalDays.filter(d => d <= now).length;
     const dailyRate = totalIncome / (daysPassed || 1);
     const predictedMonthly = dailyRate * 30;
 
@@ -250,7 +309,7 @@ export default function StatsPage() {
 
     // Tuesday 14-17 check (example)
     const lowOccupancyTuesdays = confirmedBookings.filter(b => b.startTime.getDay() === 2 && b.startTime.getHours() >= 14 && b.startTime.getHours() <= 17).length;
-    if (lowOccupancyTuesdays < (interval.length / 7) * 2) {
+    if (lowOccupancyTuesdays < (intervalDays.length / 7) * 2) {
       insights.push({
         title: "Baja ocupación los Martes",
         text: "Los martes de 14:00 a 17:00 tienen baja ocupación. Podrías ofrecer beneficios o descuentos por hora para aumentar reservas.",
@@ -311,7 +370,7 @@ export default function StatsPage() {
 
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4">
           <div className="flex bg-white p-1 rounded-2xl border border-zinc-100 shadow-sm overflow-x-auto">
-            {(['week', 'month', 'year'] as const).map((range) => (
+            {(['este_mes', 'mes_anterior', 'historico'] as const).map((range) => (
               <button
                 key={range}
                 onClick={() => setTimeRange(range)}
@@ -331,7 +390,7 @@ export default function StatsPage() {
                     <div className="h-1/3 bg-[#74acdf]" />
                   </div>
                 )}
-                {range === 'week' ? 'Semana' : range === 'month' ? 'Mes' : 'Año'}
+                {range === 'este_mes' ? 'Este Mes' : range === 'mes_anterior' ? 'Mes Anterior' : 'Histórico'}
               </button>
             ))}
           </div>
@@ -554,7 +613,7 @@ export default function StatsPage() {
             </div>
           </CardHeader>
           <CardContent className="p-8 h-[350px]">
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height="100%" minWidth={0}>
               <BarChart data={stats.chartData}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
                 <XAxis 
@@ -635,7 +694,7 @@ export default function StatsPage() {
               <p className="text-sm font-bold text-zinc-400 uppercase tracking-widest">Mañana vs Tarde vs Noche</p>
             </CardHeader>
             <CardContent className="p-8 h-[250px] flex items-center justify-center relative">
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                 <PieChart>
                   <Pie
                     data={stats.distribution}
