@@ -19,6 +19,22 @@ View your app in AI Studio: https://ai.studio/apps/9f5e08e0-f1a5-4c36-badd-e4024
 3. Run the app:
    `npm run dev`
 
+## PWA
+
+This project now includes a basic Progressive Web App setup:
+
+1. Installable app via `manifest.webmanifest`
+2. Offline shell fallback through `public/sw.js`
+3. App icons in `public/icons`
+
+To verify it:
+
+1. Run `npm run build`
+2. Run `npm run preview`
+3. Open DevTools -> Application
+4. Check `Manifest` and `Service Workers`
+5. Test install flow and offline reload
+
 
 ## Supabase + Super Admin setup (required in this project)
 
