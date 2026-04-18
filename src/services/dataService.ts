@@ -87,6 +87,24 @@ const getStorage = <T>(key: string, initial: T): T => {
 const setStorage = <T>(key: string, data: T) => {
   localStorage.setItem(key, JSON.stringify(data));
 };
+
+const SUPERADMIN_CLIENT_CONTEXT_KEY = 'golazo_superadmin_client_context';
+
+const getSuperadminClientContext = () => {
+  if (typeof window === 'undefined') return null;
+  return sessionStorage.getItem(SUPERADMIN_CLIENT_CONTEXT_KEY);
+};
+
+const setSuperadminClientContext = (clientId: string) => {
+  if (typeof window === 'undefined') return;
+  sessionStorage.setItem(SUPERADMIN_CLIENT_CONTEXT_KEY, clientId);
+};
+
+const clearSuperadminClientContext = () => {
+  if (typeof window === 'undefined') return;
+  sessionStorage.removeItem(SUPERADMIN_CLIENT_CONTEXT_KEY);
+};
+
 const getSaleQuantity = (sale: Sale): number => {
   if (typeof sale.quantity === 'number') return sale.quantity;
   if (Array.isArray(sale.items) && sale.items.length > 0) {
@@ -96,29 +114,8 @@ const getSaleQuantity = (sale: Sale): number => {
 };
 
 const isSupabaseConfigured = () => {
-
   const diagnostics = getSupabaseDiagnostics();
-  const hasEnvVars = diagnostics.hasUrl && diagnostics.hasKey && diagnostics.validKey && !diagnostics.isDummyUrl && diagnostics.hasHttpsUrl;
-
-  
-  // If we've explicitly determined it's unreachable via health check, treat as unconfigured
-  const isReachable = (window as any)._supabaseReachable !== false;
-  
-  const configured = hasEnvVars && isReachable;
-  
-  if (!configured) {
-    // Only log once to avoid spam
-    if (!(window as any)._supabaseWarned) {
-
-      console.warn('[DataService] Supabase not configured or unreachable. Using LocalStorage fallback.', {
-        diagnostics,
-        isReachable
-      });
-
-      (window as any)._supabaseWarned = true;
-    }
-  }
-  return configured;
+  return diagnostics.hasUrl && diagnostics.hasKey;
 };
 
 export const dataService = {
@@ -127,9 +124,18 @@ export const dataService = {
     if (!isSupabaseConfigured()) return false;
     return await supabaseService.testConnection();
   },
+  getSelectedClientId: () => getSuperadminClientContext(),
+  setSelectedClientContext: (clientId: string) => {
+    setSuperadminClientContext(clientId);
+  },
+  clearSelectedClientContext: () => {
+    clearSuperadminClientContext();
+  },
   getClientConfig: async (clientId?: string) => {
     if (isSupabaseConfigured()) {
-      let query = supabase.from('clients').select('id, name, status, created_at, features');
+      let query = supabase
+        .from('clients')
+        .select('id, name, complex_name, status, created_at, expires_at, ranking_reset_date, phone, address, enable_ranking, enable_sales, enable_reservations, enable_statistics, features');
       if (clientId) {
         query = query.eq('id', clientId);
       }
@@ -259,59 +265,76 @@ export const dataService = {
   // Auth Simulation (Supabase Auth can be integrated later)
   getCurrentUser: async () => {
     if (!isSupabaseConfigured()) return null;
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session?.user) return null;
-    
+    const {
+      data: { session },
+      error: sessionError,
+    } = await supabase.auth.getSession();
+    if (sessionError || !session?.user) return null;
+
+    const { data: profile, error: profileError } = await supabase
+      .from('profiles')
+      .select('role, client_id, full_name, phone')
+      .eq('id', session.user.id)
+      .maybeSingle();
+
+    if (profileError) {
+      console.error('Perfil no encontrado para el usuario autenticado:', profileError);
+      return null;
+    }
+
+    const metadataRole = session.user.user_metadata?.role;
+    const resolvedRole = profile?.role || (metadataRole === 'admin' || metadataRole === 'client' || metadataRole === 'superadmin' ? metadataRole : null);
+
+    if (!resolvedRole) {
+      console.error('No se pudo resolver el rol del usuario autenticado.');
+      return null;
+    }
+
+    const metadataClientId = typeof session.user.user_metadata?.client_id === 'string'
+      ? session.user.user_metadata.client_id
+      : undefined;
+
+    const selectedClientId = resolvedRole === 'superadmin' ? getSuperadminClientContext() : null;
+
     return {
       id: session.user.id,
-      email: session.user.email,
-      name: session.user.user_metadata?.name || 'Usuario',
-      role: session.user.user_metadata?.role || 'admin',
-      client_id: session.user.user_metadata?.client_id
+      email: session.user.email || '',
+      phone: profile?.phone || session.user.phone || '',
+      name: profile?.full_name || (typeof session.user.user_metadata?.name === 'string' ? session.user.user_metadata.name : '') || session.user.email || 'Usuario',
+      role: resolvedRole,
+      client_id: selectedClientId || profile?.client_id || metadataClientId || undefined
     } as User;
   },
   login: async (identifier: string, password?: string) => {
     if (!isSupabaseConfigured()) {
-      throw new Error('Supabase no está configurado');
+      throw new Error('Supabase no esta configurado');
+    }
+
+    if (!identifier || !password) {
+      throw new Error('Debes ingresar email y contrasena');
     }
 
     const { data, error } = await supabase.auth.signInWithPassword({
-      email: identifier,
-      password: password || '',
+      email: identifier.trim(),
+      password,
     });
 
     if (error || !data.user) {
-      throw new Error('Correo o contraseña incorrectos');
+      throw new Error(error?.message || 'Correo o contrasena incorrectos');
     }
 
-    const user: User = {
-      id: data.user.id,
-      email: identifier,
-      name: data.user.user_metadata?.name || 'Usuario',
-      role: data.user.user_metadata?.role || 'admin',
-      client_id: data.user.user_metadata?.client_id
-    };
-    
-    dataService.trackOnlineUser(user);
+    const user = await dataService.getCurrentUser();
+    if (!user) {
+      await supabase.auth.signOut();
+      throw new Error('El usuario autenticado no tiene perfil valido');
+    }
+
     return user;
   },
   logout: async () => {
-    if (isSupabaseConfigured()) {
-      await supabase.auth.signOut();
-    }
-  },
-
-  // Online Users Tracking (Simulation)
-  getOnlineUsers: () => getStorage<User[]>('golazo_online_users', []),
-  trackOnlineUser: (user: User) => {
-    const online = dataService.getOnlineUsers();
-    if (!online.find(u => u.id === user.id)) {
-      setStorage('golazo_online_users', [...online, user]);
-    }
-  },
-  untrackOnlineUser: (userId: string) => {
-    const online = dataService.getOnlineUsers();
-    setStorage('golazo_online_users', online.filter(u => u.id !== userId));
+    clearSuperadminClientContext();
+    if (!isSupabaseConfigured()) return;
+    await supabase.auth.signOut();
   },
 
   // Loyalty & Ranking
@@ -606,18 +629,12 @@ export const api = {
     }
     const sales = await dataService.getSales(clientId);
     const sale = sales.find(s => s.id === id);
-    // Dentro de deleteSale(...)
-    const saleQuantity = getSaleQuantity(sale);
-    const updatedProducts = products.map(p => 
-      p.id === sale.productId ? { ...p, stock: p.stock + saleQuantity } : p
-    );
-    
 
     if (sale) {
       // Restore stock locally
       const products = await dataService.getProducts(clientId);
       const updatedProducts = products.map(p => 
-        p.id === sale.productId ? { ...p, stock: p.stock + sale.quantity } : p
+        p.id === sale.productId ? { ...p, stock: p.stock + getSaleQuantity(sale) } : p
       );
       await dataService.saveProducts(updatedProducts);
     }

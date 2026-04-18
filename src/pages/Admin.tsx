@@ -81,12 +81,15 @@ export default function Admin({ onLogout }: AdminProps) {
     image_url: '',
   });
 
-  const [productForm, setProductForm] = useState({
+  const defaultProductForm = {
     name: '',
     price: 0,
     category: 'bebida' as Product['category'],
+    stock: 0,
     min_stock: 5,
-  });
+  };
+
+  const [productForm, setProductForm] = useState(defaultProductForm);
 
   const [user, setUser] = useState<any>(null);
 
@@ -141,14 +144,26 @@ export default function Admin({ onLogout }: AdminProps) {
     e.preventDefault();
     try {
       if (editingProduct) {
-        await api.updateProduct(editingProduct.id, productForm);
+        await api.updateProduct(editingProduct.id, {
+          name: productForm.name,
+          price: productForm.price,
+          category: productForm.category,
+          min_stock: productForm.min_stock
+        });
       } else {
-        await api.addProduct({ ...productForm, stock: 0, active: true });
+        await api.addProduct({
+          name: productForm.name,
+          price: productForm.price,
+          category: productForm.category,
+          stock: productForm.stock,
+          min_stock: productForm.min_stock,
+          active: true
+        });
       }
       refreshData();
       setIsProductModalOpen(false);
       setEditingProduct(null);
-      setProductForm({ name: '', price: 0, category: 'bebida', min_stock: 5 });
+      setProductForm(defaultProductForm);
       toast.success(editingProduct ? 'Producto actualizado' : 'Producto creado');
     } catch (error) {
       toast.error('Error al guardar el producto');
@@ -612,7 +627,14 @@ export default function Admin({ onLogout }: AdminProps) {
                         <Package className="w-3.5 h-3.5" />
                         CARGA RÁPIDA DE STOCK
                       </Button>
-                      <Button onClick={() => setIsProductModalOpen(true)} className="gap-2 px-4 py-2.5 rounded-xl shadow-lg shadow-sky-500/20 text-[9px] font-black uppercase tracking-widest">
+                      <Button
+                        onClick={() => {
+                          setEditingProduct(null);
+                          setProductForm(defaultProductForm);
+                          setIsProductModalOpen(true);
+                        }}
+                        className="gap-2 px-4 py-2.5 rounded-xl shadow-lg shadow-sky-500/20 text-[9px] font-black uppercase tracking-widest"
+                      >
                         <Plus className="w-3.5 h-3.5" />
                         NUEVO PRODUCTO
                       </Button>
@@ -638,7 +660,8 @@ export default function Admin({ onLogout }: AdminProps) {
                                       name: product.name,
                                       price: product.price,
                                       category: product.category,
-                                      min_stock: product.min_stock || 5,
+                                      stock: product.stock,
+                                      min_stock: product.min_stock ?? 5,
                                     });
                                     setIsProductModalOpen(true);
                                   }}
@@ -674,7 +697,7 @@ export default function Admin({ onLogout }: AdminProps) {
                                     <span className={cn(
                                       "text-lg font-black leading-none mt-0.5",
                                       product.stock <= 0 ? "text-red-500" : 
-                                      product.stock <= (product.min_stock || 5) ? "text-amber-500" : "text-emerald-500"
+                                      product.stock <= (product.min_stock ?? 5) ? "text-amber-500" : "text-emerald-500"
                                     )}>
                                       {product.stock}
                                     </span>
@@ -903,6 +926,7 @@ export default function Admin({ onLogout }: AdminProps) {
         onClose={() => {
           setIsProductModalOpen(false);
           setEditingProduct(null);
+          setProductForm(defaultProductForm);
         }}
         title={editingProduct ? 'Editar Producto' : 'Nuevo Producto'}
       >
@@ -956,6 +980,22 @@ export default function Admin({ onLogout }: AdminProps) {
                 </div>
               </div>
             </div>
+
+            {!editingProduct && (
+              <div className="space-y-2">
+                <label className="text-xs font-black text-zinc-500 uppercase tracking-widest ml-1 flex items-center gap-2">
+                  <Package className="w-3 h-3" />
+                  Stock Inicial
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  className="w-full px-5 py-4 bg-zinc-50 border border-zinc-200 rounded-2xl focus:ring-2 focus:ring-sky-500 outline-none transition-all text-zinc-900 font-bold"
+                  value={productForm.stock}
+                  onChange={e => setProductForm({ ...productForm, stock: Number(e.target.value) })}
+                />
+              </div>
+            )}
 
             <div className="space-y-2">
               <label className="text-xs font-black text-zinc-500 uppercase tracking-widest ml-1 flex items-center gap-2">
@@ -1065,7 +1105,7 @@ export default function Admin({ onLogout }: AdminProps) {
                   <h4 className="font-black text-sm text-zinc-900 uppercase tracking-tight truncate pr-4">{product.name}</h4>
                   <div className="flex items-center gap-2 mt-1">
                     <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Actual:</span>
-                    <Badge variant={product.stock <= 0 ? 'danger' : product.stock <= (product.min_stock || 5) ? 'warning' : 'success'} className="text-[9px] px-1.5 py-0">
+                    <Badge variant={product.stock <= 0 ? 'danger' : product.stock <= (product.min_stock ?? 5) ? 'warning' : 'success'} className="text-[9px] px-1.5 py-0">
                       {product.stock}
                     </Badge>
                   </div>

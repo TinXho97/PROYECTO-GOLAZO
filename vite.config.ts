@@ -5,6 +5,7 @@ import {defineConfig, loadEnv} from 'vite';
 
 export default defineConfig(({mode}) => {
   const env = loadEnv(mode, '.', '');
+  const supabaseUrl = (env.VITE_SUPABASE_URL || '').trim().replace(/\/$/, '');
   return {
     plugins: [react(), tailwindcss()],
     define: {
@@ -19,6 +20,16 @@ export default defineConfig(({mode}) => {
       // HMR is disabled in AI Studio via DISABLE_HMR env var.
       // Do not modifyâfile watching is disabled to prevent flickering during agent edits.
       hmr: process.env.DISABLE_HMR !== 'true',
+      proxy: supabaseUrl
+        ? {
+            '/api/admin-ops': {
+              target: supabaseUrl,
+              changeOrigin: true,
+              secure: true,
+              rewrite: () => '/functions/v1/admin-ops',
+            },
+          }
+        : undefined,
     },
   };
 });
