@@ -10,6 +10,20 @@ const logError = (message: string, error: any) => {
   console.error(`[Supabase Service Error] ${message}:`, error);
 };
 
+const isUuid = (value: unknown): value is string => (
+  typeof value === 'string' &&
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
+);
+
+const normalizeBookingStatus = (status: unknown): BookingStatus => {
+  const normalized = typeof status === 'string' ? status.toLowerCase() : 'pending';
+  if (normalized === 'finished') return 'completed';
+  if (normalized === 'confirmed' || normalized === 'cancelled' || normalized === 'pending' || normalized === 'completed' || normalized === 'no_show') {
+    return normalized;
+  }
+  return 'pending';
+};
+
 export const supabaseService = {
   // Test Connection
   testConnection: async () => {
@@ -153,7 +167,7 @@ export const supabaseService = {
   hasCompletedBookings: async (identifier: string, clientId?: string) => {
     log('Checking completed bookings for', { identifier, clientId });
     let query = supabase.from('bookings').select('id', { count: 'exact', head: true })
-      .eq('status', 'completed');
+      .in('status', ['completed', 'finished']);
     
     if (clientId) {
       query = query.eq('client_id', clientId);
@@ -206,12 +220,13 @@ export const supabaseService = {
       clientPhone: b.client_phone,
       startTime: new Date(b.start_time),
       endTime: new Date(b.end_time),
-      status: b.status,
+      status: normalizeBookingStatus(b.status),
       createdAt: new Date(b.created_at),
       depositAmount: b.deposit_amount,
       isPaid: b.is_paid,
       receiptUrl: b.receipt_url,
-      paymentUrl: b.payment_url
+      paymentUrl: b.payment_url,
+      client_id: b.client_id,
     })) as Booking[];
   },
 
@@ -428,7 +443,7 @@ export const supabaseService = {
 
     const { data, error } = await supabase
       .from('products')
-      .select('id, name, price, stock, active, client_id')
+      .select('id, name, price, category, stock, min_stock, active, client_id')
       .eq('client_id', clientId)
       .order('created_at', { ascending: false })
       .limit(50);
@@ -444,14 +459,17 @@ export const supabaseService = {
 
   addProduct: async (product: Omit<Product, 'id'>) => {
     log('Adding product', product);
+    const initialStock = Math.max(0, Number(product.stock) || 0);
+    const minStock = Math.max(0, Number(product.min_stock) || 0);
+
     const { data, error } = await supabase
       .from('products')
       .insert([{
         name: product.name,
         price: product.price,
         category: product.category,
-        stock: product.stock,
-        min_stock: product.min_stock,
+        stock: initialStock,
+        min_stock: minStock,
         active: product.active,
         client_id: product.client_id
       }])
@@ -464,6 +482,25 @@ export const supabaseService = {
     }
     
     log('Product added successfully', data);
+
+    if (initialStock > 0 && product.client_id) {
+      try {
+        const { error: movementError } = await supabase.from('stock_movements').insert([{
+          product_id: data.id,
+          quantity: initialStock,
+          type: 'entrada',
+          source: 'inicial',
+          client_id: product.client_id
+        }]);
+
+        if (movementError) {
+          logError(`Error creating initial stock movement for product ${data.id}`, movementError);
+        }
+      } catch (movementError) {
+        logError(`Error creating initial stock movement for product ${data.id}`, movementError);
+      }
+    }
+
     return data as Product;
   },
 
@@ -615,12 +652,32 @@ export const supabaseService = {
     log('Adding sale', sale);
     const clientId = sale.client_id;
     const client = supabase;
+
+    const productId = typeof sale.productId === 'string' ? sale.productId.trim() : '';
+    const quantity = Math.trunc(Number(sale.quantity));
+    const paymentMethod = sale.paymentMethod;
+
+    if (!isUuid(productId)) {
+      throw new Error('Payload de venta invalido: product_id no es un UUID valido');
+    }
+
+    if (!isUuid(clientId)) {
+      throw new Error('Payload de venta invalido: client_id no es un UUID valido o esta ausente');
+    }
+
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      throw new Error('Payload de venta invalido: quantity debe ser un numero mayor a 0');
+    }
+
+    if (paymentMethod !== 'efectivo' && paymentMethod !== 'transferencia') {
+      throw new Error('Payload de venta invalido: payment_method no es valido');
+    }
     
     // Check stock first
     const { data: product, error: fetchError } = await client
       .from('products')
       .select('stock, price')
-      .eq('id', sale.productId)
+      .eq('id', productId)
       .eq('client_id', clientId)
       .single();
       
@@ -629,15 +686,52 @@ export const supabaseService = {
       throw fetchError;
     }
     
-    if (product.stock < sale.quantity) {
+    if (product.stock < quantity) {
       throw new Error('Stock insuficiente');
     }
 
-    // Deduct stock
+    const unitPrice = Number(product.price);
+    const totalPrice = unitPrice * quantity;
+    const amount = totalPrice;
+
+    if (!Number.isFinite(unitPrice) || unitPrice < 0) {
+      throw new Error('Payload de venta invalido: el precio del producto no es valido');
+    }
+
+    const salesPayload = {
+      product_id: productId,
+      quantity,
+      total_price: totalPrice,
+      amount,
+      payment_method: paymentMethod,
+      client_id: clientId
+    };
+
+    log('Sales insert payload', salesPayload);
+
+    const { data, error } = await client
+      .from('sales')
+      .insert([salesPayload])
+      .select()
+      .single();
+    
+    if (error) {
+      if (typeof error.message === 'string' && error.message.includes('audit_logs')) {
+        logError('Database audit trigger blocked sale insert', {
+          salesPayload,
+          dbError: error
+        });
+        throw new Error('La venta fue rechazada por una regla de auditoria en la base de datos: audit_logs recibio client_id nulo.');
+      }
+      logError('Error adding sale', error);
+      throw error;
+    }
+
+    // Deduct stock only after the sale row exists.
     const { error: updateError } = await client
       .from('products')
-      .update({ stock: product.stock - sale.quantity })
-      .eq('id', sale.productId)
+      .update({ stock: product.stock - quantity })
+      .eq('id', productId)
       .eq('client_id', clientId);
       
     if (updateError) {
@@ -645,60 +739,49 @@ export const supabaseService = {
       throw updateError;
     }
 
-    // Insert stock movement for sale
-    const { error: movementError } = await client
-      .from('stock_movements')
-      .insert([{
-        product_id: sale.productId,
-        quantity: -sale.quantity,
-        type: 'salida',
-        source: 'venta',
-        client_id: clientId
-      }]);
-      
-    if (movementError) {
-      logError('Error inserting stock movement for sale', movementError);
-      // Not throwing here to not fail the sale if only logging fails
-    }
-
-    const { data, error } = await client
-      .from('sales')
-      .insert([{
-        product_id: sale.productId,
-        quantity: sale.quantity,
-        total_price: sale.totalPrice,
-        amount: sale.totalPrice,
-        payment_method: sale.paymentMethod,
-        created_at: sale.date.toISOString(),
-        client_id: clientId
-      }])
-      .select()
-      .single();
-    
-    if (error) {
-      logError('Error adding sale', error);
-      throw error;
-    }
-
     // Insert into sale_items
+    const saleItemsPayload = {
+      sale_id: data.id,
+      product_id: productId,
+      quantity,
+      price: unitPrice
+    };
+
+    log('Sale items insert payload', saleItemsPayload);
+
     const { error: itemsError } = await client
       .from('sale_items')
-      .insert([{
-        sale_id: data.id,
-        product_id: sale.productId,
-        quantity: sale.quantity,
-        price: product.price
-      }]);
+      .insert([saleItemsPayload]);
 
     if (itemsError) {
       logError('Error adding sale items', itemsError);
       // Ideally we would rollback the sale here, but Supabase JS doesn't support transactions
       // without RPC. We'll proceed but log the error.
     }
+
+    // Insert stock movement for sale
+    const stockMovementPayload = {
+      product_id: productId,
+      quantity: -quantity,
+      type: 'salida' as const,
+      source: 'venta',
+      client_id: clientId
+    };
+
+    log('Stock movement insert payload', stockMovementPayload);
+
+    const { error: movementError } = await client
+      .from('stock_movements')
+      .insert([stockMovementPayload]);
+      
+    if (movementError) {
+      logError('Error inserting stock movement for sale', movementError);
+      // Not throwing here to not fail the sale if only logging fails
+    }
     
     // Check for low stock after sale
     try {
-      const { data: updatedProduct } = await client.from('products').select('name, stock, min_stock').eq('id', sale.productId).eq('client_id', clientId).single();
+      const { data: updatedProduct } = await client.from('products').select('name, stock, min_stock').eq('id', productId).eq('client_id', clientId).single();
       if (updatedProduct && updatedProduct.stock <= updatedProduct.min_stock) {
         await client.from('notifications').insert([{
           type: 'stock',
@@ -717,6 +800,7 @@ export const supabaseService = {
       quantity: data.quantity,
       totalPrice: typeof data.total_price === 'object' && data.total_price !== null ? Number((data.total_price as any).total) || 0 : Number(data.total_price) || 0,
       date: new Date(data.created_at),
+      paymentMethod: data.payment_method,
       client_id: data.client_id
     } as Sale;
   },
