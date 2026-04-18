@@ -54,111 +54,73 @@ export default function App() {
   const [showSplash, setShowSplash] = useState(false);
   const [loginIdentifier, setLoginIdentifier] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
-  const [loginType, setLoginType] = useState<'client' | 'admin'>(
-    window.location.pathname === '/admin-acceso-seguro-123' ? 'admin' : 'client'
-  );
   const [customLogo, setCustomLogo] = useState<string | null>(localStorage.getItem('golazo_custom_logo'));
   const [isLogoModalOpen, setIsLogoModalOpen] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
   const [clientConfig, setClientConfig] = useState<Client | null>(null);
   const [isClientLoading, setIsClientLoading] = useState(true);
+  const [selectedClientId, setSelectedClientId] = useState<string | null>(dataService.getSelectedClientId());
+
+  const refreshSessionState = async () => {
+    setIsClientLoading(true);
+
+    try {
+      const currentUser = await dataService.getCurrentUser();
+      setUser(currentUser);
+
+      const nextSelectedClientId = dataService.getSelectedClientId();
+      setSelectedClientId(nextSelectedClientId);
+
+      if (!currentUser) {
+        setClientConfig(null);
+        return;
+      }
+
+      const targetClientId = currentUser.client_id;
+      if (targetClientId) {
+        const data = await dataService.getClientConfig(targetClientId);
+        setClientConfig(data);
+      } else {
+        setClientConfig(null);
+      }
+    } catch (err) {
+      console.error('Error refreshing session state:', err);
+      setUser(null);
+      setSelectedClientId(null);
+      setClientConfig(null);
+    } finally {
+      setIsClientLoading(false);
+    }
+  };
 
   useEffect(() => {
     const initApp = async () => {
-      // Check Supabase connection first
       if (dataService.isSupabaseConfigured()) {
         const isConnected = await checkSupabaseConnection();
         if (!isConnected) {
-          toast.error('Error de conexión a Supabase. Verifica si el proyecto está pausado o la URL es incorrecta.', {
-            duration: 10000,
-            action: {
-              label: 'Entendido',
-              onClick: () => {}
-            }
+          toast.error('No se pudo conectar con Supabase.', {
+            duration: 8000,
           });
         }
       }
 
-      const currentUser = await dataService.getCurrentUser();
-      if (currentUser) {
-        setUser(currentUser);
-      }
-
-      try {
-        // Fetch client config based on user's client_id if available
-        const data = await dataService.getClientConfig(currentUser?.client_id);
-        if (data) {
-          setClientConfig(data);
-        } else if (dataService.isSupabaseConfigured() && !currentUser) {
-          // If no user and supabase is configured, fetch the first one as default for public view
-          const { data: firstClient } = await supabase.from('clients').select('id, name, status, created_at, features').limit(1).single();
-          if (firstClient) {
-            setClientConfig(firstClient);
-          } else {
-            // Create default if none exists
-            const newClient = {
-              name: 'GOLAZO Default Client',
-              status: 'active',
-              features: {
-                reservas: true,
-                ventas: true,
-                ranking: true,
-                estadisticas: true
-              }
-            };
-            const { data: insertedData } = await supabase.from('clients').insert(newClient).select().single();
-            if (insertedData) {
-              setClientConfig(insertedData);
-            }
-          }
-        }
-      } catch (err) {
-        console.error('Error fetching client config:', err);
-      } finally {
-        setIsClientLoading(false);
-      }
+      await refreshSessionState();
     };
-    
+
     initApp();
-    
-    // Protect admin routes
-    const path = window.location.pathname;
-    const adminPaths = ['/admin', '/dashboard', '/ventas', '/configuracion', '/admin-acceso-seguro-123'];
-    
-    if (adminPaths.includes(path)) {
-      dataService.getCurrentUser().then(currentUser => {
-        if (currentUser && currentUser.role !== 'admin' && currentUser.role !== 'superadmin') {
-          window.location.href = '/';
-        } else if (!currentUser && path !== '/admin-acceso-seguro-123') {
-          window.location.href = '/';
-        }
-      });
-    }
+
+    const { data: authListener } = supabase.auth.onAuthStateChange(() => {
+      refreshSessionState();
+    });
 
     const handleStorageChange = () => {
       setCustomLogo(localStorage.getItem('golazo_custom_logo'));
     };
 
-    const handleGuestInfoUpdate = () => {
-      setUser(prev => {
-        if (prev && prev.role === 'client') {
-          const savedName = localStorage.getItem('golazo_guest_name');
-          const savedPhone = localStorage.getItem('golazo_guest_phone');
-          return {
-            ...prev,
-            name: savedName ? `Hola, ${savedName}` : 'Cliente Invitado',
-            phone: savedPhone || ''
-          };
-        }
-        return prev;
-      });
-    };
-
     window.addEventListener('storage', handleStorageChange);
-    window.addEventListener('guest_info_updated', handleGuestInfoUpdate);
     return () => {
+      authListener.subscription.unsubscribe();
       window.removeEventListener('storage', handleStorageChange);
-      window.removeEventListener('guest_info_updated', handleGuestInfoUpdate);
     };
   }, []);
 
@@ -175,48 +137,25 @@ export default function App() {
     }
   };
 
-  const handleClientDirectLogin = () => {
-    // Create a mock client user for direct access
-    const clientUser: User = {
-      id: 'client-' + Math.random().toString(36).substr(2, 9),
-      name: 'Cliente Invitado',
-      email: 'cliente@golazo.app',
-      role: 'client',
-      phone: ''
-    };
-    
-    // Show splash screen presentation
-    setShowSplash(true);
-    
-    // After presentation, set user and hide splash
-    setTimeout(() => {
-      setUser(clientUser);
-      setShowSplash(false);
-    }, 2500);
-  };
-
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError(null);
-    if (!loginIdentifier && loginType === 'admin') return;
-    
+
     try {
-      const newUser = await dataService.login(loginIdentifier, loginType === 'admin' ? loginPassword : undefined);
-      
-      // Fetch client config for the logged in user
+      const newUser = await dataService.login(loginIdentifier, loginPassword);
+
       if (newUser.client_id) {
         const config = await dataService.getClientConfig(newUser.client_id);
-        if (config) {
-          setClientConfig(config);
-        }
+        setClientConfig(config);
+      } else {
+        setClientConfig(null);
       }
 
-      // Show splash screen presentation
       setShowSplash(true);
-      
-      // After presentation, set user and hide splash
+
       setTimeout(() => {
         setUser(newUser);
+        setSelectedClientId(dataService.getSelectedClientId());
         setShowSplash(false);
       }, 2500);
     } catch (error) {
@@ -227,6 +166,8 @@ export default function App() {
   const handleLogout = async () => {
     await dataService.logout();
     setUser(null);
+    setSelectedClientId(null);
+    setClientConfig(null);
     setCurrentPage('dashboard');
   };
 
@@ -240,8 +181,10 @@ export default function App() {
     { id: 'admin', label: 'Configuración', icon: Settings, roles: ['admin'] },
   ];
 
+  const navigationRole = user?.role === 'superadmin' && selectedClientId ? 'admin' : user?.role || '';
+
   const filteredNavItems = navItems.filter(item => {
-    if (!item.roles.includes(user?.role || '')) return false;
+    if (!item.roles.includes(navigationRole)) return false;
     if (item.featureKey && clientConfig) {
       if (!clientConfig.features) return true; // Asumir todas activas si no hay config
       return clientConfig.features[item.featureKey] !== false; // Solo ocultar si está explícitamente en false
@@ -389,89 +332,58 @@ export default function App() {
             <p className="text-zinc-700 font-black mt-4 tracking-[0.3em] uppercase text-[9px]">Gestión de Canchas</p>
           </div>
 
-          {loginType === 'client' ? (
-            <div className="space-y-6">
-              <Button 
-                onClick={handleClientDirectLogin}
-                className="w-full py-6 text-lg font-black tracking-widest shadow-2xl shadow-sky-500/20 rounded-[24px] bg-sky-500 hover:bg-sky-400 text-white flex items-center justify-center gap-3"
-              >
-                Entrar como cliente
-                <ChevronRight className="w-6 h-6" />
-              </Button>
-            </div>
-          ) : (
-            <form onSubmit={handleLogin} className="space-y-6">
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black text-zinc-700 uppercase tracking-[0.2em] ml-1">
-                    Email de Administrador
-                  </label>
-                  <div className="relative">
-                    <UserIcon className="absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-500" />
-                    <input 
-                      type="text" 
-                      required
-                      placeholder="admin@gmail.com"
-                      className="w-full pl-14 pr-6 py-5 bg-zinc-50/80 border border-zinc-200 text-zinc-900 rounded-3xl focus:ring-2 focus:ring-sky-500 outline-none transition-all placeholder:text-zinc-400"
-                      value={loginIdentifier}
-                      onChange={e => setLoginIdentifier(e.target.value)}
-                    />
-                  </div>
+          <form onSubmit={handleLogin} className="space-y-6">
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-zinc-700 uppercase tracking-[0.2em] ml-1">
+                  Email
+                </label>
+                <div className="relative">
+                  <UserIcon className="absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-500" />
+                  <input 
+                    type="email" 
+                    required
+                    placeholder="tu@email.com"
+                    className="w-full pl-14 pr-6 py-5 bg-zinc-50/80 border border-zinc-200 text-zinc-900 rounded-3xl focus:ring-2 focus:ring-sky-500 outline-none transition-all placeholder:text-zinc-400"
+                    value={loginIdentifier}
+                    onChange={e => setLoginIdentifier(e.target.value)}
+                  />
                 </div>
-
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black text-zinc-700 uppercase tracking-[0.2em] ml-1">Contraseña</label>
-                  <div className="relative">
-                    <ShieldCheck className="absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-500" />
-                    <input 
-                      type="password" 
-                      required
-                      placeholder="••••••••"
-                      className="w-full pl-14 pr-6 py-5 bg-zinc-50/80 border border-zinc-200 text-zinc-900 rounded-3xl focus:ring-2 focus:ring-sky-500 outline-none transition-all"
-                      value={loginPassword}
-                      onChange={e => setLoginPassword(e.target.value)}
-                    />
-                  </div>
-                </div>
-
-                {loginError && (
-                  <p className="text-red-500 text-[10px] font-black uppercase tracking-widest text-center bg-red-500/10 py-2 rounded-xl border border-red-500/20">
-                    {loginError}
-                  </p>
-                )}
               </div>
 
-              <Button type="submit" className="w-full py-6 text-lg font-black tracking-widest shadow-2xl shadow-sky-500/20 rounded-[24px] bg-argentina text-zinc-900">
-                ENTRAR
-              </Button>
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-zinc-700 uppercase tracking-[0.2em] ml-1">Contraseña</label>
+                <div className="relative">
+                  <ShieldCheck className="absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-500" />
+                  <input 
+                    type="password" 
+                    required
+                    placeholder="********"
+                    className="w-full pl-14 pr-6 py-5 bg-zinc-50/80 border border-zinc-200 text-zinc-900 rounded-3xl focus:ring-2 focus:ring-sky-500 outline-none transition-all"
+                    value={loginPassword}
+                    onChange={e => setLoginPassword(e.target.value)}
+                  />
+                </div>
+              </div>
 
-              <p className="text-[9px] text-zinc-700 font-bold uppercase tracking-widest text-center">
-                Usa admin@gmail.com / admin123 <br />
-                Super Admin: superman@gmail.com
-              </p>
-            </form>
-          )}
+              {loginError && (
+                <p className="text-red-500 text-[10px] font-black uppercase tracking-widest text-center bg-red-500/10 py-2 rounded-xl border border-red-500/20">
+                  {loginError}
+                </p>
+              )}
+            </div>
+
+            <Button type="submit" className="w-full py-6 text-lg font-black tracking-widest shadow-2xl shadow-sky-500/20 rounded-[24px] bg-argentina text-zinc-900">
+              ENTRAR
+            </Button>
+          </form>
         </motion.div>
       </div>
     );
   }
 
-  if (user.role === 'superadmin') {
-    return (
-      <>
-        <SuperAdminDashboard />
-        <div className="fixed bottom-8 right-8 z-50">
-          <Button 
-            onClick={handleLogout}
-            className="bg-red-500 hover:bg-red-600 text-white rounded-2xl px-6 py-4 shadow-xl shadow-red-500/20 flex items-center gap-3 font-black uppercase tracking-widest text-xs"
-          >
-            <LogOut className="w-5 h-5" />
-            Cerrar Sesión Global
-          </Button>
-        </div>
-        <Toaster position="top-center" richColors />
-      </>
-    );
+  if (user.role === 'superadmin' && !selectedClientId) {
+    return <SuperAdminSaaS />;
   }
 
   const renderPage = () => {
