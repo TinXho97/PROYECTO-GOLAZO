@@ -1,7 +1,41 @@
+# Dependencias
 node_modules/
+
+# Build / produccion
+dist/
 build/
-coverage/
-.DS_Store
-*.log
-.env*
+
+# Variables de entorno
+.env
+.env.*
 !.env.example
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# Sistema operativo
+.DS_Store
+Thumbs.db
+
+# IDEs / editores
+.vscode/
+.idea/
+
+# Archivos temporales / cache
+.tmp/
+.temp/
+.cache/
+.vite/
+
+# Testing
+coverage/
+
+# Deploy
+.vercel/
+
+# TypeScript
+*.tsbuildinfo
