@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Home, 
+  Building2,
   Calendar as CalendarIcon, 
   Settings, 
   Moon, 
@@ -19,7 +20,10 @@ import {
   Target,
   Activity,
   ChevronRight,
-  Lightbulb
+  Lightbulb,
+  ArrowLeft,
+  Search,
+  MapPin
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast, Toaster } from 'sonner';
@@ -46,6 +50,10 @@ import { supabase, checkSupabaseConnection } from './lib/supabase';
 type Page = 'dashboard' | 'bookings' | 'calendar' | 'sales' | 'admin' | 'ranking' | 'stats';
 
 export default function App() {
+  const pathname = window.location.pathname;
+  const isSuperAdminRoute = pathname.startsWith('/panel-interno-golazo-');
+  const isAdminRoute = pathname === '/admin' || pathname.startsWith('/admin/');
+  const isPublicRoute = !isSuperAdminRoute && !isAdminRoute;
   const [currentPage, setCurrentPage] = useState<Page>('dashboard');
   const [selectedBookingId, setSelectedBookingId] = useState<string | null>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -60,20 +68,80 @@ export default function App() {
   const [clientConfig, setClientConfig] = useState<Client | null>(null);
   const [isClientLoading, setIsClientLoading] = useState(true);
   const [selectedClientId, setSelectedClientId] = useState<string | null>(dataService.getSelectedClientId());
+  const [publicClients, setPublicClients] = useState<Client[]>([]);
+  const [isPublicClientsLoading, setIsPublicClientsLoading] = useState(true);
+  const [selectedPublicClientId, setSelectedPublicClientId] = useState<string | null>(dataService.getPublicClientSelectionId());
+  const [publicSearchTerm, setPublicSearchTerm] = useState('');
+  const [publicGuestName, setPublicGuestName] = useState(localStorage.getItem('golazo_guest_name') || 'Jugador');
+  const [publicGuestPhone, setPublicGuestPhone] = useState(localStorage.getItem('golazo_guest_phone') || '');
+
+  const loadPublicClients = async () => {
+    if (isSuperAdminRoute) return;
+
+    setIsPublicClientsLoading(true);
+    try {
+      const clients = await dataService.getPublicClients();
+      setPublicClients(clients);
+    } catch (error) {
+      console.error('Error fetching public clients catalog:', error);
+      setPublicClients([]);
+      toast.error('No se pudo cargar el listado de complejos.');
+    } finally {
+      setIsPublicClientsLoading(false);
+    }
+  };
 
   const refreshSessionState = async () => {
     setIsClientLoading(true);
 
     try {
       const currentUser = await dataService.getCurrentUser();
-      setUser(currentUser);
-
       const nextSelectedClientId = dataService.getSelectedClientId();
-      setSelectedClientId(nextSelectedClientId);
 
       if (!currentUser) {
-        setClientConfig(null);
+        const publicClientId = dataService.getPublicClientSelectionId();
+        setUser(null);
+        setSelectedClientId(nextSelectedClientId);
+        setSelectedPublicClientId(publicClientId);
+
+        if (publicClientId && isPublicRoute) {
+          const publicClientConfig = await dataService.getClientConfig(publicClientId);
+          setClientConfig(publicClientConfig);
+        } else {
+          setClientConfig(null);
+        }
         return;
+      }
+
+      if (!isSuperAdminRoute && currentUser.role === 'superadmin') {
+        await dataService.logout();
+        setUser(null);
+        setSelectedClientId(null);
+        setClientConfig(null);
+        setLoginError('Este acceso no corresponde a este usuario');
+        return;
+      }
+
+      if (isPublicRoute && currentUser.role === 'admin') {
+        window.location.href = '/admin';
+        return;
+      }
+
+      if (isAdminRoute && currentUser.role !== 'admin') {
+        await dataService.logout();
+        setUser(null);
+        setSelectedClientId(null);
+        setClientConfig(null);
+        setLoginError('Este acceso es solo para administradores');
+        return;
+      }
+
+      setUser(currentUser);
+      setSelectedClientId(nextSelectedClientId);
+
+      if (!isSuperAdminRoute && currentUser.client_id) {
+        dataService.setPublicClientSelection(currentUser.client_id);
+        setSelectedPublicClientId(currentUser.client_id);
       }
 
       const targetClientId = currentUser.client_id;
@@ -104,6 +172,7 @@ export default function App() {
         }
       }
 
+      await loadPublicClients();
       await refreshSessionState();
     };
 
@@ -117,10 +186,17 @@ export default function App() {
       setCustomLogo(localStorage.getItem('golazo_custom_logo'));
     };
 
+    const handleGuestInfoUpdated = () => {
+      setPublicGuestName(localStorage.getItem('golazo_guest_name') || 'Jugador');
+      setPublicGuestPhone(localStorage.getItem('golazo_guest_phone') || '');
+    };
+
     window.addEventListener('storage', handleStorageChange);
+    window.addEventListener('guest_info_updated', handleGuestInfoUpdated as EventListener);
     return () => {
       authListener.subscription.unsubscribe();
       window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('guest_info_updated', handleGuestInfoUpdated as EventListener);
     };
   }, []);
 
@@ -142,7 +218,7 @@ export default function App() {
     setLoginError(null);
 
     try {
-      const newUser = await dataService.login(loginIdentifier, loginPassword);
+      const newUser = await dataService.login(loginIdentifier, loginPassword, ['admin']);
 
       if (newUser.client_id) {
         const config = await dataService.getClientConfig(newUser.client_id);
@@ -167,9 +243,40 @@ export default function App() {
     await dataService.logout();
     setUser(null);
     setSelectedClientId(null);
+    setSelectedPublicClientId(null);
     setClientConfig(null);
+    setLoginIdentifier('');
+    setLoginPassword('');
+    setLoginError(null);
     setCurrentPage('dashboard');
   };
+
+  const handleSelectPublicClient = (client: Client) => {
+    dataService.setPublicClientSelection(client.id);
+    setSelectedPublicClientId(client.id);
+    setClientConfig(client);
+    setLoginError(null);
+    setCurrentPage('dashboard');
+  };
+
+  const handleBackToClientSelector = () => {
+    dataService.clearPublicClientSelection();
+    setSelectedPublicClientId(null);
+    setLoginPassword('');
+    setLoginError(null);
+  };
+
+  const publicPortalUser: User | null =
+    !user && selectedPublicClientId && isPublicRoute
+      ? {
+          id: `public-player:${selectedPublicClientId}`,
+          name: publicGuestName,
+          phone: publicGuestPhone,
+          role: 'client',
+          client_id: selectedPublicClientId,
+        }
+      : null;
+  const activeUser = user ?? publicPortalUser;
 
   const navItems = [
     { id: 'dashboard', label: 'Inicio', icon: Home, roles: ['admin', 'client'] },
@@ -181,7 +288,7 @@ export default function App() {
     { id: 'admin', label: 'Configuración', icon: Settings, roles: ['admin'] },
   ];
 
-  const navigationRole = user?.role === 'superadmin' && selectedClientId ? 'admin' : user?.role || '';
+  const navigationRole = activeUser?.role === 'superadmin' && selectedClientId ? 'admin' : activeUser?.role || '';
 
   const filteredNavItems = navItems.filter(item => {
     if (!item.roles.includes(navigationRole)) return false;
@@ -197,13 +304,16 @@ export default function App() {
   ];
 
   const bgImage = BACKGROUND_IMAGES[0];
-
+  const selectedPublicClient = publicClients.find((client) => client.id === selectedPublicClientId) || null;
+  const filteredPublicClients = publicClients.filter((client) => {
+    const label = `${client.complex_name || ''} ${client.name || ''} ${client.address || ''}`.toLowerCase();
+    return label.includes(publicSearchTerm.toLowerCase());
+  });
   useEffect(() => {
     // No rotation needed
   }, []);
 
-  // SuperAdmin SaaS Route
-  if (window.location.pathname.startsWith('/panel-interno-golazo-')) {
+  if (isSuperAdminRoute) {
     return <SuperAdminSaaS />;
   }
 
@@ -295,7 +405,108 @@ export default function App() {
   }
 
   if (!user) {
-    return (
+    if (isPublicRoute && !selectedPublicClientId) {
+      return (
+        <div className="min-h-screen bg-zinc-950 text-white relative overflow-hidden">
+          <div className="absolute inset-0 pointer-events-none">
+            <div className="absolute top-0 left-0 w-[40rem] h-[40rem] bg-sky-500/15 rounded-full blur-[140px]" />
+            <div className="absolute bottom-0 right-0 w-[36rem] h-[36rem] bg-cyan-400/10 rounded-full blur-[140px]" />
+          </div>
+
+          <div className="relative z-10 max-w-7xl mx-auto px-6 py-10 md:px-10 md:py-14">
+            <div className="max-w-3xl space-y-5 mb-10">
+              <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-sky-400/20 bg-sky-400/10 text-sky-300 text-[11px] font-black uppercase tracking-[0.28em]">
+                <Building2 className="w-4 h-4" />
+                Acceso Publico
+              </div>
+              <h1 className="text-4xl md:text-6xl font-black tracking-tighter leading-none">
+                Elegi tu complejo para entrar al panel del jugador
+              </h1>
+              <p className="text-zinc-300 text-base md:text-lg max-w-2xl">
+                Seleccioná el complejo donde querés reservar y seguí al login del panel público.
+              </p>
+            </div>
+
+            <div className="mb-8 max-w-xl">
+              <div className="relative">
+                <Search className="absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-500" />
+                <input
+                  type="text"
+                  value={publicSearchTerm}
+                  onChange={(e) => setPublicSearchTerm(e.target.value)}
+                  placeholder="Buscar complejo o direccion"
+                  className="w-full pl-14 pr-5 py-4 rounded-3xl bg-white/10 border border-white/10 text-white placeholder:text-zinc-500 backdrop-blur-xl focus:outline-none focus:border-sky-400"
+                />
+              </div>
+            </div>
+
+            <div className="mb-8 flex justify-end">
+              <Button
+                type="button"
+                onClick={() => { window.location.href = '/admin'; }}
+                className="rounded-2xl px-6 py-3 font-black uppercase tracking-[0.18em] text-xs"
+              >
+                Acceso Admin
+              </Button>
+            </div>
+
+            {isPublicClientsLoading ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                {Array.from({ length: 6 }).map((_, index) => (
+                  <div key={index} className="h-72 rounded-[32px] border border-white/10 bg-white/5 animate-pulse" />
+                ))}
+              </div>
+            ) : filteredPublicClients.length === 0 ? (
+              <div className="bg-white/5 border border-white/10 rounded-[32px] p-10 text-center text-zinc-300">
+                No hay complejos activos disponibles para mostrar.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                {filteredPublicClients.map((client) => (
+                  <button
+                    key={client.id}
+                    type="button"
+                    onClick={() => handleSelectPublicClient(client)}
+                    className="group text-left rounded-[32px] border border-white/10 bg-white/5 backdrop-blur-xl p-6 hover:bg-white/10 hover:border-sky-400/30 transition-all shadow-2xl"
+                  >
+                    <div className="flex items-start justify-between gap-4 mb-8">
+                      <div className="w-16 h-16 rounded-[24px] bg-white text-zinc-900 flex items-center justify-center shadow-xl overflow-hidden">
+                        {client.logo_url ? (
+                          <img src={client.logo_url} alt={client.complex_name || client.name} className="w-full h-full object-cover" />
+                        ) : (
+                          <Building2 className="w-8 h-8 text-sky-600" />
+                        )}
+                      </div>
+                      <div className="inline-flex items-center gap-2 text-sky-300 text-[10px] font-black uppercase tracking-[0.24em]">
+                        Entrar
+                        <ChevronRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
+                      </div>
+                    </div>
+
+                    <div className="space-y-3">
+                      <h2 className="text-2xl font-black tracking-tight text-white">
+                        {client.complex_name || client.name}
+                      </h2>
+                      <p className="text-sm text-zinc-400 min-h-[2.5rem]">
+                        {client.address || 'Complejo habilitado para reservas y acceso público.'}
+                      </p>
+                      {client.address && (
+                        <div className="flex items-center gap-2 text-zinc-300 text-sm">
+                          <MapPin className="w-4 h-4 text-sky-400" />
+                          <span>{client.address}</span>
+                        </div>
+                      )}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    if (isAdminRoute) return (
       <div className="min-h-screen bg-zinc-50 flex items-center justify-start p-6 md:p-12 lg:p-24 relative overflow-hidden">
         {/* Background Image - Campeones del Mundo 2022 (Rotativo) */}
         <div className="absolute inset-0 z-0">
@@ -327,6 +538,20 @@ export default function App() {
           animate={{ opacity: 1, scale: 1, y: 0 }}
           className="w-full max-w-md bg-white/20 backdrop-blur-xl rounded-[48px] p-10 shadow-2xl border border-white/20 relative z-10"
         >
+          <div className="flex items-center justify-between mb-6">
+            <button
+              type="button"
+              onClick={() => { window.location.href = '/'; }}
+              className="inline-flex items-center gap-2 text-zinc-700 hover:text-zinc-900 transition-colors text-[10px] font-black uppercase tracking-[0.22em]"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              Volver
+            </button>
+            <span className="text-[10px] font-black text-zinc-500 uppercase tracking-[0.22em]">
+              Portal Admin
+            </span>
+          </div>
+
           <div className="flex flex-col items-center mb-10">
             <ArgentinaLogo size="lg" />
             <p className="text-zinc-700 font-black mt-4 tracking-[0.3em] uppercase text-[9px]">Gestión de Canchas</p>
@@ -382,34 +607,35 @@ export default function App() {
     );
   }
 
-  if (user.role === 'superadmin' && !selectedClientId) {
-    return <SuperAdminSaaS />;
-  }
-
   const renderPage = () => {
-    const isAdmin = user.role === 'admin' || user.role === 'superadmin';
+    if (!activeUser) return null;
+    const isAdmin = activeUser.role === 'admin' || activeUser.role === 'superadmin';
     
     switch (currentPage) {
-      case 'dashboard': return <Dashboard user={user} onNavigate={(page) => setCurrentPage(page as Page)} onNotificationClick={(id) => { setSelectedBookingId(id); setCurrentPage('calendar'); }} clientConfig={clientConfig} />;
+      case 'dashboard': return <Dashboard user={activeUser} onNavigate={(page) => setCurrentPage(page as Page)} onNotificationClick={(id) => { setSelectedBookingId(id); setCurrentPage('calendar'); }} clientConfig={clientConfig} />;
       case 'bookings': 
-        if (clientConfig && clientConfig.features?.reservas === false) return <Dashboard user={user} onNavigate={(page) => setCurrentPage(page as Page)} clientConfig={clientConfig} />;
-        return <BookingsList user={user} />;
+        if (clientConfig && clientConfig.features?.reservas === false) return <Dashboard user={activeUser} onNavigate={(page) => setCurrentPage(page as Page)} clientConfig={clientConfig} />;
+        return <BookingsList user={activeUser} />;
       case 'calendar': 
-        if (clientConfig && clientConfig.features?.reservas === false) return <Dashboard user={user} onNavigate={(page) => setCurrentPage(page as Page)} clientConfig={clientConfig} />;
-        return <CalendarPage user={user} initialBookingId={selectedBookingId} onClearInitialBooking={() => setSelectedBookingId(null)} />;
+        if (clientConfig && clientConfig.features?.reservas === false) return <Dashboard user={activeUser} onNavigate={(page) => setCurrentPage(page as Page)} clientConfig={clientConfig} />;
+        return <CalendarPage user={activeUser} initialBookingId={selectedBookingId} onClearInitialBooking={() => setSelectedBookingId(null)} />;
       case 'ranking': 
-        if (clientConfig && clientConfig.features?.ranking === false) return <Dashboard user={user} onNavigate={(page) => setCurrentPage(page as Page)} clientConfig={clientConfig} />;
-        return <RankingPage user={user} />;
+        if (clientConfig && clientConfig.features?.ranking === false) return <Dashboard user={activeUser} onNavigate={(page) => setCurrentPage(page as Page)} clientConfig={clientConfig} />;
+        return <RankingPage user={activeUser} />;
       case 'stats': 
-        if (clientConfig && clientConfig.features?.estadisticas === false) return <Dashboard user={user} onNavigate={(page) => setCurrentPage(page as Page)} clientConfig={clientConfig} />;
-        return isAdmin ? <SmartStats /> : <Dashboard user={user} onNavigate={(page) => setCurrentPage(page as Page)} clientConfig={clientConfig} />;
+        if (clientConfig && clientConfig.features?.estadisticas === false) return <Dashboard user={activeUser} onNavigate={(page) => setCurrentPage(page as Page)} clientConfig={clientConfig} />;
+        return isAdmin ? <SmartStats /> : <Dashboard user={activeUser} onNavigate={(page) => setCurrentPage(page as Page)} clientConfig={clientConfig} />;
       case 'sales': 
-        if (clientConfig && clientConfig.features?.ventas === false) return <Dashboard user={user} onNavigate={(page) => setCurrentPage(page as Page)} clientConfig={clientConfig} />;
-        return isAdmin ? <SalesPage /> : <Dashboard user={user} onNavigate={(page) => setCurrentPage(page as Page)} clientConfig={clientConfig} />;
-      case 'admin': return isAdmin ? <Admin onLogout={handleLogout} /> : <Dashboard user={user} onNavigate={(page) => setCurrentPage(page as Page)} clientConfig={clientConfig} />;
-      default: return <Dashboard user={user} onNavigate={(page) => setCurrentPage(page as Page)} clientConfig={clientConfig} />;
+        if (clientConfig && clientConfig.features?.ventas === false) return <Dashboard user={activeUser} onNavigate={(page) => setCurrentPage(page as Page)} clientConfig={clientConfig} />;
+        return isAdmin ? <SalesPage /> : <Dashboard user={activeUser} onNavigate={(page) => setCurrentPage(page as Page)} clientConfig={clientConfig} />;
+      case 'admin': return isAdmin ? <Admin onLogout={handleLogout} /> : <Dashboard user={activeUser} onNavigate={(page) => setCurrentPage(page as Page)} clientConfig={clientConfig} />;
+      default: return <Dashboard user={activeUser} onNavigate={(page) => setCurrentPage(page as Page)} clientConfig={clientConfig} />;
     }
   };
+
+  if (!activeUser) {
+    return null;
+  }
 
   return (
     <div className="h-screen flex flex-col lg:flex-row bg-zinc-50 text-zinc-900 overflow-hidden">
@@ -417,7 +643,7 @@ export default function App() {
       <aside className="z-40 hidden lg:flex flex-col shrink-0 fixed left-0 top-0 h-screen w-56 bg-slate-900 border-r border-slate-800 shadow-xl transition-all duration-300">
         <div className="p-4 flex flex-col items-center gap-2">
           <div className="relative group block w-24">
-            {user.role === 'admin' && (
+            {activeUser.role === 'admin' && (
               <input 
                 type="file" 
                 id="logo-upload-sidebar" 
@@ -441,7 +667,7 @@ export default function App() {
                 <div className="flex flex-col items-center justify-center p-2">
                   <ArgentinaLogo size="md" showText={false} className="scale-110" />
                   <p className="text-[7px] font-black text-sky-600 uppercase tracking-widest text-center mt-1">
-                    {user.role === 'admin' ? 'CONFIGURAR' : 'GOLAZO'}
+                    {activeUser.role === 'admin' ? 'CONFIGURAR' : 'GOLAZO'}
                   </p>
                 </div>
               )}
@@ -491,7 +717,7 @@ export default function App() {
         </nav>
 
         <div className="mt-auto p-4 border-t border-slate-800 shrink-0 bg-inherit">
-          {user.role !== 'admin' ? (
+          {activeUser.role !== 'admin' ? (
             <button 
               onClick={() => setIsLogoutModalOpen(true)}
               className="w-full px-4 py-3 rounded-2xl hover:bg-slate-800 transition-all group flex items-center justify-center"
@@ -616,7 +842,7 @@ export default function App() {
         </div>
       </main>
 
-      {user.role === 'admin' && <AIChatFloating />}
+      {activeUser.role === 'admin' && <AIChatFloating />}
       
       {/* Logo Viewer Modal */}
       <Modal
@@ -638,7 +864,7 @@ export default function App() {
           </div>
           
           <div className="flex flex-col gap-3">
-            {user.role === 'admin' && (
+            {activeUser.role === 'admin' && (
               <Button 
                 onClick={() => {
                   document.getElementById('logo-upload-sidebar')?.click();

@@ -92,10 +92,31 @@ export interface Sale {
 export interface AuditLog {
   id: string;
   action: string;
-  details: string;
+  entity?: string | null;
+  entity_id?: string | null;
+  user_id?: string | null;
   timestamp: Date;
   user: string;
   client_id?: string;
+  details: string;
+  description?: string;
+  metadata?: Record<string, unknown> | null;
+  client_name?: string | null;
+}
+
+export interface AuditLogInput {
+  action: string;
+  entity?: string;
+  entity_id?: string;
+  client_id?: string;
+  description: string;
+  details?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface AuditLogFilters {
+  clientId?: string;
+  limit?: number;
 }
 
 export interface Notification {
@@ -111,6 +132,7 @@ export interface Client {
   id: string;
   name: string;
   complex_name?: string;
+  logo_url?: string | null;
   phone?: string;
   address?: string;
   status: 'active' | 'suspended';

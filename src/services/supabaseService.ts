@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabase';
-import { Pitch, Booking, Product, Sale, User, AuditLog, BookingStatus } from '../types';
+import { Pitch, Booking, Product, Sale, User, AuditLog, AuditLogFilters, AuditLogInput, BookingStatus } from '../types';
 import imageCompression from 'browser-image-compression';
 
 const log = (message: string, data?: any) => {
@@ -15,6 +15,14 @@ const isUuid = (value: unknown): value is string => (
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
 );
 
+const ensureClientId = (clientId: unknown, operation: string): string => {
+  if (!isUuid(clientId)) {
+    throw new Error(`${operation}: client_id es obligatorio y debe ser un UUID valido`);
+  }
+
+  return clientId;
+};
+
 const normalizeBookingStatus = (status: unknown): BookingStatus => {
   const normalized = typeof status === 'string' ? status.toLowerCase() : 'pending';
   if (normalized === 'finished') return 'completed';
@@ -24,15 +32,122 @@ const normalizeBookingStatus = (status: unknown): BookingStatus => {
   return 'pending';
 };
 
+const resolveAuditFilters = (filters?: string | AuditLogFilters) => {
+  if (typeof filters === 'string') {
+    return {
+      clientId: filters,
+      limit: 100,
+    };
+  }
+
+  return {
+    clientId: filters?.clientId,
+    limit: filters?.limit ?? 100,
+  };
+};
+
+const ensureAuditText = (value: unknown, fallback = ''): string => {
+  if (typeof value === 'string') return value;
+  if (value == null) return fallback;
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+};
+
+const normalizeAuditLog = (row: any): AuditLog => ({
+  id: row.id,
+  action: row.action,
+  entity: row.entity || null,
+  entity_id: row.entity_id || null,
+  user_id: row.user_id || null,
+  timestamp: new Date(row.created_at || row.timestamp || new Date().toISOString()),
+  user: row.user_name || 'Sistema',
+  client_id: row.client_id || undefined,
+  details: ensureAuditText(row.details, ensureAuditText(row.description)),
+  description: ensureAuditText(row.description, ensureAuditText(row.details)),
+  metadata: row.metadata && typeof row.metadata === 'object' ? row.metadata : null,
+  client_name: row.clients?.complex_name || row.clients?.name || null,
+});
+
+const normalizeLegacyAuditLog = (row: any): AuditLog => ({
+  id: row.id,
+  action: row.action,
+  entity: null,
+  entity_id: null,
+  user_id: null,
+  timestamp: new Date(row.created_at || row.timestamp || new Date().toISOString()),
+  user: row.user_name || 'Sistema',
+  client_id: row.client_id || undefined,
+  details: ensureAuditText(row.details, ensureAuditText(row.action)),
+  description: ensureAuditText(row.details, ensureAuditText(row.action)),
+  metadata: null,
+  client_name: null,
+});
+
+const resolveAuditActor = async () => {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return {
+      userId: null,
+      userName: 'Sistema',
+    };
+  }
+
+  let userName = user.email || 'Usuario';
+
+  try {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('full_name')
+      .eq('id', user.id)
+      .maybeSingle();
+
+    if (typeof profile?.full_name === 'string' && profile.full_name.trim()) {
+      userName = profile.full_name.trim();
+    }
+  } catch (error) {
+    logError('Error resolving audit actor profile', error);
+  }
+
+  return {
+    userId: user.id,
+    userName,
+  };
+};
+
 export const supabaseService = {
+  getPublicClients: async () => {
+    log('Fetching public clients catalog...');
+
+    const nowIso = new Date().toISOString();
+    const { data, error } = await supabase
+      .from('clients')
+      .select('id, name, complex_name, address, status, expires_at, created_at, enable_ranking, enable_sales, enable_reservations, enable_statistics, features')
+      .eq('status', 'active')
+      .or(`expires_at.is.null,expires_at.gte.${nowIso}`)
+      .order('complex_name', { ascending: true });
+
+    if (error) {
+      logError('Error fetching public clients catalog', error);
+      throw error;
+    }
+
+    return (data || []) as any[];
+  },
+
   // Test Connection
   testConnection: async () => {
     try {
       log('Testing connection...');
-      const { data, error } = await supabase.from('pitches').select('id').limit(1);
+      const { data, error } = await supabase.auth.getSession();
       if (error) throw error;
       log('Connection test successful');
-      return true;
+      return !!data;
     } catch (error) {
       logError('Connection test failed', error);
       return false;
@@ -83,12 +198,12 @@ export const supabaseService = {
   // Pitches
   getPitches: async (clientId?: string) => {
     log('Fetching pitches...', { clientId });
-    if (!clientId) return [];
+    const requiredClientId = ensureClientId(clientId, 'Listar canchas');
 
     const { data, error } = await supabase
       .from('pitches')
       .select('id, name, type, price, active, client_id')
-      .eq('client_id', clientId)
+      .eq('client_id', requiredClientId)
       .order('created_at', { ascending: false })
       .limit(50);
     
@@ -103,6 +218,7 @@ export const supabaseService = {
 
   addPitch: async (pitch: Omit<Pitch, 'id'>) => {
     log('Adding pitch', pitch);
+    const clientId = ensureClientId(pitch.client_id, 'Crear cancha');
     
     // Remove image_url if it exists to prevent PGRST204 error
     const pitchData: any = {
@@ -110,7 +226,7 @@ export const supabaseService = {
       type: pitch.type,
       price: pitch.price,
       active: pitch.active,
-      client_id: pitch.client_id
+      client_id: clientId
     };
     
     const { data, error } = await supabase
@@ -128,8 +244,9 @@ export const supabaseService = {
     return data as Pitch;
   },
 
-  updatePitch: async (id: string, updates: Partial<Pitch>) => {
+  updatePitch: async (id: string, updates: Partial<Pitch>, clientId?: string) => {
     log(`Updating pitch ${id}`, updates);
+    const requiredClientId = ensureClientId(clientId, 'Actualizar cancha');
     
     // Remove image_url if it exists to prevent PGRST204 error
     const updateData = { ...updates };
@@ -140,7 +257,8 @@ export const supabaseService = {
     const { error } = await supabase
       .from('pitches')
       .update(updateData)
-      .eq('id', id);
+      .eq('id', id)
+      .eq('client_id', requiredClientId);
     
     if (error) {
       logError(`Error updating pitch ${id}`, error);
@@ -149,12 +267,14 @@ export const supabaseService = {
     log(`Pitch ${id} updated successfully`);
   },
 
-  deletePitch: async (id: string) => {
+  deletePitch: async (id: string, clientId?: string) => {
     log(`Deleting pitch ${id}`);
+    const requiredClientId = ensureClientId(clientId, 'Eliminar cancha');
     const { error } = await supabase
       .from('pitches')
       .delete()
-      .eq('id', id);
+      .eq('id', id)
+      .eq('client_id', requiredClientId);
     
     if (error) {
       logError(`Error deleting pitch ${id}`, error);
@@ -166,12 +286,10 @@ export const supabaseService = {
   // Bookings
   hasCompletedBookings: async (identifier: string, clientId?: string) => {
     log('Checking completed bookings for', { identifier, clientId });
+    const requiredClientId = ensureClientId(clientId, 'Consultar reservas completadas');
     let query = supabase.from('bookings').select('id', { count: 'exact', head: true })
-      .in('status', ['completed', 'finished']);
-    
-    if (clientId) {
-      query = query.eq('client_id', clientId);
-    }
+      .in('status', ['completed', 'finished'])
+      .eq('client_id', requiredClientId);
     
     // Check if identifier matches user_id or client_phone
     query = query.or(`user_id.eq.${identifier},client_phone.eq.${identifier}`);
@@ -188,11 +306,11 @@ export const supabaseService = {
 
   getBookings: async (clientId?: string, startDate?: string, endDate?: string) => {
     log('Fetching bookings...', { clientId, startDate, endDate });
-    let query = supabase.from('bookings').select('id, pitch_id, user_id, client_name, client_phone, start_time, end_time, status, created_at, deposit_amount, is_paid, receipt_url, payment_url, client_id');
-    
-    if (clientId) {
-      query = query.eq('client_id', clientId);
-    }
+    const requiredClientId = ensureClientId(clientId, 'Listar reservas');
+    let query = supabase
+      .from('bookings')
+      .select('id, pitch_id, user_id, client_name, client_phone, start_time, end_time, status, created_at, deposit_amount, is_paid, receipt_url, payment_url, client_id')
+      .eq('client_id', requiredClientId);
     
     if (startDate) {
       query = query.gte('start_time', startDate);
@@ -235,7 +353,7 @@ export const supabaseService = {
     const startTime = booking.startTime;
     const dateStr = startTime.toISOString().split('T')[0];
     const timeStr = startTime.toTimeString().split(' ')[0];
-    const clientId = booking.client_id;
+    const clientId = ensureClientId(booking.client_id, 'Crear reserva');
 
     // Anti-abuse validation
     if (booking.clientPhone) {
@@ -361,7 +479,12 @@ export const supabaseService = {
     
     // Add notification
     try {
-      const { data: pitch } = await supabase.from('pitches').select('name').eq('id', booking.pitchId).single();
+      const { data: pitch } = await supabase
+        .from('pitches')
+        .select('name')
+        .eq('id', booking.pitchId)
+        .eq('client_id', clientId)
+        .single();
       const pitchName = pitch?.name || 'Cancha';
       const timeStr = booking.startTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       const depositText = booking.depositAmount ? ` (Seña: $${booking.depositAmount})` : '';
@@ -394,12 +517,14 @@ export const supabaseService = {
     } as Booking;
   },
 
-  updateBookingStatus: async (id: string, status: BookingStatus) => {
+  updateBookingStatus: async (id: string, status: BookingStatus, clientId?: string) => {
     log(`Updating booking ${id} status to ${status}`);
+    const requiredClientId = ensureClientId(clientId, 'Actualizar reserva');
     const { error } = await supabase
       .from('bookings')
       .update({ status })
-      .eq('id', id);
+      .eq('id', id)
+      .eq('client_id', requiredClientId);
     
     if (error) {
       logError(`Error updating booking ${id} status`, error);
@@ -408,12 +533,14 @@ export const supabaseService = {
     log(`Booking ${id} status updated successfully`);
   },
 
-  cancelBooking: async (id: string) => {
+  cancelBooking: async (id: string, clientId?: string) => {
     log(`Cancelling booking ${id}`);
+    const requiredClientId = ensureClientId(clientId, 'Cancelar reserva');
     const { error } = await supabase
       .from('bookings')
       .update({ status: 'cancelled' })
-      .eq('id', id);
+      .eq('id', id)
+      .eq('client_id', requiredClientId);
     
     if (error) {
       logError(`Error cancelling booking ${id}`, error);
@@ -422,12 +549,14 @@ export const supabaseService = {
     log(`Booking ${id} cancelled successfully`);
   },
 
-  toggleBookingPayment: async (id: string, isPaid: boolean) => {
+  toggleBookingPayment: async (id: string, isPaid: boolean, clientId?: string) => {
     log(`Toggling booking ${id} payment to ${isPaid}`);
+    const requiredClientId = ensureClientId(clientId, 'Actualizar pago de reserva');
     const { error } = await supabase
       .from('bookings')
       .update({ is_paid: isPaid })
-      .eq('id', id);
+      .eq('id', id)
+      .eq('client_id', requiredClientId);
     
     if (error) {
       logError(`Error toggling booking ${id} payment`, error);
@@ -439,12 +568,12 @@ export const supabaseService = {
   // Products
   getProducts: async (clientId?: string) => {
     log('Fetching products...', { clientId });
-    if (!clientId) return [];
+    const requiredClientId = ensureClientId(clientId, 'Listar productos');
 
     const { data, error } = await supabase
       .from('products')
       .select('id, name, price, category, stock, min_stock, active, client_id')
-      .eq('client_id', clientId)
+      .eq('client_id', requiredClientId)
       .order('created_at', { ascending: false })
       .limit(50);
     
@@ -459,6 +588,7 @@ export const supabaseService = {
 
   addProduct: async (product: Omit<Product, 'id'>) => {
     log('Adding product', product);
+    const clientId = ensureClientId(product.client_id, 'Crear producto');
     const initialStock = Math.max(0, Number(product.stock) || 0);
     const minStock = Math.max(0, Number(product.min_stock) || 0);
 
@@ -471,7 +601,7 @@ export const supabaseService = {
         stock: initialStock,
         min_stock: minStock,
         active: product.active,
-        client_id: product.client_id
+        client_id: clientId
       }])
       .select()
       .single();
@@ -483,14 +613,14 @@ export const supabaseService = {
     
     log('Product added successfully', data);
 
-    if (initialStock > 0 && product.client_id) {
+    if (initialStock > 0) {
       try {
         const { error: movementError } = await supabase.from('stock_movements').insert([{
           product_id: data.id,
           quantity: initialStock,
           type: 'entrada',
           source: 'inicial',
-          client_id: product.client_id
+          client_id: clientId
         }]);
 
         if (movementError) {
@@ -504,12 +634,14 @@ export const supabaseService = {
     return data as Product;
   },
 
-  updateProduct: async (id: string, updates: Partial<Product>) => {
+  updateProduct: async (id: string, updates: Partial<Product>, clientId?: string) => {
     log(`Updating product ${id}`, updates);
+    const requiredClientId = ensureClientId(clientId, 'Actualizar producto');
     const { error } = await supabase
       .from('products')
       .update(updates)
-      .eq('id', id);
+      .eq('id', id)
+      .eq('client_id', requiredClientId);
     
     if (error) {
       logError(`Error updating product ${id}`, error);
@@ -520,11 +652,17 @@ export const supabaseService = {
     // Add notification if stock is low
     try {
       if (updates.stock !== undefined) {
-        const { data: product } = await supabase.from('products').select('name, stock, min_stock').eq('id', id).single();
+        const { data: product } = await supabase
+          .from('products')
+          .select('name, stock, min_stock')
+          .eq('id', id)
+          .eq('client_id', requiredClientId)
+          .single();
         if (product && product.stock <= product.min_stock) {
           await supabase.from('notifications').insert([{
             type: 'stock',
-            message: `Stock bajo - ${product.name} (Quedan ${product.stock})`
+            message: `Stock bajo - ${product.name} (Quedan ${product.stock})`,
+            client_id: requiredClientId
           }]);
         }
       }
@@ -533,12 +671,14 @@ export const supabaseService = {
     }
   },
 
-  deleteProduct: async (id: string) => {
+  deleteProduct: async (id: string, clientId?: string) => {
     log(`Deleting product ${id}`);
+    const requiredClientId = ensureClientId(clientId, 'Eliminar producto');
     const { error } = await supabase
       .from('products')
       .delete()
-      .eq('id', id);
+      .eq('id', id)
+      .eq('client_id', requiredClientId);
     
     if (error) {
       logError(`Error deleting product ${id}`, error);
@@ -550,8 +690,8 @@ export const supabaseService = {
   bulkUpdateStock: async (updates: { productId: string; quantityToAdd: number; newStock: number }[], clientId?: string) => {
     log(`Bulk updating stock for ${updates.length} products`);
     const client = supabase;
+    const requiredClientId = ensureClientId(clientId, 'Actualizar stock');
     
-    if (!clientId) return;
     if (updates.length === 0) return;
 
     try {
@@ -562,7 +702,7 @@ export const supabaseService = {
         .from('products')
         .select('id, name, min_stock, client_id')
         .in('id', productIds)
-        .eq('client_id', clientId);
+        .eq('client_id', requiredClientId);
         
       if (fetchError) throw fetchError;
       
@@ -581,14 +721,14 @@ export const supabaseService = {
           quantity: update.quantityToAdd,
           type: 'ajuste',
           source: 'manual',
-          client_id: clientId
+          client_id: requiredClientId
         });
         
         if (update.newStock <= product.min_stock) {
           notificationsToInsert.push({
             type: 'stock',
             message: `Stock bajo - ${product.name} (Quedan ${update.newStock})`,
-            client_id: clientId
+            client_id: requiredClientId
           });
         }
       }
@@ -600,7 +740,7 @@ export const supabaseService = {
         client.from('products')
           .update({ stock: update.newStock })
           .eq('id', update.productId)
-          .eq('client_id', clientId)
+          .eq('client_id', requiredClientId)
       );
       
       await Promise.all([
@@ -619,10 +759,11 @@ export const supabaseService = {
   // Sales
   getSales: async (clientId?: string, limit: number = 100) => {
     log('Fetching sales...', { clientId });
-    let query = supabase.from('sales').select('id, product_id, quantity, total_price, created_at, payment_method, client_id, sale_items(id, product_id, quantity, price)');
-    if (clientId) {
-      query = query.eq('client_id', clientId);
-    }
+    const requiredClientId = ensureClientId(clientId, 'Listar ventas');
+    const query = supabase
+      .from('sales')
+      .select('id, product_id, quantity, total_price, created_at, payment_method, client_id, sale_items(id, product_id, quantity, price)')
+      .eq('client_id', requiredClientId);
     const { data, error } = await query
       .order('created_at', { ascending: false })
       .limit(limit);
@@ -650,7 +791,7 @@ export const supabaseService = {
 
   addSale: async (sale: Omit<Sale, 'id'>) => {
     log('Adding sale', sale);
-    const clientId = sale.client_id;
+    const clientId = ensureClientId(sale.client_id, 'Crear venta');
     const client = supabase;
 
     const productId = typeof sale.productId === 'string' ? sale.productId.trim() : '';
@@ -808,16 +949,14 @@ export const supabaseService = {
   deleteSale: async (id: string, clientId?: string) => {
     log(`Deleting sale ${id}`, { clientId });
     const client = supabase;
+    const requiredClientId = ensureClientId(clientId, 'Eliminar venta');
     
     // Get sale details first to restore stock
     let query = client
       .from('sales')
       .select('product_id, quantity')
-      .eq('id', id);
-    
-    if (clientId) {
-      query = query.eq('client_id', clientId);
-    }
+      .eq('id', id)
+      .eq('client_id', requiredClientId);
 
     const { data: sale, error: fetchError } = await query.single();
       
@@ -826,11 +965,8 @@ export const supabaseService = {
       let productQuery = client
         .from('products')
         .select('stock')
-        .eq('id', sale.product_id);
-      
-      if (clientId) {
-        productQuery = productQuery.eq('client_id', clientId);
-      }
+        .eq('id', sale.product_id)
+        .eq('client_id', requiredClientId);
 
       const { data: product } = await productQuery.single();
         
@@ -839,11 +975,8 @@ export const supabaseService = {
         let updateQuery = client
           .from('products')
           .update({ stock: product.stock + sale.quantity })
-          .eq('id', sale.product_id);
-        
-        if (clientId) {
-          updateQuery = updateQuery.eq('client_id', clientId);
-        }
+          .eq('id', sale.product_id)
+          .eq('client_id', requiredClientId);
 
         await updateQuery;
           
@@ -855,7 +988,7 @@ export const supabaseService = {
             quantity: sale.quantity,
             type: 'entrada',
             source: 'ajuste',
-            client_id: clientId || (await client.from('products').select('client_id').eq('id', sale.product_id).single()).data?.client_id
+            client_id: requiredClientId
           }]);
       }
     }
@@ -863,11 +996,8 @@ export const supabaseService = {
     let deleteQuery = client
       .from('sales')
       .delete()
-      .eq('id', id);
-    
-    if (clientId) {
-      deleteQuery = deleteQuery.eq('client_id', clientId);
-    }
+      .eq('id', id)
+      .eq('client_id', requiredClientId);
 
     const { error } = await deleteQuery;
     
@@ -878,37 +1008,69 @@ export const supabaseService = {
     log(`Sale ${id} deleted successfully`);
   },
 // Audit Logs
-getAuditLogs: async (clientId?: string) => {
-  log('Fetching audit logs...', { clientId });
-  let query = supabase.from('audit_logs').select('id, action, details, user_name, created_at, client_id');
-  if (clientId) {
-    query = query.eq('client_id', clientId);
-  }
+  getAuditLogs: async (filters?: string | AuditLogFilters) => {
+  const { clientId, limit } = resolveAuditFilters(filters);
+  log('Fetching audit logs...', { clientId, limit });
+  const requiredClientId = ensureClientId(clientId, 'Listar auditoria');
+  let query = supabase
+    .from('audit_logs')
+    .select(`
+      id,
+      action,
+      entity,
+      entity_id,
+      user_id,
+      user_name,
+      details,
+      description,
+      metadata,
+      created_at,
+      timestamp,
+      client_id,
+      clients (
+        id,
+        name,
+        complex_name
+      )
+    `);
+  query = query.eq('client_id', requiredClientId);
   const { data, error } = await query
-    .order('created_at', { ascending: false }) // ✅ FIX
-    .limit(100);
+    .order('created_at', { ascending: false })
+    .limit(limit);
   
   if (error) {
-    logError('Error fetching audit logs', error);
-    throw error;
+    logError('Error fetching audit logs with enhanced schema, trying legacy fallback', error);
+
+    let legacyQuery = supabase
+      .from('audit_logs')
+      .select('id, action, details, user_name, created_at, client_id');
+
+    legacyQuery = legacyQuery.eq('client_id', requiredClientId);
+
+    const { data: legacyData, error: legacyError } = await legacyQuery
+      .order('created_at', { ascending: false })
+      .limit(limit);
+
+    if (legacyError) {
+      logError('Error fetching audit logs with legacy schema', legacyError);
+      throw legacyError;
+    }
+
+    log('Audit logs fetched successfully with legacy fallback', legacyData);
+    return (legacyData || []).map(normalizeLegacyAuditLog);
   }
   
   log('Audit logs fetched successfully', data);
-  return (data || []).map(l => ({
-    id: l.id,
-    action: l.action,
-    details: typeof l.details === 'string' ? l.details : JSON.stringify(l.details),
-    timestamp: new Date(l.created_at), // ✅ FIX
-    user: l.user_name || 'Sistema' // ✅ fallback seguro
-  })) as AuditLog[];
+  return (data || []).map(normalizeAuditLog);
 },
   // Deactivated Slots
   getDeactivatedSlots: async (clientId?: string) => {
     log('Fetching deactivated slots...', { clientId });
-    let query = supabase.from('deactivated_slots').select('id, pitch_id, slot_date, slot_hour, client_id');
-    if (clientId) {
-      query = query.eq('client_id', clientId);
-    }
+    const requiredClientId = ensureClientId(clientId, 'Listar slots desactivados');
+    const query = supabase
+      .from('deactivated_slots')
+      .select('id, pitch_id, slot_date, slot_hour, client_id')
+      .eq('client_id', requiredClientId);
     const { data, error } = await query;
     
     if (error) {
@@ -922,17 +1084,15 @@ getAuditLogs: async (clientId?: string) => {
 
   toggleDeactivatedSlot: async (pitchId: string, date: string, hour: number, clientId?: string) => {
     log(`Toggling deactivated slot: ${pitchId} on ${date} at ${hour}:00`, { clientId });
+    const requiredClientId = ensureClientId(clientId, 'Actualizar slot desactivado');
     // Check if it exists
-    let query = supabase
+    const query = supabase
       .from('deactivated_slots')
       .select('id')
       .eq('pitch_id', pitchId)
       .eq('slot_date', date)
-      .eq('slot_hour', hour);
-    
-    if (clientId) {
-      query = query.eq('client_id', clientId);
-    }
+      .eq('slot_hour', hour)
+      .eq('client_id', requiredClientId);
 
     const { data: existing } = await query.maybeSingle();
     
@@ -955,7 +1115,7 @@ getAuditLogs: async (clientId?: string) => {
           pitch_id: pitchId,
           slot_date: date,
           slot_hour: hour,
-          client_id: clientId
+          client_id: requiredClientId
         }]);
       if (error) {
         logError('Error deactivating slot', error);
@@ -964,33 +1124,61 @@ getAuditLogs: async (clientId?: string) => {
       log('Slot deactivated successfully');
     }
   },
-  logAction: async (action: string, details: string, userName: string = 'Sistema', clientId?: string) => {
+  logAction: async (entry: AuditLogInput) => {
     const client = supabase;
+    const actor = await resolveAuditActor();
+    const payload = {
+      action: entry.action,
+      entity: entry.entity || null,
+      entity_id: entry.entity_id || null,
+      user_id: actor.userId,
+      user_name: actor.userName,
+      client_id: entry.client_id || null,
+      description: entry.description,
+      details: entry.details || entry.description,
+      metadata: entry.metadata || {},
+      created_at: new Date().toISOString(),
+    };
+    
     const { error } = await client
       .from('audit_logs')
-      .insert([{
-        action,
-        details,
-        user_name: userName, // ✅ opcional pero recomendado
-        created_at: new Date().toISOString(), // ✅ FIX
-        client_id: clientId
-      }]);
+      .insert([payload]);
     
     if (error) {
-      // Suppress RLS error for audit_logs as it's a known issue and doesn't break functionality
-      if (error.code !== '42501') {
-        logError('Error logging action', error);
+      logError('Error logging action with enhanced schema, trying legacy fallback', { error, payload });
+
+      const legacyPayload = {
+        action: entry.action,
+        details: entry.details || entry.description,
+        user_name: actor.userName,
+        client_id: entry.client_id || null,
+      };
+
+      const { error: legacyError } = await client
+        .from('audit_logs')
+        .insert([legacyPayload]);
+
+      if (legacyError) {
+        logError('Error logging action with legacy schema', { legacyError, legacyPayload });
+        return false;
       }
-    } else {
-      log(`Action logged: ${action}`);
+
+      log(`Action logged with legacy schema: ${entry.action}`, legacyPayload);
+      return true;
     }
+
+    log(`Action logged: ${entry.action}`, payload);
+    return true;
   },
 
   // Notifications
   getNotifications: async (clientId?: string) => {
     log('Fetching notifications...', { clientId });
-    // Removed client_id from select and filter because the column doesn't exist in DB yet
-    let query = supabase.from('notifications').select('id, type, message, read, created_at');
+    const requiredClientId = ensureClientId(clientId, 'Listar notificaciones');
+    const query = supabase
+      .from('notifications')
+      .select('id, type, message, read, created_at, client_id')
+      .eq('client_id', requiredClientId);
     
     const { data, error } = await query
       .order('created_at', { ascending: false })
@@ -1010,11 +1198,13 @@ getAuditLogs: async (clientId?: string) => {
     }));
   },
 
-  markNotificationAsRead: async (id: string) => {
+  markNotificationAsRead: async (id: string, clientId?: string) => {
+    const requiredClientId = ensureClientId(clientId, 'Marcar notificacion como leida');
     const { error } = await supabase
       .from('notifications')
       .update({ read: true })
-      .eq('id', id);
+      .eq('id', id)
+      .eq('client_id', requiredClientId);
     
     if (error) {
       logError(`Error marking notification ${id} as read`, error);
@@ -1022,11 +1212,13 @@ getAuditLogs: async (clientId?: string) => {
     }
   },
 
-  markAllNotificationsAsRead: async () => {
+  markAllNotificationsAsRead: async (clientId?: string) => {
+    const requiredClientId = ensureClientId(clientId, 'Marcar todas las notificaciones como leidas');
     const { error } = await supabase
       .from('notifications')
       .update({ read: true })
-      .eq('read', false);
+      .eq('read', false)
+      .eq('client_id', requiredClientId);
     
     if (error) {
       logError('Error marking all notifications as read', error);

@@ -760,7 +760,7 @@ export default function Admin({ onLogout }: AdminProps) {
                           className="w-full py-6 border-zinc-200 text-zinc-900 hover:bg-zinc-50 gap-3 rounded-2xl font-black text-xs uppercase tracking-widest"
                           onClick={async () => {
                             const currentUser = await dataService.getCurrentUser();
-                            const logs = await dataService.getAuditLogs(currentUser?.client_id);
+                            const logs = await dataService.getAuditLogs({ clientId: currentUser?.client_id, limit: 200 });
                             setAuditLogs(logs);
                             setIsAuditModalOpen(true);
                           }}
@@ -812,21 +812,45 @@ export default function Admin({ onLogout }: AdminProps) {
           </p>
           <div className="space-y-3 pr-2 max-h-[50vh] overflow-y-auto custom-scrollbar">
             {auditLogs.map((log) => (
-              <div key={log.id} className="p-4 bg-zinc-50 rounded-2xl border border-zinc-100 space-y-2">
-                <div className="flex items-center justify-between">
-                  <Badge variant="neutral" className="text-[10px] font-black uppercase tracking-widest">
-                    {log.action}
-                  </Badge>
-                  <div className="flex items-center gap-1 text-[10px] font-bold text-zinc-400">
+              <div key={log.id} className="p-4 bg-zinc-50 rounded-2xl border border-zinc-100 space-y-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant="neutral" className="text-[10px] font-black uppercase tracking-widest">
+                      {log.entity || 'sistema'}
+                    </Badge>
+                    <Badge variant="neutral" className="text-[10px] font-black uppercase tracking-widest bg-white">
+                      {log.action}
+                    </Badge>
+                  </div>
+                  <div className="flex items-center gap-1 text-[10px] font-bold text-zinc-400 shrink-0">
                     <Clock className="w-3 h-3" />
                     {format(log.timestamp, "d MMM, HH:mm", { locale: es })}
                   </div>
                 </div>
-                <p className="text-sm font-bold text-zinc-900">{log.details}</p>
-                <div className="flex items-center gap-2 text-[10px] font-black text-zinc-400 uppercase tracking-widest">
-                  <UserIcon className="w-3 h-3" />
-                  Realizado por: {log.user}
+                <p className="text-sm font-bold text-zinc-900">{log.description || log.details}</p>
+                <div className="flex flex-wrap items-center gap-2 text-[10px] font-black text-zinc-400 uppercase tracking-widest">
+                  <div className="flex items-center gap-2">
+                    <UserIcon className="w-3 h-3" />
+                    Realizado por: {log.user}
+                  </div>
+                  {log.entity_id && (
+                    <span className="px-2 py-1 rounded-full bg-white border border-zinc-200 text-zinc-500 normal-case tracking-normal font-mono">
+                      ID: {log.entity_id}
+                    </span>
+                  )}
                 </div>
+                {log.metadata && Object.keys(log.metadata).length > 0 && (
+                  <div className="p-3 bg-white rounded-xl border border-zinc-200 text-[11px] text-zinc-500 font-medium space-y-1">
+                    {Object.entries(log.metadata).slice(0, 4).map(([key, value]) => (
+                      <div key={key} className="flex items-start justify-between gap-3">
+                        <span className="uppercase tracking-wider text-zinc-400 font-black">{key}</span>
+                        <span className="text-right break-all">
+                          {typeof value === 'object' ? JSON.stringify(value) : String(value)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             ))}
             {auditLogs.length === 0 && (

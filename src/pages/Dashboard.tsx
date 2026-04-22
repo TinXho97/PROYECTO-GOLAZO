@@ -192,10 +192,10 @@ export default function Dashboard({ user, onNavigate, onLogout, onNotificationCl
           window.dispatchEvent(new Event('guest_info_updated'));
         }
 
-        const updatedBookings = await dataService.getBookings();
+        const updatedBookings = await dataService.getBookings(user.client_id);
         setBookings(updatedBookings);
         const identifier = user.role === 'client' && formData.clientPhone ? formData.clientPhone : user.id;
-        const updatedPoints = await dataService.getUserPoints(identifier);
+        const updatedPoints = await dataService.getUserPoints(identifier, user.client_id);
         setUserPoints(updatedPoints);
         setIsBookingModalOpen(false);
         setFormData({ 
@@ -1143,8 +1143,8 @@ export default function Dashboard({ user, onNavigate, onLogout, onNotificationCl
                 className="flex-1 py-4 rounded-2xl font-black"
                 onClick={async () => {
                   try {
-                    await api.cancelBooking(selectedBooking.id);
-                    const updatedBookings = await dataService.getBookings();
+                    await api.cancelBooking(selectedBooking.id, user.client_id);
+                    const updatedBookings = await dataService.getBookings(user.client_id);
                     setBookings(updatedBookings);
                     setIsBookingDetailModalOpen(false);
                   } catch (error) {

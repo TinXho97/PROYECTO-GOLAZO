@@ -124,7 +124,7 @@ export default function BookingsList({ user }: BookingsListProps) {
   const handleStatusUpdate = async (id: string, status: BookingStatus) => {
     try {
       const clientId = user.client_id;
-      await api.updateBookingStatus(id, status);
+      await api.updateBookingStatus(id, status, clientId);
       const b = await dataService.getBookings(clientId);
       setBookings(b);
     } catch (error) {
@@ -135,7 +135,7 @@ export default function BookingsList({ user }: BookingsListProps) {
   const handleTogglePayment = async (id: string) => {
     try {
       const clientId = user.client_id;
-      await api.toggleBookingPayment(id);
+      await api.toggleBookingPayment(id, clientId);
       const b = await dataService.getBookings(clientId);
       setBookings(b);
     } catch (error) {
@@ -147,7 +147,7 @@ export default function BookingsList({ user }: BookingsListProps) {
     if (!confirmCancel) return;
     try {
       const clientId = user.client_id;
-      await api.cancelBooking(confirmCancel);
+      await api.cancelBooking(confirmCancel, clientId);
       const b = await dataService.getBookings(clientId);
       setBookings(b);
       setConfirmCancel(null);

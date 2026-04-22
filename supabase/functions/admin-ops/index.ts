@@ -15,9 +15,14 @@ if (!supabaseUrl || !supabaseAnonKey || !supabaseServiceRoleKey) {
   throw new Error('Missing SUPABASE_URL, SUPABASE_ANON_KEY, or SUPABASE_SERVICE_ROLE_KEY')
 }
 
-const createAuthClient = () =>
+const createAuthClient = (req: Request) =>
   createClient(supabaseUrl, supabaseAnonKey, {
     auth: { persistSession: false, autoRefreshToken: false },
+    global: {
+      headers: {
+        Authorization: req.headers.get('Authorization') ?? '',
+      },
+    },
   })
 
 const createAdminClient = () =>
@@ -158,6 +163,9 @@ const isMissingSchemaObjectError = (error: { code?: string; message?: string } |
   return error?.code === 'PGRST205' || message.includes('schema cache') || message.includes('Could not find the table')
 }
 
+const isUuid = (value: string) =>
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
+
 const deleteByClientId = async (
   adminClient: ReturnType<typeof createAdminClient>,
   table: string,
@@ -207,6 +215,37 @@ const getAuthUserById = async (
   return null
 }
 
+const logAdminAudit = async (
+  adminClient: ReturnType<typeof createAdminClient>,
+  actor: { id: string; email?: string | null; profile?: { full_name?: string | null } | null },
+  entry: {
+    action: string
+    entity: string
+    entityId?: string | null
+    clientId?: string | null
+    description: string
+    metadata?: Record<string, unknown>
+  },
+) => {
+  const payload = {
+    action: entry.action,
+    entity: entry.entity,
+    entity_id: entry.entityId ?? null,
+    user_id: actor.id,
+    user_name: actor.profile?.full_name || actor.email || 'Superadmin',
+    client_id: entry.clientId ?? null,
+    description: entry.description,
+    details: entry.description,
+    metadata: entry.metadata ?? {},
+    created_at: new Date().toISOString(),
+  }
+
+  const { error } = await adminClient.from('audit_logs').insert(payload)
+  if (error) {
+    console.error('[admin-ops] audit log failed:', error, payload)
+  }
+}
+
 const requireSuperadmin = async (req: Request) => {
   const token = extractBearerToken(req)
 
@@ -214,7 +253,7 @@ const requireSuperadmin = async (req: Request) => {
     return { error: fail(401, 'invalid_jwt', 'Falta el token JWT del usuario autenticado.') }
   }
 
-  const authClient = createAuthClient()
+  const authClient = createAuthClient(req)
   const adminClient = createAdminClient()
 
   const {
@@ -232,25 +271,18 @@ const requireSuperadmin = async (req: Request) => {
     .eq('id', user.id)
     .maybeSingle()
 
-  if (profileError) {
+  if (profileError || !profile?.role) {
     return { error: fail(401, 'profile_missing', 'El usuario autenticado no tiene perfil válido.') }
   }
 
-  const derivedRole = profile?.role ?? user.user_metadata?.role
-
-  if (derivedRole !== 'superadmin') {
+  if (profile.role !== 'superadmin') {
     return { error: fail(403, 'forbidden', 'Acceso restringido a superadmins.') }
   }
 
   return {
     adminClient,
     user,
-    profile: profile ?? {
-      id: user.id,
-      role: 'superadmin',
-      client_id: (typeof user.user_metadata?.client_id === 'string' ? user.user_metadata.client_id : null) ?? null,
-      full_name: typeof user.user_metadata?.name === 'string' ? user.user_metadata.name : null,
-    },
+    profile,
   }
 }
 
@@ -278,7 +310,7 @@ serve(async (req) => {
       return authContext.error
     }
 
-    const { adminClient } = authContext
+    const { adminClient, user, profile } = authContext
     const body = await parseBody(req)
     const action = typeof body.action === 'string' ? body.action : ''
     const payload =
@@ -785,7 +817,7 @@ serve(async (req) => {
             const authUser = authUsersById.get(membership.user_id)
             const profile = profilesById.get(membership.user_id)
 
-            if (profile?.role === 'superadmin' || authUser?.user_metadata?.role === 'superadmin') {
+            if (!profile?.role || profile.role === 'superadmin') {
               return null
             }
 
@@ -794,9 +826,9 @@ serve(async (req) => {
               email: authUser?.email ?? null,
               created_at: authUser?.created_at ?? membership.created_at ?? null,
               last_sign_in_at: authUser?.last_sign_in_at ?? null,
-              role: profile?.role ?? authUser?.user_metadata?.role ?? membership.role,
+              role: profile.role,
               membership_role: membership.role,
-              client_id: membership.client_id ?? profile?.client_id ?? authUser?.user_metadata?.client_id ?? null,
+              client_id: profile.client_id ?? null,
               client: membership.clients
                 ? {
                     id: membership.clients.id,
@@ -804,7 +836,7 @@ serve(async (req) => {
                   }
                 : null,
               profile: {
-                name: profile?.full_name ?? authUser?.user_metadata?.name ?? authUser?.email ?? 'Administrador',
+                name: profile.full_name ?? authUser?.email ?? 'Administrador',
                 phone: profile?.phone ?? authUser?.phone ?? null,
               },
             }
@@ -812,6 +844,102 @@ serve(async (req) => {
           .filter(Boolean)
 
         return ok({ users })
+      }
+
+      case 'list_audit_logs': {
+        try {
+          const rawClientId = payload.clientId
+          if (rawClientId !== undefined && typeof rawClientId !== 'string') {
+            return fail(400, 'validation_error', 'clientId debe ser string cuando se envia.')
+          }
+
+          const clientId = typeof rawClientId === 'string' ? rawClientId.trim() : ''
+          if (clientId && !isUuid(clientId)) {
+            return fail(400, 'validation_error', 'clientId no es un UUID valido.')
+          }
+
+          const rawLimit = payload.limit
+          if (rawLimit !== undefined && (typeof rawLimit !== 'number' || !Number.isFinite(rawLimit))) {
+            return fail(400, 'validation_error', 'limit debe ser numerico cuando se envia.')
+          }
+
+          const limit =
+            typeof rawLimit === 'number'
+              ? Math.min(Math.max(Math.trunc(rawLimit), 1), 500)
+              : 300
+
+          let query = adminClient
+            .from('audit_logs')
+            .select(`
+              id,
+              action,
+              entity,
+              entity_id,
+              user_id,
+              user_name,
+              details,
+              description,
+              metadata,
+              created_at,
+              client_id,
+              clients (
+                id,
+                name,
+                complex_name
+              )
+            `)
+            .order('created_at', { ascending: false })
+            .limit(limit)
+
+          if (clientId) {
+            query = query.eq('client_id', clientId)
+          }
+
+          const { data, error } = await query
+          if (!error) {
+            return ok({ logs: data ?? [] })
+          }
+
+          console.error('[admin-ops] list_audit_logs primary query failed:', error)
+
+          let fallbackQuery = adminClient
+            .from('audit_logs')
+            .select(`
+              id,
+              action,
+              entity,
+              entity_id,
+              user_id,
+              user_name,
+              details,
+              description,
+              metadata,
+              created_at,
+              client_id
+            `)
+            .order('created_at', { ascending: false })
+            .limit(limit)
+
+          if (clientId) {
+            fallbackQuery = fallbackQuery.eq('client_id', clientId)
+          }
+
+          const { data: fallbackData, error: fallbackError } = await fallbackQuery
+          if (fallbackError) {
+            console.error('[admin-ops] list_audit_logs fallback query failed:', fallbackError)
+            return fail(500, 'audit_logs_query_failed', 'No se pudo consultar audit_logs.', fallbackError.message)
+          }
+
+          return ok({ logs: fallbackData ?? [] })
+        } catch (error) {
+          console.error('[admin-ops] list_audit_logs unexpected error:', error)
+          return fail(
+            500,
+            'audit_logs_unexpected_error',
+            'Fallo inesperado al cargar auditorias.',
+            error instanceof Error ? error.message : String(error),
+          )
+        }
       }
 
       case 'create_client': {
@@ -849,6 +977,25 @@ serve(async (req) => {
 
         if (error) throw error
 
+        await logAdminAudit(adminClient, {
+          id: user.id,
+          email: user.email ?? null,
+          profile,
+        }, {
+          action: 'Cliente creado',
+          entity: 'client',
+          entityId: data?.id,
+          clientId: data?.id,
+          description: `Se creo el cliente ${complexName}`,
+          metadata: {
+            name,
+            complex_name: complexName,
+            phone: clientInput.phone ?? null,
+            address: clientInput.address ?? null,
+            features,
+          },
+        })
+
         return ok({ client: mapClientRecord(data as Record<string, any>) })
       }
 
@@ -881,6 +1028,21 @@ serve(async (req) => {
 
         if (error) throw error
 
+        await logAdminAudit(adminClient, {
+          id: user.id,
+          email: user.email ?? null,
+          profile,
+        }, {
+          action: 'Cliente actualizado',
+          entity: 'client',
+          entityId: data?.id,
+          clientId: data?.id,
+          description: `Se actualizo la configuracion del cliente ${data?.complex_name || data?.name || clientId}`,
+          metadata: {
+            changes: updates,
+          },
+        })
+
         return ok({ client: mapClientRecord(data as Record<string, any>) })
       }
 
@@ -890,6 +1052,14 @@ serve(async (req) => {
         if (!clientId) {
           return fail(400, 'validation_error', 'clientId es obligatorio.')
         }
+
+        const { data: clientBeforeDelete, error: clientReadError } = await adminClient
+          .from('clients')
+          .select('id, name, complex_name, status')
+          .eq('id', clientId)
+          .maybeSingle()
+
+        if (clientReadError) throw clientReadError
 
         const { data: memberships, error: membershipError } = await adminClient
           .from('client_users')
@@ -913,8 +1083,15 @@ serve(async (req) => {
         const userIds = [...new Set((memberships ?? []).map((membership: any) => membership.user_id).filter(Boolean))]
 
         for (const userId of userIds) {
-          const authUser = await getAuthUserById(adminClient, userId as string)
-          if (authUser?.user_metadata?.role === 'superadmin') {
+          const { data: membershipProfile, error: membershipProfileError } = await adminClient
+            .from('profiles')
+            .select('role')
+            .eq('id', userId as string)
+            .maybeSingle()
+
+          if (membershipProfileError) throw membershipProfileError
+
+          if (membershipProfile?.role === 'superadmin') {
             console.warn(`[admin-ops] skipping superadmin user during client delete: ${userId}`)
             continue
           }
@@ -927,6 +1104,24 @@ serve(async (req) => {
           .eq('id', clientId)
 
         if (deleteClientError) throw deleteClientError
+
+        await logAdminAudit(adminClient, {
+          id: user.id,
+          email: user.email ?? null,
+          profile,
+        }, {
+          action: 'Cliente eliminado',
+          entity: 'client',
+          entityId: clientId,
+          clientId: null,
+          description: `Se elimino el cliente ${clientBeforeDelete?.complex_name || clientBeforeDelete?.name || clientId}`,
+          metadata: {
+            deleted_client_id: clientId,
+            deleted_client_name: clientBeforeDelete?.complex_name || clientBeforeDelete?.name || null,
+            deleted_client_status: clientBeforeDelete?.status || null,
+            deleted_admins: userIds.length,
+          },
+        })
 
         return ok({ deleted: true, clientId })
       }
@@ -955,11 +1150,6 @@ serve(async (req) => {
           email,
           password,
           email_confirm: true,
-          user_metadata: {
-            name,
-            role: 'admin',
-            client_id: clientId,
-          },
         })
 
         if (authError || !authResult.user) {
@@ -977,16 +1167,10 @@ serve(async (req) => {
         })
 
         const profileCreated = !profileError
-        const canSkipProfileInsert =
-          profileError?.code === '23514' && (profileError.message ?? '').includes('profiles_role_check')
 
-        if (profileError && !canSkipProfileInsert) {
+        if (profileError) {
           await adminClient.auth.admin.deleteUser(createdUser.id)
           throw profileError
-        }
-
-        if (canSkipProfileInsert) {
-          console.warn('[admin-ops] create_admin proceeding without profile row due legacy profiles_role_check constraint')
         }
 
         const { error: membershipError } = await adminClient.from('client_users').insert({
@@ -1002,6 +1186,23 @@ serve(async (req) => {
           await adminClient.auth.admin.deleteUser(createdUser.id)
           throw membershipError
         }
+
+        await logAdminAudit(adminClient, {
+          id: user.id,
+          email: user.email ?? null,
+          profile,
+        }, {
+          action: 'Admin creado',
+          entity: 'admin',
+          entityId: createdUser.id,
+          clientId,
+          description: `Se creo el admin ${email}`,
+          metadata: {
+            email,
+            client_id: clientId,
+            name,
+          },
+        })
 
         return ok({
           user: {
@@ -1027,9 +1228,9 @@ serve(async (req) => {
           return fail(400, 'validation_error', 'userId es obligatorio.')
         }
 
-        const { data: profile, error: profileReadError } = await adminClient
+        const { data: targetProfile, error: profileReadError } = await adminClient
           .from('profiles')
-          .select('role')
+          .select('role, client_id')
           .eq('id', userId)
           .maybeSingle()
 
@@ -1037,16 +1238,15 @@ serve(async (req) => {
 
         const { data: memberships, error: membershipReadError } = await adminClient
           .from('client_users')
-          .select('user_id, role')
+          .select('user_id, role, client_id')
           .eq('user_id', userId)
 
         if (membershipReadError) throw membershipReadError
 
         const authUser = await getAuthUserById(adminClient, userId)
         const derivedRole =
-          profile?.role ??
-          authUser?.user_metadata?.role ??
-          ((memberships ?? []).length > 0 ? 'admin' : null)
+          targetProfile?.role ??
+          null
         if (!derivedRole) {
           return fail(404, 'not_found', 'No se encontró el usuario administrador.')
         }
@@ -1059,7 +1259,29 @@ serve(async (req) => {
           return fail(403, 'forbidden', 'Solo se pueden eliminar administradores desde este panel.')
         }
 
+        const targetClientId =
+          (memberships ?? [])[0]?.client_id ??
+          targetProfile?.client_id ??
+          null
+
         await deleteAuthUserCascade(adminClient, userId)
+
+        await logAdminAudit(adminClient, {
+          id: user.id,
+          email: user.email ?? null,
+          profile,
+        }, {
+          action: 'Admin eliminado',
+          entity: 'admin',
+          entityId: userId,
+          clientId: targetClientId,
+          description: `Se elimino el admin ${authUser?.email ?? userId}`,
+          metadata: {
+            deleted_user_id: userId,
+            deleted_email: authUser?.email ?? null,
+            client_id: targetClientId,
+          },
+        })
 
         return ok({ deleted: true, userId })
       }

@@ -1,11 +1,12 @@
 import { useState, useEffect, type FormEvent } from 'react';
-import { Users, Activity, X, Calendar, Power, Search, Trash2, Plus, LayoutDashboard, Building2, BarChart2, Settings, LogOut, MoreVertical, CheckCircle2, XCircle, ExternalLink, RefreshCw, Package, ShoppingCart, CircleDollarSign, Clock3, AlertTriangle, ShieldCheck, SlidersHorizontal, Gauge } from 'lucide-react';
+import { Users, Activity, X, Calendar, Power, Search, Trash2, Plus, LayoutDashboard, Building2, BarChart2, Settings, LogOut, MoreVertical, CheckCircle2, XCircle, ExternalLink, RefreshCw, Package, ShoppingCart, CircleDollarSign, Clock3, AlertTriangle, ShieldCheck, SlidersHorizontal, Gauge, History } from 'lucide-react';
 import { getSupabaseAnonKey, getSupabaseUrl, supabase } from '../lib/supabase';
-import { Client } from '../types';
+import { AuditLog, Client } from '../types';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { toast, Toaster } from 'sonner';
 import { dataService } from '../services/dataService';
+import { Modal } from '../components/Modal';
 
 type ClientFeatureKey = 'reservas' | 'ventas' | 'ranking' | 'estadisticas';
 
@@ -205,8 +206,12 @@ export default function SuperAdminSaaS() {
   const [clients, setClients] = useState<Client[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'clients' | 'users' | 'metrics' | 'settings'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'clients' | 'users' | 'audit' | 'metrics' | 'settings'>('dashboard');
   const [users, setUsers] = useState<SuperAdminUser[]>([]);
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
+  const [isAuditLoading, setIsAuditLoading] = useState(false);
+  const [selectedAuditClientId, setSelectedAuditClientId] = useState('');
+  const [isAuditModalOpen, setIsAuditModalOpen] = useState(false);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   
   // Close menu when clicking outside
@@ -264,9 +269,7 @@ export default function SuperAdminSaaS() {
       throw new Error('Sesion expirada. Inicia sesion nuevamente.');
     }
 
-    const adminOpsUrl = `${getSupabaseUrl()}/functions/v1/admin-ops`;
-
-    const response = await fetch(adminOpsUrl, {
+    const response = await fetch(`${getSupabaseUrl()}/functions/v1/admin-ops`, {
       method: 'POST',
       headers: {
         apikey: getSupabaseAnonKey(),
@@ -277,16 +280,14 @@ export default function SuperAdminSaaS() {
       body: JSON.stringify({ action, payload }),
     });
 
-    const data = await response.json().catch(() => null);
+    const responseBody = await response.json().catch(() => null);
 
     if (!response.ok) {
-      const code = data?.error?.code;
-      const message = data?.error?.message || data?.error;
+      const code = responseBody?.error?.code;
+      const message = responseBody?.error?.message || responseBody?.error;
 
       if (code === 'invalid_jwt' || code === 'profile_missing') {
-        await dataService.logout();
-        window.location.href = '/panel-interno-golazo-admin';
-        throw new Error('Sesion invalida. Volve a iniciar sesion.');
+        throw new Error(message || `Sesion invalida (${code}).`);
       }
 
       if (code === 'forbidden') {
@@ -297,62 +298,18 @@ export default function SuperAdminSaaS() {
         throw new Error('La funcion admin-ops no esta disponible en Supabase.');
       }
 
-      throw new Error(message || `admin-ops devolvio ${response.status}`);
+      throw new Error(message || 'Error inesperado en admin-ops');
     }
 
-    if (!data?.success) {
-      throw new Error(data?.error?.message || 'Error inesperado en admin-ops');
+    if (!responseBody?.success) {
+      throw new Error(responseBody?.error?.message || 'Error inesperado en admin-ops');
     }
 
-    return data.data as T;
+    return responseBody.data as T;
   };
 
   const invokeAdminOp = async <T,>(action: string, payload: Record<string, unknown> = {}) => {
     return invokeAdminOpViaFetch<T>(action, payload);
-
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-
-    if (!session?.access_token) {
-      throw new Error('Tu sesión expiró. Inicia sesión nuevamente.');
-    }
-
-    const response = await fetch(`${getSupabaseUrl()}/functions/v1/admin-ops`, {
-      method: 'POST',
-      headers: {
-        apikey: getSupabaseAnonKey(),
-        Authorization: `Bearer ${session.access_token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ action, payload }),
-    });
-
-    const data = await response.json().catch(() => null);
-
-    if (!response.ok) {
-      const code = data?.error?.code;
-      const message = data?.error?.message || data?.error;
-
-      if (code === 'invalid_jwt' || code === 'profile_missing') {
-          await dataService.logout();
-          window.location.href = '/panel-interno-golazo-admin';
-          throw new Error('Tu sesión ya no es válida. Volvé a iniciar sesión.');
-        }
-
-      if (code === 'forbidden') {
-          throw new Error('No tenés permisos de superadmin.');
-        }
-
-      if (response.status === 404) {
-        throw new Error('La funciÃ³n admin-ops no estÃ¡ disponible en Supabase.');
-      }
-
-      throw new Error(message || `admin-ops devolviÃ³ ${response.status}`);
-    }
-
-    if (!data?.success) throw new Error(data?.error?.message || 'Error inesperado en admin-ops');
-    return data.data as T;
   };
 
   const resetNewUser = () => {
@@ -375,13 +332,7 @@ export default function SuperAdminSaaS() {
     setIsLoading(true);
     
     try {
-      const currentUser = await dataService.login(email, password);
-
-      if (!currentUser || currentUser.role !== 'superadmin') {
-        await supabase.auth.signOut();
-        throw new Error('No tienes permisos de superadmin');
-      }
-
+      await dataService.login(email, password, ['superadmin']);
       setIsAuthenticated(true);
       await Promise.all([fetchClients(), fetchUsers(), fetchMetrics()]);
     } catch (err: any) {
@@ -470,14 +421,70 @@ export default function SuperAdminSaaS() {
     }
   };
 
+  const fetchAuditLogs = async (clientId?: string) => {
+    setIsAuditLoading(true);
+    try {
+      const data = await invokeAdminOp<{ logs: Array<Record<string, unknown>> }>('list_audit_logs', {
+        clientId: clientId || undefined,
+        limit: 300,
+      });
+
+      const logs = (data.logs || []).map((log) => ({
+        id: String(log.id || ''),
+        action: String(log.action || ''),
+        entity: typeof log.entity === 'string' ? log.entity : null,
+        entity_id: typeof log.entity_id === 'string' ? log.entity_id : null,
+        user_id: typeof log.user_id === 'string' ? log.user_id : null,
+        timestamp: new Date(String(log.created_at || log.timestamp || new Date().toISOString())),
+        user: typeof log.user_name === 'string' ? log.user_name : 'Sistema',
+        client_id: typeof log.client_id === 'string' ? log.client_id : undefined,
+        details: typeof log.details === 'string' ? log.details : typeof log.description === 'string' ? log.description : '',
+        description: typeof log.description === 'string' ? log.description : typeof log.details === 'string' ? log.details : '',
+        metadata: log.metadata && typeof log.metadata === 'object' ? (log.metadata as Record<string, unknown>) : null,
+        client_name:
+          log.clients && typeof log.clients === 'object'
+            ? (typeof (log.clients as { complex_name?: unknown }).complex_name === 'string'
+                ? (log.clients as { complex_name: string }).complex_name
+                : typeof (log.clients as { name?: unknown }).name === 'string'
+                  ? (log.clients as { name: string }).name
+                  : null)
+            : null,
+      })) as AuditLog[];
+
+      setAuditLogs(logs);
+    } catch (error: any) {
+      console.error('Error fetching audit logs:', error);
+      setAuditLogs([]);
+      toast.error(error?.message || 'No se pudo cargar el historial de auditoria');
+    } finally {
+      setIsAuditLoading(false);
+    }
+  };
+
   useEffect(() => {
     const loadSession = async () => {
-      const currentUser = await dataService.getCurrentUser();
-      const isSuperadmin = currentUser?.role === 'superadmin';
-      setIsAuthenticated(!!isSuperadmin);
+      try {
+        const currentUser = await dataService.getCurrentUser();
 
-      if (isSuperadmin) {
+        if (!currentUser) {
+          setIsAuthenticated(false);
+          return;
+        }
+
+        if (currentUser.role !== 'superadmin') {
+          await dataService.logout();
+          setIsAuthenticated(false);
+          setError('Este acceso no corresponde a este usuario');
+          return;
+        }
+
+        setError('');
+        setIsAuthenticated(true);
         await Promise.all([fetchClients(), fetchUsers(), fetchMetrics()]);
+      } catch (sessionError: any) {
+        console.error('Error loading superadmin session:', sessionError);
+        setIsAuthenticated(false);
+        setError(sessionError?.message || 'No se pudo validar la sesion de superadmin');
       }
     };
 
@@ -693,6 +700,7 @@ export default function SuperAdminSaaS() {
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'clients', label: 'Clientes', icon: Building2 },
     { id: 'users', label: 'Administradores', icon: Users },
+    { id: 'audit', label: 'Auditoria', icon: History },
     { id: 'metrics', label: 'Métricas', icon: BarChart2 },
     { id: 'settings', label: 'Configuración', icon: Settings },
   ] as const;
@@ -719,7 +727,14 @@ export default function SuperAdminSaaS() {
           {panelNavItems.map(item => (
             <button
               key={item.id}
-              onClick={() => setActiveTab(item.id)}
+              onClick={() => {
+                if (item.id === 'audit') {
+                  setIsAuditModalOpen(true);
+                  fetchAuditLogs(selectedAuditClientId);
+                  return;
+                }
+                setActiveTab(item.id);
+              }}
               className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition-all ${activeTab === item.id ? 'bg-gradient-to-r from-[#FF6B00]/10 to-transparent text-[#FF6B00] border border-[#FF6B00]/20' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`}
             >
               <item.icon className={`w-5 h-5 ${activeTab === item.id ? 'text-[#FF6B00]' : ''}`} />
@@ -1673,6 +1688,115 @@ export default function SuperAdminSaaS() {
         </div>
       </main>
 
+      <Modal
+        isOpen={isAuditModalOpen}
+        onClose={() => setIsAuditModalOpen(false)}
+        title="Historial de Auditoria"
+        className="max-w-5xl"
+      >
+        <div className="space-y-6">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <p className="text-sm text-zinc-500">
+              Trazabilidad global de acciones sensibles y operativas dentro de la misma ventana del programa.
+            </p>
+            <div className="flex flex-col sm:flex-row gap-3">
+              <select
+                value={selectedAuditClientId}
+                onChange={(e) => setSelectedAuditClientId(e.target.value)}
+                className="bg-white border border-zinc-200 rounded-2xl px-4 py-3 text-sm text-zinc-900 focus:outline-none focus:border-[#FF6B00]"
+              >
+                <option value="">Todos los clientes</option>
+                {clients.map((client) => (
+                  <option key={client.id} value={client.id}>
+                    {client.complex_name || client.name}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={() => fetchAuditLogs(selectedAuditClientId)}
+                className="px-4 py-3 rounded-2xl bg-zinc-900 border border-zinc-900 text-white text-sm font-bold hover:bg-zinc-800 transition-colors"
+              >
+                Actualizar
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="bg-zinc-50 border border-zinc-200 rounded-[24px] p-5">
+              <div className="text-zinc-500 text-sm">Eventos cargados</div>
+              <div className="text-3xl font-black text-zinc-900 mt-2">{auditLogs.length}</div>
+            </div>
+            <div className="bg-zinc-50 border border-zinc-200 rounded-[24px] p-5">
+              <div className="text-zinc-500 text-sm">Filtro activo</div>
+              <div className="text-lg font-black text-zinc-900 mt-2">
+                {selectedAuditClientId
+                  ? clients.find((client) => client.id === selectedAuditClientId)?.complex_name || clients.find((client) => client.id === selectedAuditClientId)?.name || 'Cliente'
+                  : 'Todos'}
+              </div>
+            </div>
+            <div className="bg-zinc-50 border border-zinc-200 rounded-[24px] p-5">
+              <div className="text-zinc-500 text-sm">Cobertura</div>
+              <div className="text-sm font-bold text-zinc-900 mt-2 leading-relaxed">
+                Productos, canchas, reservas, stock, ventas y acciones sensibles del superadmin.
+              </div>
+            </div>
+          </div>
+
+          {isAuditLoading ? (
+            <div className="py-16 text-center text-zinc-400">Cargando historial...</div>
+          ) : auditLogs.length === 0 ? (
+            <div className="py-16 text-center text-zinc-400">No hay registros para el filtro seleccionado.</div>
+          ) : (
+            <div className="space-y-3 max-h-[60vh] overflow-y-auto custom-scrollbar pr-2">
+              {auditLogs.map((log) => (
+                <div key={log.id} className="bg-zinc-50 border border-zinc-200 rounded-2xl p-4 space-y-3">
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="px-2.5 py-1 rounded-full bg-zinc-900 text-[10px] font-black uppercase tracking-widest text-white">
+                        {log.entity || 'sistema'}
+                      </span>
+                      <span className="px-2.5 py-1 rounded-full bg-orange-50 border border-orange-200 text-[10px] font-black uppercase tracking-widest text-orange-600">
+                        {log.action}
+                      </span>
+                      {log.client_name && (
+                        <span className="px-2.5 py-1 rounded-full bg-white border border-zinc-200 text-[10px] font-black uppercase tracking-widest text-zinc-500">
+                          {log.client_name}
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-xs font-bold text-zinc-400">
+                      {format(log.timestamp, 'dd/MM/yyyy HH:mm', { locale: es })}
+                    </div>
+                  </div>
+
+                  <div className="text-sm font-bold text-zinc-900">{log.description || log.details}</div>
+
+                  <div className="flex flex-wrap items-center gap-3 text-xs text-zinc-500">
+                    <span>Usuario: {log.user}</span>
+                    {log.entity_id && <span className="font-mono text-zinc-400">ID: {log.entity_id}</span>}
+                    {log.client_id && <span className="font-mono text-zinc-400">Cliente: {log.client_id}</span>}
+                  </div>
+
+                  {log.metadata && Object.keys(log.metadata).length > 0 && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                      {Object.entries(log.metadata).slice(0, 6).map(([key, value]) => (
+                        <div key={key} className="bg-white border border-zinc-200 rounded-xl px-3 py-2 text-xs flex items-start justify-between gap-3">
+                          <span className="text-zinc-400 uppercase tracking-wider font-black">{key}</span>
+                          <span className="text-zinc-700 text-right break-all">
+                            {typeof value === 'object' ? JSON.stringify(value) : String(value)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </Modal>
+
 
       {/* Create User Modal */}
       {isUserModalOpen && (
@@ -1833,3 +1957,4 @@ export default function SuperAdminSaaS() {
     </div>
   );
 }
+

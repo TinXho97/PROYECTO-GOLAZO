@@ -9,18 +9,15 @@ const isValidKey = (key: string) =>
 const hasUrl = supabaseUrl.startsWith('https://');
 const hasKey = isValidKey(supabaseAnonKey);
 
+export const getSupabaseUrl = () => supabaseUrl;
+export const getSupabaseAnonKey = () => supabaseAnonKey;
+
 export const getSupabaseDiagnostics = () => ({
   hasUrl,
   hasKey,
   urlPreview: hasUrl ? `${supabaseUrl.slice(0, 32)}...` : '(empty)',
   keyPreview: hasKey ? `${supabaseAnonKey.slice(0, 12)}...` : '(empty)',
 });
-
-if (!hasUrl || !hasKey) {
-  throw new Error(
-    'Supabase no esta configurado correctamente. Defini VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY.',
-  );
-}
 
 const customFetch: typeof fetch = async (input, init) => {
   try {
@@ -36,6 +33,12 @@ const customFetch: typeof fetch = async (input, init) => {
   }
 };
 
+if (!hasUrl || !hasKey) {
+  throw new Error(
+    'Supabase no esta configurado correctamente. Defini VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY.',
+  );
+}
+
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     persistSession: true,
@@ -46,9 +49,6 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     fetch: customFetch,
   },
 });
-
-export const getSupabaseUrl = () => supabaseUrl;
-export const getSupabaseAnonKey = () => supabaseAnonKey;
 
 export const checkSupabaseConnection = async () => {
   try {

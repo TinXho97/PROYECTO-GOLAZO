@@ -1212,8 +1212,8 @@ export default function CalendarPage({ user, initialBookingId, onClearInitialBoo
                       selectedBooking.isPaid ? "border-emerald-200 text-emerald-600 hover:bg-emerald-50" : "bg-emerald-600 hover:bg-emerald-700 text-white"
                     )}
                     onClick={async () => {
-                      await api.toggleBookingPayment(selectedBooking.id);
-                      const updatedBookings = await dataService.getBookings();
+                      await api.toggleBookingPayment(selectedBooking.id, user.client_id);
+                      const updatedBookings = await dataService.getBookings(user.client_id);
                       setBookings(updatedBookings);
                       setSelectedBooking(prev => prev ? { ...prev, isPaid: !prev.isPaid } : null);
                       toast.success(selectedBooking.isPaid ? 'Pago cancelado' : '¡Pago registrado!');
@@ -1241,8 +1241,8 @@ export default function CalendarPage({ user, initialBookingId, onClearInitialBoo
         onClose={() => setIsConfirmCancelOpen(false)}
         onConfirm={async () => {
           if (selectedBooking) {
-            await api.cancelBooking(selectedBooking.id);
-            const updatedBookings = await dataService.getBookings();
+            await api.cancelBooking(selectedBooking.id, user.client_id);
+            const updatedBookings = await dataService.getBookings(user.client_id);
             setBookings(updatedBookings);
             setSelectedBooking(null);
           }

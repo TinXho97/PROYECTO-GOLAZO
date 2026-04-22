@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Bell, Check, Trash2, Package, Calendar } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { formatDistanceToNow } from 'date-fns';
@@ -20,9 +20,55 @@ export function NotificationsPanel({ onNotificationClick }: NotificationsPanelPr
   const [isOpen, setIsOpen] = useState(false);
   const [isHighlight, setIsHighlight] = useState(false);
   const [user, setUser] = useState<any>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
 
   useEffect(() => {
     dataService.getCurrentUser().then(setUser);
+  }, []);
+
+  const playNotificationSound = async () => {
+    try {
+      const AudioContextClass = window.AudioContext || (window as typeof window & {
+        webkitAudioContext?: typeof AudioContext;
+      }).webkitAudioContext;
+
+      if (!AudioContextClass) return;
+
+      if (!audioContextRef.current) {
+        audioContextRef.current = new AudioContextClass();
+      }
+
+      const context = audioContextRef.current;
+      if (context.state === 'suspended') {
+        await context.resume();
+      }
+
+      const oscillator = context.createOscillator();
+      const gainNode = context.createGain();
+
+      oscillator.type = 'sine';
+      oscillator.frequency.setValueAtTime(880, context.currentTime);
+      oscillator.frequency.exponentialRampToValueAtTime(1320, context.currentTime + 0.12);
+
+      gainNode.gain.setValueAtTime(0.0001, context.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.08, context.currentTime + 0.01);
+      gainNode.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.25);
+
+      oscillator.connect(gainNode);
+      gainNode.connect(context.destination);
+
+      oscillator.start(context.currentTime);
+      oscillator.stop(context.currentTime + 0.25);
+    } catch (error) {
+      console.warn('No se pudo reproducir el sonido de notificacion:', error);
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      audioContextRef.current?.close().catch(() => {});
+      audioContextRef.current = null;
+    };
   }, []);
 
   const clientId = user?.client_id;
@@ -44,6 +90,10 @@ export function NotificationsPanel({ onNotificationClick }: NotificationsPanelPr
         table: 'notifications',
         filter: `client_id=eq.${clientId}`
       }, payload => {
+        playNotificationSound();
+        setIsHighlight(true);
+        setTimeout(() => setIsHighlight(false), 2000);
+
         const newNotification = {
           id: payload.new.id,
           type: payload.new.type,
@@ -65,13 +115,7 @@ export function NotificationsPanel({ onNotificationClick }: NotificationsPanelPr
         table: 'bookings',
         filter: `client_id=eq.${clientId}`
       }, async payload => {
-        // Play sound
-        try {
-          const audio = new Audio('/notification.mp3');
-          audio.play().catch(e => console.log('Audio play prevented by browser:', e));
-        } catch (e) {
-          console.error('Error playing notification sound:', e);
-        }
+        playNotificationSound();
         
         // Highlight bell
         setIsHighlight(true);
@@ -79,7 +123,12 @@ export function NotificationsPanel({ onNotificationClick }: NotificationsPanelPr
 
         // Fetch pitch name for the toast
         try {
-          const { data: pitch } = await supabase.from('pitches').select('name').eq('id', payload.new.pitch_id).single();
+          const { data: pitch } = await supabase
+            .from('pitches')
+            .select('name')
+            .eq('id', payload.new.pitch_id)
+            .eq('client_id', clientId)
+            .single();
           const pitchName = pitch?.name || 'Cancha';
           
           // Parse the start_time properly
@@ -134,12 +183,13 @@ export function NotificationsPanel({ onNotificationClick }: NotificationsPanelPr
     if (!dataService.isSupabaseConfigured()) return;
     try {
       // Fetch from notifications table
-      const data = await supabaseService.getNotifications();
+      const data = await supabaseService.getNotifications(clientId);
       
       // Also fetch recent bookings to ensure we don't miss any if the notifications table insert failed due to RLS
       const { data: recentBookings } = await supabase
         .from('bookings')
         .select('*, pitches(name)')
+        .eq('client_id', clientId)
         .order('created_at', { ascending: false })
         .limit(10);
         
@@ -176,7 +226,7 @@ export function NotificationsPanel({ onNotificationClick }: NotificationsPanelPr
 
   const markAsRead = async (id: string) => {
     try {
-      await supabaseService.markNotificationAsRead(id).catch(() => {});
+      await supabaseService.markNotificationAsRead(id, clientId).catch(() => {});
       
       // Always mark in localStorage for bookings
       const readIds = JSON.parse(localStorage.getItem('golazo_read_notifications') || '[]');
@@ -193,7 +243,7 @@ export function NotificationsPanel({ onNotificationClick }: NotificationsPanelPr
 
   const markAllAsRead = async () => {
     try {
-      await supabaseService.markAllNotificationsAsRead().catch(() => {});
+      await supabaseService.markAllNotificationsAsRead(clientId).catch(() => {});
       
       const readIds = JSON.parse(localStorage.getItem('golazo_read_notifications') || '[]');
       notifications.forEach(n => {
