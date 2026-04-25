@@ -20,7 +20,7 @@ const createAuthClient = (req: Request) =>
     auth: { persistSession: false, autoRefreshToken: false },
     global: {
       headers: {
-        Authorization: req.headers.get('Authorization') ?? '',
+        Authorization: getAuthorizationHeader(req),
       },
     },
   })
@@ -51,6 +51,92 @@ const fail = (status: number, code: string, message: string, details?: unknown) 
     },
   })
 
+class HttpError extends Error {
+  status: number
+  code: string
+  details?: unknown
+
+  constructor(status: number, code: string, message: string, details?: unknown) {
+    super(message)
+    this.name = 'HttpError'
+    this.status = status
+    this.code = code
+    this.details = details
+  }
+}
+
+type RequestLogContext = {
+  requestId: string
+  action: string
+  method: string
+  path: string
+}
+
+const getRequestContext = (req: Request, action: string): RequestLogContext => ({
+  requestId: crypto.randomUUID(),
+  action: action || 'unknown',
+  method: req.method,
+  path: new URL(req.url).pathname,
+})
+
+const formatErrorDetails = (error: unknown) => {
+  if (!error) return null
+  if (error instanceof HttpError) {
+    return {
+      name: error.name,
+      message: error.message,
+      code: error.code,
+      status: error.status,
+      details: error.details,
+    }
+  }
+  if (error instanceof Error) {
+    return {
+      name: error.name,
+      message: error.message,
+    }
+  }
+  if (typeof error === 'object') return error
+  return { message: String(error) }
+}
+
+const logInfo = (context: RequestLogContext, message: string, details?: Record<string, unknown>) => {
+  console.log('[admin-ops]', {
+    level: 'info',
+    requestId: context.requestId,
+    action: context.action,
+    method: context.method,
+    path: context.path,
+    message,
+    ...(details ?? {}),
+  })
+}
+
+const logWarn = (context: RequestLogContext, message: string, details?: Record<string, unknown>) => {
+  console.warn('[admin-ops]', {
+    level: 'warn',
+    requestId: context.requestId,
+    action: context.action,
+    method: context.method,
+    path: context.path,
+    message,
+    ...(details ?? {}),
+  })
+}
+
+const logError = (context: RequestLogContext, message: string, error?: unknown, details?: Record<string, unknown>) => {
+  console.error('[admin-ops]', {
+    level: 'error',
+    requestId: context.requestId,
+    action: context.action,
+    method: context.method,
+    path: context.path,
+    message,
+    error: formatErrorDetails(error),
+    ...(details ?? {}),
+  })
+}
+
 const CLIENT_SELECT_FIELDS = `
   id,
   name,
@@ -71,6 +157,9 @@ const CLIENT_SELECT_FIELDS = `
 const DEFAULT_OPERATING_HOURS_PER_DAY = 14
 const REALIZED_BOOKING_STATUSES = new Set(['completed', 'finished'])
 const PIPELINE_BOOKING_STATUSES = new Set(['confirmed', 'pending'])
+
+const getAuthorizationHeader = (req: Request) =>
+  req.headers.get('authorization') || req.headers.get('Authorization') || ''
 
 const resolveFeatureFlag = (
   explicitValue: unknown,
@@ -144,9 +233,9 @@ const normalizeBookingStatus = (status: unknown, endAt: Date | null) => {
 }
 
 const extractBearerToken = (req: Request) => {
-  const authHeader = req.headers.get('authorization') || req.headers.get('Authorization')
-  if (!authHeader?.startsWith('Bearer ')) return null
-  return authHeader.slice('Bearer '.length).trim() || null
+  const authHeader = getAuthorizationHeader(req).trim()
+  const match = authHeader.match(/^Bearer\s+(.+)$/i)
+  return match?.[1]?.trim() || null
 }
 
 const parseBody = async (req: Request) => {
@@ -160,7 +249,47 @@ const parseBody = async (req: Request) => {
 
 const isMissingSchemaObjectError = (error: { code?: string; message?: string } | null | undefined) => {
   const message = error?.message ?? ''
-  return error?.code === 'PGRST205' || message.includes('schema cache') || message.includes('Could not find the table')
+  return (
+    error?.code === 'PGRST205' ||
+    error?.code === 'PGRST204' ||
+    error?.code === '42703' ||
+    error?.code === '42P01' ||
+    message.includes('schema cache') ||
+    message.includes('Could not find the table') ||
+    message.includes('Could not find the')
+  )
+}
+
+const isRelationshipSchemaError = (error: { code?: string; message?: string } | null | undefined) => {
+  const message = error?.message ?? ''
+  return (
+    error?.code === 'PGRST200' ||
+    error?.code === 'PGRST201' ||
+    message.includes('Could not find a relationship') ||
+    message.includes('schema cache')
+  )
+}
+
+const raiseIfQueryError = (
+  error: { code?: string; message?: string; details?: string; hint?: string } | null,
+  options: { status?: number; code: string; message: string; details?: Record<string, unknown> },
+) => {
+  if (!error) return
+
+  throw new HttpError(
+    options.status ?? 500,
+    options.code,
+    options.message,
+    {
+      query_error: {
+        code: error.code ?? null,
+        message: error.message ?? null,
+        details: error.details ?? null,
+        hint: error.hint ?? null,
+      },
+      ...(options.details ?? {}),
+    },
+  )
 }
 
 const isUuid = (value: string) =>
@@ -246,10 +375,11 @@ const logAdminAudit = async (
   }
 }
 
-const requireSuperadmin = async (req: Request) => {
+const requireSuperadmin = async (req: Request, context: RequestLogContext) => {
   const token = extractBearerToken(req)
 
   if (!token) {
+    logWarn(context, 'missing bearer token')
     return { error: fail(401, 'invalid_jwt', 'Falta el token JWT del usuario autenticado.') }
   }
 
@@ -262,6 +392,17 @@ const requireSuperadmin = async (req: Request) => {
   } = await authClient.auth.getUser(token)
 
   if (authError || !user) {
+    logWarn(context, 'jwt validation failed', {
+      auth_error: authError?.message ?? null,
+    })
+  } else {
+    logInfo(context, 'jwt validated', {
+      userId: user.id,
+      email: user.email ?? null,
+    })
+  }
+
+  if (authError || !user) {
     return { error: fail(401, 'invalid_jwt', 'No se pudo validar la sesión del usuario.', authError?.message) }
   }
 
@@ -271,13 +412,56 @@ const requireSuperadmin = async (req: Request) => {
     .eq('id', user.id)
     .maybeSingle()
 
-  if (profileError || !profile?.role) {
-    return { error: fail(401, 'profile_missing', 'El usuario autenticado no tiene perfil válido.') }
+  if (profileError) {
+    logError(context, 'profile lookup failed', profileError, {
+      userId: user.id,
+    })
+    return {
+      error: fail(
+        500,
+        'profile_lookup_failed',
+        'No se pudo consultar el perfil del usuario autenticado.',
+        profileError.message,
+      ),
+    }
+  }
+
+  if (!profile?.role) {
+    const metadataRole =
+      (typeof user.app_metadata?.role === 'string' ? user.app_metadata.role : null) ??
+      (typeof user.user_metadata?.role === 'string' ? user.user_metadata.role : null)
+
+    logWarn(context, 'profile missing for authenticated user', {
+      userId: user.id,
+      metadataRole,
+    })
+    return {
+      error: fail(
+        401,
+        'profile_missing',
+        'El usuario autenticado no tiene perfil válido en public.profiles.',
+        { user_id: user.id, metadata_role: metadataRole },
+      ),
+    }
   }
 
   if (profile.role !== 'superadmin') {
-    return { error: fail(403, 'forbidden', 'Acceso restringido a superadmins.') }
+    logWarn(context, 'forbidden: non-superadmin user', {
+      userId: user.id,
+      profileRole: profile.role,
+    })
+    return {
+      error: fail(403, 'forbidden', 'Acceso restringido a superadmins.', {
+        user_id: user.id,
+        profile_role: profile.role,
+      }),
+    }
   }
+
+  logInfo(context, 'superadmin access granted', {
+    userId: user.id,
+    profileRole: profile.role,
+  })
 
   return {
     adminClient,
@@ -304,19 +488,26 @@ serve(async (req) => {
     return fail(405, 'method_not_allowed', 'Método no permitido.')
   }
 
+  const body = await parseBody(req)
+  const action = typeof body.action === 'string' ? body.action : ''
+  const payload =
+    body.payload && typeof body.payload === 'object'
+      ? (body.payload as Record<string, unknown>)
+      : {}
+  const context = getRequestContext(req, action)
+
+  logInfo(context, 'request started', {
+    hasAuthorizationHeader: Boolean(getAuthorizationHeader(req)),
+    payloadKeys: Object.keys(payload),
+  })
+
   try {
-    const authContext = await requireSuperadmin(req)
+    const authContext = await requireSuperadmin(req, context)
     if ('error' in authContext) {
       return authContext.error
     }
 
     const { adminClient, user, profile } = authContext
-    const body = await parseBody(req)
-    const action = typeof body.action === 'string' ? body.action : ''
-    const payload =
-      body.payload && typeof body.payload === 'object'
-        ? (body.payload as Record<string, unknown>)
-        : {}
 
     switch (action) {
       case 'get_metrics': {
@@ -351,7 +542,7 @@ serve(async (req) => {
           adminClient.from('sales').select('*', { count: 'exact', head: true }),
           adminClient
             .from('sales')
-            .select('id, client_id, total_price, created_at, payment_method')
+            .select('id, client_id, total_price, created_at')
             .gte('created_at', windowStartIso),
           adminClient
             .from('bookings')
@@ -359,16 +550,26 @@ serve(async (req) => {
             .eq('status', 'finished'),
         ])
 
-        if (clientsRes.error) throw clientsRes.error
-        if (membershipsRes.error) throw membershipsRes.error
-        if (profilesRes.error) throw profilesRes.error
-        if (productsRes.error) throw productsRes.error
-        if (pitchesRes.error) throw pitchesRes.error
-        if (bookingsCountRes.error) throw bookingsCountRes.error
-        if (bookingsWindowRes.error) throw bookingsWindowRes.error
-        if (salesCountRes.error) throw salesCountRes.error
-        if (salesWindowRes.error) throw salesWindowRes.error
-        if (legacyFinishedBookingsRes.error) throw legacyFinishedBookingsRes.error
+        const metricsQueryErrors = [
+          ['clients', clientsRes.error],
+          ['client_users', membershipsRes.error],
+          ['profiles', profilesRes.error],
+          ['products', productsRes.error],
+          ['pitches', pitchesRes.error],
+          ['bookings_count', bookingsCountRes.error],
+          ['bookings_window', bookingsWindowRes.error],
+          ['sales_count', salesCountRes.error],
+          ['sales_window', salesWindowRes.error],
+          ['legacy_finished_bookings', legacyFinishedBookingsRes.error],
+        ].find(([, error]) => Boolean(error))
+
+        if (metricsQueryErrors) {
+          const [queryName, queryError] = metricsQueryErrors
+          throw new HttpError(500, 'metrics_query_failed', 'No se pudieron cargar las métricas globales.', {
+            query: queryName,
+            error: formatErrorDetails(queryError),
+          })
+        }
 
         const rawClients = clientsRes.data ?? []
         const rawClientsById = new Map(rawClients.map((client: any) => [client.id, client]))
@@ -758,13 +959,19 @@ serve(async (req) => {
           .select(CLIENT_SELECT_FIELDS)
           .order('created_at', { ascending: false })
 
-        if (error) throw error
+        raiseIfQueryError(error, {
+          code: 'list_clients_query_failed',
+          message: 'No se pudieron cargar los clientes.',
+        })
 
         return ok({ clients: (data ?? []).map((client: any) => mapClientRecord(client)) })
       }
 
       case 'list_users': {
-        const { data: memberships, error: membershipError } = await adminClient
+        let memberships: any[] = []
+        let membershipsIncludeClient = true
+
+        const membershipRes = await adminClient
           .from('client_users')
           .select(`
             user_id,
@@ -779,9 +986,37 @@ serve(async (req) => {
           `)
           .order('created_at', { ascending: false })
 
-        if (membershipError) throw membershipError
+        if (membershipRes.error) {
+          if (isRelationshipSchemaError(membershipRes.error)) {
+            logWarn(context, 'list_users relation lookup failed, using fallback query', {
+              relationError: membershipRes.error.message,
+            })
+            membershipsIncludeClient = false
 
-        const userIds = [...new Set((memberships ?? []).map((membership: any) => membership.user_id))]
+            const fallbackMembershipRes = await adminClient
+              .from('client_users')
+              .select('user_id, role, created_at, client_id')
+              .order('created_at', { ascending: false })
+
+            raiseIfQueryError(fallbackMembershipRes.error, {
+              code: 'list_users_query_failed',
+              message: 'No se pudieron cargar los usuarios administradores.',
+              details: { step: 'client_users_fallback' },
+            })
+
+            memberships = fallbackMembershipRes.data ?? []
+          } else {
+            raiseIfQueryError(membershipRes.error, {
+              code: 'list_users_query_failed',
+              message: 'No se pudieron cargar los usuarios administradores.',
+              details: { step: 'client_users_primary' },
+            })
+          }
+        } else {
+          memberships = membershipRes.data ?? []
+        }
+
+        const userIds = [...new Set(memberships.map((membership: any) => membership.user_id).filter(Boolean))]
 
         if (userIds.length === 0) {
           return ok({ users: [] })
@@ -792,7 +1027,10 @@ serve(async (req) => {
           .select('id, role, client_id, full_name, phone')
           .in('id', userIds)
 
-        if (profilesError) throw profilesError
+        raiseIfQueryError(profilesError, {
+          code: 'list_users_profiles_query_failed',
+          message: 'No se pudieron cargar los perfiles asociados a los usuarios.',
+        })
 
         const authUsers: any[] = []
         let page = 1
@@ -800,7 +1038,11 @@ serve(async (req) => {
 
         while (true) {
           const { data, error } = await adminClient.auth.admin.listUsers({ page, perPage })
-          if (error) throw error
+          raiseIfQueryError(error, {
+            code: 'list_users_auth_query_failed',
+            message: 'No se pudieron cargar los usuarios de auth.',
+            details: { page },
+          })
 
           const batch = data.users ?? []
           authUsers.push(...batch)
@@ -811,11 +1053,30 @@ serve(async (req) => {
 
         const authUsersById = new Map(authUsers.map((item) => [item.id, item]))
         const profilesById = new Map((profiles ?? []).map((profile: any) => [profile.id, profile]))
+        const clientIds = [...new Set(memberships.map((membership: any) => membership.client_id).filter(Boolean))]
+        const fallbackClientsById = new Map<string, { id: string; name: string; complex_name: string | null }>()
 
-        const users = (memberships ?? [])
+        if (!membershipsIncludeClient && clientIds.length > 0) {
+          const { data: clients, error: clientsError } = await adminClient
+            .from('clients')
+            .select('id, name, complex_name')
+            .in('id', clientIds)
+
+          raiseIfQueryError(clientsError, {
+            code: 'list_users_clients_query_failed',
+            message: 'No se pudieron cargar los clientes asociados a los usuarios.',
+          })
+
+          for (const client of clients ?? []) {
+            fallbackClientsById.set(client.id, client)
+          }
+        }
+
+        const users = memberships
           .map((membership: any) => {
             const authUser = authUsersById.get(membership.user_id)
             const profile = profilesById.get(membership.user_id)
+            const membershipClient = membership.clients ?? fallbackClientsById.get(membership.client_id)
 
             if (!profile?.role || profile.role === 'superadmin') {
               return null
@@ -829,10 +1090,10 @@ serve(async (req) => {
               role: profile.role,
               membership_role: membership.role,
               client_id: profile.client_id ?? null,
-              client: membership.clients
+              client: membershipClient
                 ? {
-                    id: membership.clients.id,
-                    name: membership.clients.complex_name || membership.clients.name,
+                    id: membershipClient.id,
+                    name: membershipClient.complex_name || membershipClient.name,
                   }
                 : null,
               profile: {
@@ -900,7 +1161,9 @@ serve(async (req) => {
             return ok({ logs: data ?? [] })
           }
 
-          console.error('[admin-ops] list_audit_logs primary query failed:', error)
+          logWarn(context, 'list_audit_logs primary query failed, using fallback query', {
+            queryError: error.message,
+          })
 
           let fallbackQuery = adminClient
             .from('audit_logs')
@@ -926,18 +1189,18 @@ serve(async (req) => {
 
           const { data: fallbackData, error: fallbackError } = await fallbackQuery
           if (fallbackError) {
-            console.error('[admin-ops] list_audit_logs fallback query failed:', fallbackError)
+            logError(context, 'list_audit_logs fallback query failed', fallbackError)
             return fail(500, 'audit_logs_query_failed', 'No se pudo consultar audit_logs.', fallbackError.message)
           }
 
           return ok({ logs: fallbackData ?? [] })
         } catch (error) {
-          console.error('[admin-ops] list_audit_logs unexpected error:', error)
+          logError(context, 'list_audit_logs unexpected error', error)
           return fail(
             500,
             'audit_logs_unexpected_error',
             'Fallo inesperado al cargar auditorias.',
-            error instanceof Error ? error.message : String(error),
+            formatErrorDetails(error),
           )
         }
       }
@@ -1290,8 +1553,12 @@ serve(async (req) => {
         return fail(400, 'invalid_action', 'Acción no válida.', action)
     }
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Error inesperado en admin-ops.'
-    console.error('[admin-ops] error:', error)
-    return fail(500, 'internal_error', message)
+    if (error instanceof HttpError) {
+      logError(context, 'request failed with handled error', error)
+      return fail(error.status, error.code, error.message, error.details)
+    }
+
+    logError(context, 'unhandled request error', error)
+    return fail(500, 'internal_error', 'Error inesperado en admin-ops.', formatErrorDetails(error))
   }
 })

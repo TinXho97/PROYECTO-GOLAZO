@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createClient } from '@supabase/supabase-js';
 import { 
   Plus, 
   Trash2, 
@@ -31,7 +32,8 @@ import { Modal } from '../components/Modal';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { Badge } from '../components/Badge';
 import { dataService, api } from '../services/dataService';
-import { Pitch, Product, AuditLog } from '../types';
+import { getSupabaseAnonKey, getSupabaseUrl, supabase } from '../lib/supabase';
+import { Pitch, Product, AuditLog, User } from '../types';
 import { cn } from '../lib/utils';
 import { toast } from 'sonner';
 
@@ -39,7 +41,59 @@ interface AdminProps {
   onLogout: () => void;
 }
 
+type IsolationTestResult = {
+  id: string;
+  label: string;
+  user: string;
+  role: string;
+  clientId: string;
+  query: string;
+  status: number | string | null;
+  error: string | null;
+  rowCount: number | null;
+  passed: boolean;
+};
+
+type CrossTenantIds = {
+  otherClientId: string;
+  otherPitchId: string;
+  otherBookingId: string;
+  otherSaleId: string;
+  otherAuditLogId: string;
+};
+
+type PublicBookingProbe = {
+  clientSlug: string;
+  pitchId: string;
+  clientName: string;
+  clientPhone: string;
+};
+
+const createAnonClient = () =>
+  createClient(getSupabaseUrl(), getSupabaseAnonKey(), {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+    },
+  });
+
+const getErrorMessage = (error: unknown) => {
+  if (!error) return null;
+  if (typeof error === 'string') return error;
+  if (error instanceof Error) return error.message;
+  if (typeof error === 'object' && 'message' in error && typeof (error as { message?: unknown }).message === 'string') {
+    return (error as { message: string }).message;
+  }
+  try {
+    return JSON.stringify(error);
+  } catch {
+    return String(error);
+  }
+};
+
 export default function Admin({ onLogout }: AdminProps) {
+  const isDev = import.meta.env.DEV;
   const [pitches, setPitches] = useState<Pitch[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [isPitchModalOpen, setIsPitchModalOpen] = useState(false);
@@ -91,11 +145,50 @@ export default function Admin({ onLogout }: AdminProps) {
 
   const [productForm, setProductForm] = useState(defaultProductForm);
 
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<User | null>(null);
+  const [tenantIsolationResults, setTenantIsolationResults] = useState<IsolationTestResult[]>([]);
+  const [isTenantIsolationRunning, setIsTenantIsolationRunning] = useState(false);
+  const [crossTenantIds, setCrossTenantIds] = useState<CrossTenantIds>({
+    otherClientId: '',
+    otherPitchId: '',
+    otherBookingId: '',
+    otherSaleId: '',
+    otherAuditLogId: '',
+  });
+  const [publicBookingProbe, setPublicBookingProbe] = useState<PublicBookingProbe>({
+    clientSlug: '',
+    pitchId: '',
+    clientName: 'Prueba aislamiento',
+    clientPhone: '+5491100000000',
+  });
 
   useEffect(() => {
     dataService.getCurrentUser().then(setUser);
   }, []);
+
+  useEffect(() => {
+    if (pitches[0]?.id && !publicBookingProbe.pitchId) {
+      setPublicBookingProbe((current) => ({ ...current, pitchId: pitches[0]?.id || '' }));
+    }
+  }, [pitches, publicBookingProbe.pitchId]);
+
+  useEffect(() => {
+    const loadOwnClientPublicSlug = async () => {
+      if (!isDev || !user?.client_id || publicBookingProbe.clientSlug) return;
+
+      const { data, error } = await supabase
+        .from('clients')
+        .select('public_slug')
+        .eq('id', user.client_id)
+        .maybeSingle();
+
+      if (!error && typeof data?.public_slug === 'string' && data.public_slug.trim()) {
+        setPublicBookingProbe((current) => ({ ...current, clientSlug: data.public_slug.trim() }));
+      }
+    };
+
+    void loadOwnClientPublicSlug();
+  }, [isDev, user?.client_id, publicBookingProbe.clientSlug]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -120,6 +213,367 @@ export default function Admin({ onLogout }: AdminProps) {
     setPitches(pi);
     setProducts(pr);
     setAuditLogs(logs);
+  };
+
+  const pushIsolationResult = (result: IsolationTestResult) => {
+    console.log('[tenant-isolation]', result.label, {
+      usuario_actual: result.user,
+      role: result.role,
+      client_id: result.clientId,
+      query: result.query,
+      status: result.status,
+      error: result.error,
+      cantidad_filas: result.rowCount,
+      passed: result.passed,
+    });
+    setTenantIsolationResults((current) => [result, ...current]);
+  };
+
+  const resolveCurrentUser = async () => {
+    const currentUser = await dataService.getCurrentUser();
+    setUser(currentUser);
+    return currentUser;
+  };
+
+  const createBaseResult = (
+    label: string,
+    currentUser: User | null,
+    query: string,
+  ): Omit<IsolationTestResult, 'id' | 'status' | 'error' | 'rowCount' | 'passed'> => ({
+    label,
+    user: currentUser?.email || currentUser?.name || 'anon',
+    role: currentUser?.role || 'anon',
+    clientId: currentUser?.client_id || '(none)',
+    query,
+  });
+
+  const runAuthenticatedVisibilityTests = async () => {
+    const currentUser = await resolveCurrentUser();
+    if (!currentUser?.client_id) {
+      throw new Error('No se pudo resolver el client_id del usuario actual.');
+    }
+
+    const tests = [
+      {
+        label: 'Auth read pitches',
+        query: "select id, client_id from pitches limit 50",
+        run: () => supabase.from('pitches').select('id, client_id', { count: 'exact' }).limit(50),
+        getForeignRows: (rows: Array<Record<string, unknown>>) => rows.filter((row) => row.client_id !== currentUser.client_id),
+      },
+      {
+        label: 'Auth read bookings',
+        query: "select id, client_id from bookings limit 50",
+        run: () => supabase.from('bookings').select('id, client_id', { count: 'exact' }).limit(50),
+        getForeignRows: (rows: Array<Record<string, unknown>>) => rows.filter((row) => row.client_id !== currentUser.client_id),
+      },
+      {
+        label: 'Auth read sales',
+        query: "select id, client_id from sales limit 50",
+        run: () => supabase.from('sales').select('id, client_id', { count: 'exact' }).limit(50),
+        getForeignRows: (rows: Array<Record<string, unknown>>) => rows.filter((row) => row.client_id !== currentUser.client_id),
+      },
+      {
+        label: 'Auth read audit_logs',
+        query: "select id, client_id from audit_logs limit 50",
+        run: () => supabase.from('audit_logs').select('id, client_id', { count: 'exact' }).limit(50),
+        getForeignRows: (rows: Array<Record<string, unknown>>) => rows.filter((row) => row.client_id !== currentUser.client_id),
+      },
+      {
+        label: 'Auth read clients',
+        query: "select id, name from clients limit 10",
+        run: () => supabase.from('clients').select('id, name', { count: 'exact' }).limit(10),
+        getForeignRows: (rows: Array<Record<string, unknown>>) => rows.filter((row) => row.id !== currentUser.client_id),
+      },
+    ];
+
+    for (const test of tests) {
+      const base = createBaseResult(test.label, currentUser, test.query);
+      try {
+        const { data, error, status, count } = await test.run();
+        const rows = (data || []) as Array<Record<string, unknown>>;
+        const foreignRows = test.getForeignRows(rows);
+        pushIsolationResult({
+          ...base,
+          id: crypto.randomUUID(),
+          status: status ?? (error ? 'error' : 200),
+          error: getErrorMessage(error),
+          rowCount: count ?? rows.length,
+          passed: !error && foreignRows.length === 0,
+        });
+      } catch (error) {
+        pushIsolationResult({
+          ...base,
+          id: crypto.randomUUID(),
+          status: 'exception',
+          error: getErrorMessage(error),
+          rowCount: null,
+          passed: false,
+        });
+      }
+    }
+  };
+
+  const runCrossTenantIdTests = async () => {
+    const currentUser = await resolveCurrentUser();
+    const tests = [
+      {
+        label: 'Cross-tenant pitch by ID',
+        foreignId: crossTenantIds.otherPitchId,
+        query: `select id, client_id from pitches where id = '${crossTenantIds.otherPitchId || '(missing)'}'`,
+        run: () => supabase.from('pitches').select('id, client_id', { count: 'exact' }).eq('id', crossTenantIds.otherPitchId),
+      },
+      {
+        label: 'Cross-tenant booking by ID',
+        foreignId: crossTenantIds.otherBookingId,
+        query: `select id, client_id from bookings where id = '${crossTenantIds.otherBookingId || '(missing)'}'`,
+        run: () => supabase.from('bookings').select('id, client_id', { count: 'exact' }).eq('id', crossTenantIds.otherBookingId),
+      },
+      {
+        label: 'Cross-tenant sale by ID',
+        foreignId: crossTenantIds.otherSaleId,
+        query: `select id, client_id from sales where id = '${crossTenantIds.otherSaleId || '(missing)'}'`,
+        run: () => supabase.from('sales').select('id, client_id', { count: 'exact' }).eq('id', crossTenantIds.otherSaleId),
+      },
+      {
+        label: 'Cross-tenant audit log by ID',
+        foreignId: crossTenantIds.otherAuditLogId,
+        query: `select id, client_id from audit_logs where id = '${crossTenantIds.otherAuditLogId || '(missing)'}'`,
+        run: () => supabase.from('audit_logs').select('id, client_id', { count: 'exact' }).eq('id', crossTenantIds.otherAuditLogId),
+      },
+      {
+        label: 'Cross-tenant client by ID',
+        foreignId: crossTenantIds.otherClientId,
+        query: `select id, name from clients where id = '${crossTenantIds.otherClientId || '(missing)'}'`,
+        run: () => supabase.from('clients').select('id, name', { count: 'exact' }).eq('id', crossTenantIds.otherClientId),
+      },
+    ];
+
+    for (const test of tests) {
+      const base = createBaseResult(test.label, currentUser, test.query);
+      if (!test.foreignId) {
+        pushIsolationResult({
+          ...base,
+          id: crypto.randomUUID(),
+          status: 'missing-input',
+          error: 'Falta pegar el ID del otro tenant para esta prueba.',
+          rowCount: null,
+          passed: false,
+        });
+        continue;
+      }
+
+      try {
+        const { data, error, status, count } = await test.run();
+        const rows = (data || []) as Array<Record<string, unknown>>;
+        pushIsolationResult({
+          ...base,
+          id: crypto.randomUUID(),
+          status: status ?? (error ? 'error' : 200),
+          error: getErrorMessage(error),
+          rowCount: count ?? rows.length,
+          passed: Boolean(error) || rows.length === 0,
+        });
+      } catch (error) {
+        pushIsolationResult({
+          ...base,
+          id: crypto.randomUUID(),
+          status: 'exception',
+          error: getErrorMessage(error),
+          rowCount: null,
+          passed: false,
+        });
+      }
+    }
+  };
+
+  const runAnonymousBaseReadTests = async () => {
+    const anon = createAnonClient();
+    const tests = [
+      {
+        label: 'Anon read pitches',
+        query: "anon select id, client_id from pitches limit 20",
+        run: () => anon.from('pitches').select('id, client_id', { count: 'exact' }).limit(20),
+      },
+      {
+        label: 'Anon read bookings',
+        query: "anon select id, client_id from bookings limit 20",
+        run: () => anon.from('bookings').select('id, client_id', { count: 'exact' }).limit(20),
+      },
+      {
+        label: 'Anon read sales',
+        query: "anon select id, client_id from sales limit 20",
+        run: () => anon.from('sales').select('id, client_id', { count: 'exact' }).limit(20),
+      },
+      {
+        label: 'Anon read audit_logs',
+        query: "anon select id, client_id from audit_logs limit 20",
+        run: () => anon.from('audit_logs').select('id, client_id', { count: 'exact' }).limit(20),
+      },
+      {
+        label: 'Anon read clients',
+        query: "anon select id, name from clients limit 20",
+        run: () => anon.from('clients').select('id, name', { count: 'exact' }).limit(20),
+      },
+    ];
+
+    for (const test of tests) {
+      const base = createBaseResult(test.label, null, test.query);
+      try {
+        const { data, error, status, count } = await test.run();
+        const rows = (data || []) as Array<Record<string, unknown>>;
+        pushIsolationResult({
+          ...base,
+          id: crypto.randomUUID(),
+          status: status ?? (error ? 'error' : 200),
+          error: getErrorMessage(error),
+          rowCount: count ?? rows.length,
+          passed: Boolean(error) || rows.length === 0,
+        });
+      } catch (error) {
+        pushIsolationResult({
+          ...base,
+          id: crypto.randomUUID(),
+          status: 'exception',
+          error: getErrorMessage(error),
+          rowCount: null,
+          passed: false,
+        });
+      }
+    }
+  };
+
+  const runAnonymousBookingInsertTest = async () => {
+    const currentUser = await resolveCurrentUser();
+    const anon = createAnonClient();
+    const start = new Date(Date.now() + 2 * 60 * 60 * 1000);
+    const end = new Date(start.getTime() + 60 * 60 * 1000);
+    const query = `anon insert into bookings using pitch_id='${publicBookingProbe.pitchId || '(missing)'}' client_id='${currentUser?.client_id || '(missing)'}'`;
+    const base = createBaseResult('Anon insert booking', null, query);
+
+    if (!currentUser?.client_id || !publicBookingProbe.pitchId) {
+      pushIsolationResult({
+        ...base,
+        id: crypto.randomUUID(),
+        status: 'missing-input',
+        error: 'Hace falta un client_id resuelto y un pitch_id para probar el insert anon.',
+        rowCount: null,
+        passed: false,
+      });
+      return;
+    }
+
+    try {
+      const { data, error, status } = await anon
+        .from('bookings')
+        .insert({
+          pitch_id: publicBookingProbe.pitchId,
+          user_id: null,
+          client_name: 'Anon probe',
+          client_phone: '+5491100000001',
+          date: start.toISOString().slice(0, 10),
+          time: start.toISOString().slice(11, 19),
+          start_time: start.toISOString(),
+          end_time: end.toISOString(),
+          status: 'pending',
+          deposit_amount: 0,
+          is_paid: false,
+          client_id: currentUser.client_id,
+        })
+        .select('id');
+
+      pushIsolationResult({
+        ...base,
+        id: crypto.randomUUID(),
+        status: status ?? (error ? 'error' : 201),
+        error: getErrorMessage(error),
+        rowCount: Array.isArray(data) ? data.length : 0,
+        passed: Boolean(error) || !data || data.length === 0,
+      });
+    } catch (error) {
+      pushIsolationResult({
+        ...base,
+        id: crypto.randomUUID(),
+        status: 'exception',
+        error: getErrorMessage(error),
+        rowCount: null,
+        passed: false,
+      });
+    }
+  };
+
+  const runPublicBookingFunctionTest = async () => {
+    const currentUser = await resolveCurrentUser();
+    const start = new Date(Date.now() + 3 * 60 * 60 * 1000);
+    start.setMinutes(0, 0, 0);
+    const body = {
+      client_slug: publicBookingProbe.clientSlug.trim(),
+      pitch_id: publicBookingProbe.pitchId.trim(),
+      start_time: start.toISOString(),
+      client_name: publicBookingProbe.clientName.trim(),
+      client_phone: publicBookingProbe.clientPhone.trim(),
+      notes: 'tenant-isolation-dev-probe',
+    };
+    const query = `POST /functions/v1/public-create-booking ${JSON.stringify(body)}`;
+    const base = createBaseResult('Public create booking', currentUser, query);
+
+    if (!body.client_slug || !body.pitch_id || !body.client_name || !body.client_phone) {
+      pushIsolationResult({
+        ...base,
+        id: crypto.randomUUID(),
+        status: 'missing-input',
+        error: 'Completa client_slug, pitch_id, client_name y client_phone para probar public-create-booking.',
+        rowCount: null,
+        passed: false,
+      });
+      return;
+    }
+
+    try {
+      const response = await fetch(`${getSupabaseUrl()}/functions/v1/public-create-booking`, {
+        method: 'POST',
+        headers: {
+          apikey: getSupabaseAnonKey(),
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+      });
+      const responseBody = await response.json().catch(() => null);
+      const bookingClientId = (responseBody as { data?: { booking?: { client_id?: string } } } | null)?.data?.booking?.client_id || null;
+      pushIsolationResult({
+        ...base,
+        id: crypto.randomUUID(),
+        status: response.status,
+        error: response.ok ? null : getErrorMessage((responseBody as { error?: unknown } | null)?.error),
+        rowCount: (responseBody as { data?: { booking?: unknown } } | null)?.data?.booking ? 1 : 0,
+        passed: response.ok && bookingClientId === currentUser?.client_id,
+      });
+      console.log('[tenant-isolation] Public create booking response body', responseBody);
+    } catch (error) {
+      pushIsolationResult({
+        ...base,
+        id: crypto.randomUUID(),
+        status: 'exception',
+        error: getErrorMessage(error),
+        rowCount: null,
+        passed: false,
+      });
+    }
+  };
+
+  const runTenantIsolationSuite = async () => {
+    setIsTenantIsolationRunning(true);
+    setTenantIsolationResults([]);
+    try {
+      await runAuthenticatedVisibilityTests();
+      await runCrossTenantIdTests();
+      await runAnonymousBaseReadTests();
+      await runAnonymousBookingInsertTest();
+      toast.success('Suite de aislamiento ejecutada. Revisa consola y resultados.');
+    } catch (error) {
+      toast.error(getErrorMessage(error) || 'No se pudo ejecutar la suite de aislamiento.');
+    } finally {
+      setIsTenantIsolationRunning(false);
+    }
   };
 
   const handleSavePitch = async (e: React.FormEvent) => {
@@ -793,6 +1247,222 @@ export default function Admin({ onLogout }: AdminProps) {
                       </CardContent>
                     </Card>
                   </div>
+
+                  {isDev && (
+                    <Card className="border border-amber-200 bg-amber-50/70 shadow-sm rounded-[40px] overflow-hidden">
+                      <CardHeader className="p-8 pb-4">
+                        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                          <div className="space-y-2">
+                            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-100 text-amber-900 text-[10px] font-black uppercase tracking-widest">
+                              Debug multi-tenant
+                            </div>
+                            <h3 className="text-2xl font-black text-zinc-900 tracking-tight uppercase">Checklist de Aislamiento</h3>
+                            <p className="text-sm text-zinc-600 font-medium max-w-3xl">
+                              Ejecuta este panel logueado como Cliente A y luego como Cliente B. No se muestra en producci&oacute;n porque est&aacute; gated por <code>import.meta.env.DEV</code>.
+                            </p>
+                          </div>
+                          <div className="rounded-3xl bg-white border border-amber-200 px-5 py-4 text-xs font-bold text-zinc-700 space-y-1 min-w-[260px]">
+                            <div>Usuario actual: <span className="font-mono text-zinc-900">{user?.email || user?.name || 'sin sesion'}</span></div>
+                            <div>Role: <span className="font-mono text-zinc-900">{user?.role || 'sin rol'}</span></div>
+                            <div>Client ID: <span className="font-mono text-zinc-900 break-all">{user?.client_id || '(none)'}</span></div>
+                          </div>
+                        </div>
+                      </CardHeader>
+                      <CardContent className="p-8 pt-0 space-y-8">
+                        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 text-sm text-zinc-700">
+                          <div className="rounded-[28px] bg-white border border-amber-200 p-6 space-y-3">
+                            <h4 className="text-xs font-black uppercase tracking-widest text-zinc-900">Checklist manual</h4>
+                            <div>1. Login como admin del Cliente A y corr&eacute; la suite.</div>
+                            <div>2. Copi&aacute; IDs reales de A y peg&aacute; IDs reales de B en los campos cruzados.</div>
+                            <div>3. Verific&aacute; lecturas autenticadas de <code>pitches</code>, <code>bookings</code>, <code>sales</code>, <code>audit_logs</code> y <code>clients</code>.</div>
+                            <div>4. Intent&aacute; consultar registros del otro tenant por ID y confirm&aacute; que no vuelvan filas.</div>
+                            <div>5. Prob&aacute; lecturas an&oacute;nimas a tablas base y el insert an&oacute;nimo directo en <code>bookings</code>.</div>
+                            <div>6. Ejecut&aacute; <code>public-create-booking</code> con un <code>client_slug</code> y <code>pitch_id</code> p&uacute;blicos del tenant actual.</div>
+                            <div>7. Repet&iacute; exactamente lo mismo como Cliente B.</div>
+                          </div>
+                          <div className="rounded-[28px] bg-white border border-amber-200 p-6 space-y-3">
+                            <h4 className="text-xs font-black uppercase tracking-widest text-zinc-900">IDs &uacute;tiles de este tenant</h4>
+                            <div>Primer pitch visible: <span className="font-mono break-all">{pitches[0]?.id || '(sin datos)'}</span></div>
+                            <div>Primer audit log visible: <span className="font-mono break-all">{auditLogs[0]?.id || '(sin datos)'}</span></div>
+                            <div>Pitch sugerido para reserva p&uacute;blica: <span className="font-mono break-all">{publicBookingProbe.pitchId || '(completar)'}</span></div>
+                            <div>Slug p&uacute;blico sugerido: <span className="font-mono break-all">{publicBookingProbe.clientSlug || '(completar)'}</span></div>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                          <div className="rounded-[28px] bg-white border border-amber-200 p-6 space-y-4">
+                            <h4 className="text-xs font-black uppercase tracking-widest text-zinc-900">IDs del otro tenant</h4>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              <input
+                                type="text"
+                                placeholder="other client id"
+                                className="w-full px-4 py-3 rounded-2xl bg-zinc-50 border border-zinc-200 font-mono text-sm"
+                                value={crossTenantIds.otherClientId}
+                                onChange={(e) => setCrossTenantIds((current) => ({ ...current, otherClientId: e.target.value }))}
+                              />
+                              <input
+                                type="text"
+                                placeholder="other pitch id"
+                                className="w-full px-4 py-3 rounded-2xl bg-zinc-50 border border-zinc-200 font-mono text-sm"
+                                value={crossTenantIds.otherPitchId}
+                                onChange={(e) => setCrossTenantIds((current) => ({ ...current, otherPitchId: e.target.value }))}
+                              />
+                              <input
+                                type="text"
+                                placeholder="other booking id"
+                                className="w-full px-4 py-3 rounded-2xl bg-zinc-50 border border-zinc-200 font-mono text-sm"
+                                value={crossTenantIds.otherBookingId}
+                                onChange={(e) => setCrossTenantIds((current) => ({ ...current, otherBookingId: e.target.value }))}
+                              />
+                              <input
+                                type="text"
+                                placeholder="other sale id"
+                                className="w-full px-4 py-3 rounded-2xl bg-zinc-50 border border-zinc-200 font-mono text-sm"
+                                value={crossTenantIds.otherSaleId}
+                                onChange={(e) => setCrossTenantIds((current) => ({ ...current, otherSaleId: e.target.value }))}
+                              />
+                              <input
+                                type="text"
+                                placeholder="other audit log id"
+                                className="w-full px-4 py-3 rounded-2xl bg-zinc-50 border border-zinc-200 font-mono text-sm md:col-span-2"
+                                value={crossTenantIds.otherAuditLogId}
+                                onChange={(e) => setCrossTenantIds((current) => ({ ...current, otherAuditLogId: e.target.value }))}
+                              />
+                            </div>
+                            <Button
+                              variant="outline"
+                              className="w-full py-4 rounded-2xl border-amber-300 text-amber-950 hover:bg-amber-100 font-black text-xs uppercase tracking-widest"
+                              disabled={isTenantIsolationRunning}
+                              onClick={runCrossTenantIdTests}
+                            >
+                              Probar IDs cruzados
+                            </Button>
+                          </div>
+
+                          <div className="rounded-[28px] bg-white border border-amber-200 p-6 space-y-4">
+                            <h4 className="text-xs font-black uppercase tracking-widest text-zinc-900">Reserva p&uacute;blica</h4>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              <input
+                                type="text"
+                                placeholder="client_slug"
+                                className="w-full px-4 py-3 rounded-2xl bg-zinc-50 border border-zinc-200 font-mono text-sm"
+                                value={publicBookingProbe.clientSlug}
+                                onChange={(e) => setPublicBookingProbe((current) => ({ ...current, clientSlug: e.target.value }))}
+                              />
+                              <input
+                                type="text"
+                                placeholder="pitch_id"
+                                className="w-full px-4 py-3 rounded-2xl bg-zinc-50 border border-zinc-200 font-mono text-sm"
+                                value={publicBookingProbe.pitchId}
+                                onChange={(e) => setPublicBookingProbe((current) => ({ ...current, pitchId: e.target.value }))}
+                              />
+                              <input
+                                type="text"
+                                placeholder="client_name"
+                                className="w-full px-4 py-3 rounded-2xl bg-zinc-50 border border-zinc-200 text-sm"
+                                value={publicBookingProbe.clientName}
+                                onChange={(e) => setPublicBookingProbe((current) => ({ ...current, clientName: e.target.value }))}
+                              />
+                              <input
+                                type="text"
+                                placeholder="client_phone"
+                                className="w-full px-4 py-3 rounded-2xl bg-zinc-50 border border-zinc-200 text-sm"
+                                value={publicBookingProbe.clientPhone}
+                                onChange={(e) => setPublicBookingProbe((current) => ({ ...current, clientPhone: e.target.value }))}
+                              />
+                            </div>
+                            <Button
+                              className="w-full py-4 rounded-2xl font-black text-xs uppercase tracking-widest"
+                              disabled={isTenantIsolationRunning}
+                              onClick={runPublicBookingFunctionTest}
+                            >
+                              Probar public-create-booking
+                            </Button>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-col lg:flex-row gap-3">
+                          <Button
+                            className="py-4 px-6 rounded-2xl font-black text-xs uppercase tracking-widest"
+                            disabled={isTenantIsolationRunning}
+                            onClick={runTenantIsolationSuite}
+                          >
+                            {isTenantIsolationRunning ? 'Ejecutando suite...' : 'Correr suite completa'}
+                          </Button>
+                          <Button
+                            variant="outline"
+                            className="py-4 px-6 rounded-2xl font-black text-xs uppercase tracking-widest border-zinc-200"
+                            disabled={isTenantIsolationRunning}
+                            onClick={runAuthenticatedVisibilityTests}
+                          >
+                            Solo lecturas autenticadas
+                          </Button>
+                          <Button
+                            variant="outline"
+                            className="py-4 px-6 rounded-2xl font-black text-xs uppercase tracking-widest border-zinc-200"
+                            disabled={isTenantIsolationRunning}
+                            onClick={runAnonymousBaseReadTests}
+                          >
+                            Solo lecturas an&oacute;nimas
+                          </Button>
+                          <Button
+                            variant="outline"
+                            className="py-4 px-6 rounded-2xl font-black text-xs uppercase tracking-widest border-zinc-200"
+                            disabled={isTenantIsolationRunning}
+                            onClick={runAnonymousBookingInsertTest}
+                          >
+                            Solo insert anon en bookings
+                          </Button>
+                        </div>
+
+                        <div className="rounded-[28px] bg-white border border-amber-200 overflow-hidden">
+                          <div className="px-6 py-4 border-b border-amber-200 flex items-center justify-between gap-4">
+                            <h4 className="text-xs font-black uppercase tracking-widest text-zinc-900">Resultados</h4>
+                            <Button
+                              variant="ghost"
+                              className="text-[10px] font-black uppercase tracking-widest"
+                              onClick={() => setTenantIsolationResults([])}
+                            >
+                              Limpiar
+                            </Button>
+                          </div>
+                          <div className="max-h-[32rem] overflow-auto">
+                            {tenantIsolationResults.length === 0 ? (
+                              <div className="px-6 py-10 text-sm text-zinc-500 font-medium">
+                                Todav&iacute;a no corriste pruebas en este login.
+                              </div>
+                            ) : (
+                              <div className="divide-y divide-amber-100">
+                                {tenantIsolationResults.map((result) => (
+                                  <div key={result.id} className="px-6 py-5 space-y-3">
+                                    <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+                                      <div className="font-black text-zinc-900 uppercase tracking-tight">{result.label}</div>
+                                      <Badge variant={result.passed ? 'success' : 'danger'} className="text-[10px] font-black uppercase tracking-widest">
+                                        {result.passed ? 'PASS' : 'FAIL'}
+                                      </Badge>
+                                    </div>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 text-xs">
+                                      <div className="rounded-2xl bg-zinc-50 border border-zinc-200 p-3"><div className="text-zinc-400 font-black uppercase tracking-widest mb-1">Usuario</div><div className="font-mono break-all text-zinc-900">{result.user}</div></div>
+                                      <div className="rounded-2xl bg-zinc-50 border border-zinc-200 p-3"><div className="text-zinc-400 font-black uppercase tracking-widest mb-1">Role</div><div className="font-mono text-zinc-900">{result.role}</div></div>
+                                      <div className="rounded-2xl bg-zinc-50 border border-zinc-200 p-3"><div className="text-zinc-400 font-black uppercase tracking-widest mb-1">Client ID</div><div className="font-mono break-all text-zinc-900">{result.clientId}</div></div>
+                                      <div className="rounded-2xl bg-zinc-50 border border-zinc-200 p-3"><div className="text-zinc-400 font-black uppercase tracking-widest mb-1">Status / filas</div><div className="font-mono text-zinc-900">{String(result.status)} / {result.rowCount ?? 'n/a'}</div></div>
+                                    </div>
+                                    <div className="rounded-2xl bg-zinc-950 text-zinc-100 p-4 text-xs font-mono break-words">
+                                      {result.query}
+                                    </div>
+                                    <div className="text-xs">
+                                      <span className="font-black uppercase tracking-widest text-zinc-400">Error:</span>{' '}
+                                      <span className="font-mono text-zinc-700 break-all">{result.error || 'null'}</span>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
                 </div>
               )}
             </motion.div>

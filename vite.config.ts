@@ -6,6 +6,8 @@ import {defineConfig, loadEnv} from 'vite';
 export default defineConfig(({mode}) => {
   const env = loadEnv(mode, '.', '');
   const supabaseUrl = (env.VITE_SUPABASE_URL || '').trim().replace(/\/$/, '');
+  const disableHmr = process.env.DISABLE_HMR === 'true';
+
   return {
     plugins: [react(), tailwindcss()],
     define: {
@@ -17,9 +19,20 @@ export default defineConfig(({mode}) => {
       },
     },
     server: {
-      // HMR is disabled in AI Studio via DISABLE_HMR env var.
-      // Do not modifyâfile watching is disabled to prevent flickering during agent edits.
-      hmr: process.env.DISABLE_HMR !== 'true',
+      host: '0.0.0.0',
+      port: 3000,
+      strictPort: true,
+      // In local dev the browser opens the app at http://localhost:3000.
+      // Pin the HMR websocket to that same endpoint so live reload works
+      // without changing remote Supabase requests or the existing proxy.
+      hmr: disableHmr
+        ? false
+        : {
+            protocol: 'ws',
+            host: 'localhost',
+            port: 3000,
+            clientPort: 3000,
+          },
       proxy: supabaseUrl
         ? {
             '/api/admin-ops': {
