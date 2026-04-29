@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Modal } from './Modal';
-import { Button } from './Button';
-import { Pitch, Booking } from '../types';
+import { Modal } from '../Modal';
+import { Button } from '../Button';
+import { Pitch, Booking } from '../../types';
 import { format, isSameDay } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { Download, Share2, Link as LinkIcon, Loader2 } from 'lucide-react';

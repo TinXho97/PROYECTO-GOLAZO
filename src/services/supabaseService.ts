@@ -734,6 +734,7 @@ export const supabaseService = {
   // Products
   getProducts: async (clientId?: string) => {
     log('Fetching products...', { clientId });
+    if (!clientId) return [];
     const requiredClientId = ensureClientId(clientId, 'Listar productos');
 
     const { data, error } = await supabase
@@ -925,6 +926,7 @@ export const supabaseService = {
   // Sales
   getSales: async (clientId?: string, limit: number = 100) => {
     log('Fetching sales...', { clientId });
+    if (!clientId) return [];
     const requiredClientId = ensureClientId(clientId, 'Listar ventas');
     const query = supabase
       .from('sales')
@@ -1177,6 +1179,7 @@ export const supabaseService = {
   getAuditLogs: async (filters?: string | AuditLogFilters) => {
   const { clientId, limit } = resolveAuditFilters(filters);
   log('Fetching audit logs...', { clientId, limit });
+  if (!clientId) return [];
   const requiredClientId = ensureClientId(clientId, 'Listar auditoria');
   let query = supabase
     .from('audit_logs')
@@ -1232,6 +1235,7 @@ export const supabaseService = {
   // Deactivated Slots
   getDeactivatedSlots: async (clientId?: string) => {
     log('Fetching deactivated slots...', { clientId });
+    if (!clientId) return [];
     const requiredClientId = ensureClientId(clientId, 'Listar slots desactivados');
     const query = supabase
       .from('deactivated_slots')
@@ -1340,6 +1344,7 @@ export const supabaseService = {
   // Notifications
   getNotifications: async (clientId?: string) => {
     log('Fetching notifications...', { clientId });
+    if (!clientId) return [];
     const requiredClientId = ensureClientId(clientId, 'Listar notificaciones');
     const query = supabase
       .from('notifications')
@@ -1392,5 +1397,3 @@ export const supabaseService = {
     }
   }
 };
-
-

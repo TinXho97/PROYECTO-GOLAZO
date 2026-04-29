@@ -21,7 +21,17 @@ export const getSupabaseDiagnostics = () => ({
 
 const customFetch: typeof fetch = async (input, init) => {
   try {
-    return await fetch(input, init);
+    const response = await fetch(input, init);
+    
+    // Interceptar 401 Unauthorized globalmente
+    if (response.status === 401) {
+      if (typeof window !== 'undefined' && window.location.pathname !== '/' && window.location.pathname !== '/login') {
+        console.warn('[Supabase Auth] Token expirado o inválido (401). Redirigiendo al login...');
+        window.location.href = '/';
+      }
+    }
+    
+    return response;
   } catch (error: any) {
     if (error?.name === 'TypeError' && error?.message === 'Failed to fetch') {
       throw new Error(

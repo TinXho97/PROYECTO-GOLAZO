@@ -34,6 +34,7 @@ import { dataService, api } from '../services/dataService';
 import { Pitch, Product, AuditLog, User } from '../types';
 import { cn } from '../lib/utils';
 import { toast } from 'sonner';
+import { AvatarFallback } from '../components/ui/AvatarFallback';
 
 interface AdminProps {
   onLogout: () => void;
@@ -379,7 +380,7 @@ export default function Admin({ onLogout }: AdminProps) {
                             )}>
                               {customLogo ? (
                                 <>
-                                  <img src={customLogo} alt="Logo" className="w-full h-full object-contain p-6" />
+                                <AvatarFallback src={customLogo} name="Complejo" className="w-full h-full rounded-[48px] bg-transparent object-contain p-6" />
                                   <div className="absolute inset-0 bg-zinc-900/60 opacity-0 group-hover:opacity-100 transition-all duration-300 flex items-center justify-center gap-3 backdrop-blur-sm">
                                     <label className="cursor-pointer">
                                       <input type="file" className="hidden" onChange={handleLogoUpload} accept="image/*" />

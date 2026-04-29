@@ -256,24 +256,33 @@ export const dataService = {
   // Pitches
   getPitches: async (clientId?: string) => {
     if (isSupabaseConfigured()) {
-      return await supabaseService.getPitches(clientId);
+      try {
+        return await supabaseService.getPitches(clientId);
+      } catch (error) {
+        console.error('Error fetching pitches:', error);
+        return [];
+      }
     }
     return getStorage<Pitch[]>('golazo_pitches', MOCK_PITCHES)
       .filter((pitch) => pitch.active && (!clientId || pitch.client_id === clientId));
   },
   getPublicPitches: async (clientId?: string) => {
     if (isSupabaseConfigured()) {
-      return await supabaseService.getPublicPitches(clientId);
+      try {
+        return await supabaseService.getPublicPitches(clientId);
+      } catch (error) {
+        console.error('Error fetching public pitches:', error);
+        return [];
+      }
     }
 
     const pitches = getStorage<Pitch[]>('golazo_pitches', MOCK_PITCHES);
     return clientId ? pitches.filter((pitch) => pitch.client_id === clientId && pitch.active !== false) : pitches;
   },
   savePitches: async (pitches: Pitch[]) => {
-    if (isSupabaseConfigured()) {
-      // Typically handled by individual add/update/delete calls in Supabase
+    if (!isSupabaseConfigured()) {
+      throw new Error('Operación denegada: Sin conexión a Supabase.');
     }
-    setStorage('golazo_pitches', pitches);
   },
   createPublicBooking: async (payload: {
     client_slug: string;
@@ -306,7 +315,12 @@ export const dataService = {
   // Bookings
   hasCompletedBookings: async (identifier: string, clientId?: string) => {
     if (isSupabaseConfigured()) {
-      return await supabaseService.hasCompletedBookings(identifier, clientId);
+      try {
+        return await supabaseService.hasCompletedBookings(identifier, clientId);
+      } catch (error) {
+        console.error('Error checking completed bookings:', error);
+        return false;
+      }
     }
     const bookings = getStorage<Booking[]>('golazo_bookings', MOCK_BOOKINGS);
     return bookings.some(b => 
@@ -318,7 +332,12 @@ export const dataService = {
 
   getBookings: async (clientId?: string, startDate?: string, endDate?: string) => {
     if (isSupabaseConfigured()) {
-      return await supabaseService.getBookings(clientId, startDate, endDate);
+      try {
+        return await supabaseService.getBookings(clientId, startDate, endDate);
+      } catch (error) {
+        console.error('Error fetching bookings:', error);
+        return [];
+      }
     }
     const bookings = getStorage<Booking[]>('golazo_bookings', MOCK_BOOKINGS);
     const now = new Date();
@@ -344,21 +363,39 @@ export const dataService = {
       return match;
     });
   },
-  saveBookings: async (bookings: Booking[]) => setStorage('golazo_bookings', bookings),
+  saveBookings: async (bookings: Booking[]) => {
+    if (!isSupabaseConfigured()) {
+      throw new Error('Operación denegada: Sin conexión a Supabase.');
+    }
+  },
   
   // Products
   getProducts: async (clientId?: string) => {
     if (isSupabaseConfigured()) {
-      return await supabaseService.getProducts(clientId);
+      try {
+        return await supabaseService.getProducts(clientId);
+      } catch (error) {
+        console.error('Error fetching products:', error);
+        return [];
+      }
     }
     return getStorage<Product[]>('golazo_products', MOCK_PRODUCTS);
   },
-  saveProducts: async (products: Product[]) => setStorage('golazo_products', products),
+  saveProducts: async (products: Product[]) => {
+    if (!isSupabaseConfigured()) {
+      throw new Error('Operación denegada: Sin conexión a Supabase.');
+    }
+  },
   
   // Sales
   getSales: async (clientId?: string) => {
     if (isSupabaseConfigured()) {
-      return await supabaseService.getSales(clientId);
+      try {
+        return await supabaseService.getSales(clientId);
+      } catch (error) {
+        console.error('Error fetching sales:', error);
+        return [];
+      }
     }
     const sales = getStorage<Sale[]>('golazo_sales', []);
     return sales.map(s => ({
@@ -366,7 +403,11 @@ export const dataService = {
       totalPrice: typeof s.totalPrice === 'object' && s.totalPrice !== null ? Number((s.totalPrice as any).total) || 0 : Number(s.totalPrice) || 0,
     }));
   },
-  saveSales: async (sales: Sale[]) => setStorage('golazo_sales', sales),
+  saveSales: async (sales: Sale[]) => {
+    if (!isSupabaseConfigured()) {
+      throw new Error('Operación denegada: Sin conexión a Supabase.');
+    }
+  },
 
   getCurrentUser: async () => {
     if (!isSupabaseConfigured()) return null;
@@ -375,6 +416,8 @@ export const dataService = {
       error: sessionError,
     } = await supabase.auth.getSession();
     if (sessionError || !session?.user) return null;
+
+    console.log('JWT Actual Decodificado:', session.access_token);
 
     const { data: profile, error: profileError } = await supabase
       .from('profiles')
@@ -514,7 +557,12 @@ export const dataService = {
       throw new Error('Listar auditoria: client_id es obligatorio');
     }
     if (isSupabaseConfigured()) {
-      return await supabaseService.getAuditLogs(resolvedFilters);
+      try {
+        return await supabaseService.getAuditLogs(resolvedFilters);
+      } catch (error) {
+        console.error('Error fetching audit logs:', error);
+        return [];
+      }
     }
     const logs = getStorage<AuditLog[]>('golazo_audit_logs', []);
     return logs
@@ -523,7 +571,11 @@ export const dataService = {
       .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
       .slice(0, resolvedFilters.limit);
   },
-  saveAuditLogs: async (logs: AuditLog[]) => setStorage('golazo_audit_logs', logs),
+  saveAuditLogs: async (logs: AuditLog[]) => {
+    if (!isSupabaseConfigured()) {
+      throw new Error('Operación denegada: Sin conexión a Supabase.');
+    }
+  },
   logAction: async (entry: AuditLogInput) => {
     const user = await dataService.getCurrentUser();
     const targetClientId = entry.client_id || user?.client_id;
@@ -563,8 +615,13 @@ export const dataService = {
   // Deactivated Slots
   getDeactivatedSlots: async (clientId?: string) => {
     if (isSupabaseConfigured()) {
-      const slots = await supabaseService.getDeactivatedSlots(clientId);
-      return new Set(slots.map(s => `${s.slot_date}-${s.slot_hour}-${s.pitch_id}`));
+      try {
+        const slots = await supabaseService.getDeactivatedSlots(clientId);
+        return new Set(slots.map(s => `${s.slot_date}-${s.slot_hour}-${s.pitch_id}`));
+      } catch (error) {
+        console.error('Error fetching deactivated slots:', error);
+        return new Set<string>();
+      }
     }
     return new Set<string>();
   },
@@ -588,36 +645,15 @@ export const api = {
 
     let createdBooking!: Booking;
     
-    if (isSupabaseConfigured()) {
-      try {
-        createdBooking = await supabaseService.addBooking({ ...booking, client_id: targetClientId });
-      } catch (error) {
-        console.error('Error adding booking to Supabase:', error);
-        throw error;
-      }
-    } else {
-      const bookings = await dataService.getBookings(targetClientId);
-      
-      // Overlap check
-      const hasOverlap = bookings.some(existing => {
-        if (existing.pitchId !== booking.pitchId || existing.status === 'cancelled') return false;
-        return (
-          (booking.startTime >= existing.startTime && booking.startTime < existing.endTime) ||
-          (booking.endTime > existing.startTime && booking.endTime <= existing.endTime) ||
-          (booking.startTime <= existing.startTime && booking.endTime >= existing.endTime)
-        );
-      });
+    if (!isSupabaseConfigured()) {
+      throw new Error('Operación denegada: Sin conexión a Supabase.');
+    }
 
-      if (hasOverlap) throw new Error('Horario ocupado en esta cancha.');
-
-      createdBooking = {
-        ...booking,
-        id: Math.random().toString(36).substr(2, 9),
-        createdAt: new Date(),
-        client_id: targetClientId
-      };
-      
-      dataService.saveBookings([...bookings, createdBooking]);
+    try {
+      createdBooking = await supabaseService.addBooking({ ...booking, client_id: targetClientId });
+    } catch (error) {
+      console.error('Error adding booking to Supabase:', error);
+      throw error;
     }
 
     await dataService.logAction({
@@ -646,15 +682,15 @@ export const api = {
     const booking = bookings.find(b => b.id === id);
     const targetClientId = requireClientId(clientId || booking?.client_id, 'Cancelar reserva');
 
-    if (isSupabaseConfigured()) {
-      try {
-        await supabaseService.cancelBooking(id, targetClientId);
-      } catch (error) {
-        console.error('Error cancelling booking in Supabase:', error);
-      }
-    } else {
-      const updated = bookings.map(b => b.id === id ? { ...b, status: 'cancelled' as const } : b);
-      dataService.saveBookings(updated);
+    if (!isSupabaseConfigured()) {
+      throw new Error('Operación denegada: Sin conexión a Supabase.');
+    }
+
+    try {
+      await supabaseService.cancelBooking(id, targetClientId);
+    } catch (error) {
+      console.error('Error cancelling booking:', error);
+      throw error;
     }
 
     if (booking && targetClientId) {
@@ -679,15 +715,15 @@ export const api = {
     const booking = bookings.find(b => b.id === id);
     const targetClientId = requireClientId(clientId || booking?.client_id, 'Actualizar reserva');
 
-    if (isSupabaseConfigured()) {
-      try {
-        await supabaseService.updateBookingStatus(id, status, targetClientId);
-      } catch (error) {
-        console.error('Error updating booking status in Supabase:', error);
-      }
-    } else {
-      const updated = bookings.map(b => b.id === id ? { ...b, status } : b);
-      dataService.saveBookings(updated);
+    if (!isSupabaseConfigured()) {
+      throw new Error('Operación denegada: Sin conexión a Supabase.');
+    }
+
+    try {
+      await supabaseService.updateBookingStatus(id, status, targetClientId);
+    } catch (error) {
+      console.error('Error updating booking status:', error);
+      throw error;
     }
 
     if (booking) {
@@ -714,15 +750,15 @@ export const api = {
 
     const nextIsPaid = !booking.isPaid;
 
-    if (isSupabaseConfigured()) {
-      try {
-        await supabaseService.toggleBookingPayment(id, nextIsPaid, targetClientId);
-      } catch (error) {
-        console.error('Error toggling booking payment in Supabase:', error);
-      }
-    } else {
-      const updated = bookings.map(b => b.id === id ? { ...b, isPaid: nextIsPaid } : b);
-      dataService.saveBookings(updated);
+    if (!isSupabaseConfigured()) {
+      throw new Error('Operación denegada: Sin conexión a Supabase.');
+    }
+
+    try {
+      await supabaseService.toggleBookingPayment(id, nextIsPaid, targetClientId);
+    } catch (error) {
+      console.error('Error toggling booking payment:', error);
+      throw error;
     }
 
     await dataService.logAction({
@@ -758,63 +794,38 @@ export const api = {
 
     let createdSale!: Sale;
 
-    if (isSupabaseConfigured()) {
-      try {
-        createdSale = await supabaseService.addSale({
-          productId,
-          quantity,
-          totalPrice: product.price * quantity,
-          date: new Date(),
-          paymentMethod,
-          client_id: targetClientId
-        });
-      } catch (error) {
-        console.error('Error adding sale to Supabase:', error);
-        throw error;
-      }
-    } else {
-      // Deduct stock locally
-      const updatedProducts = products.map(p => 
-        p.id === productId ? { ...p, stock: p.stock - quantity } : p
-      );
-      await dataService.saveProducts(updatedProducts);
+    if (!isSupabaseConfigured()) {
+      throw new Error('Operación denegada: Sin conexión a Supabase.');
+    }
 
-      const sales = await dataService.getSales(targetClientId);
-      const saleId = Math.random().toString(36).substr(2, 9);
-      createdSale = {
-        id: saleId,
+    try {
+      createdSale = await supabaseService.addSale({
         productId,
         quantity,
         totalPrice: product.price * quantity,
         date: new Date(),
         paymentMethod,
-        client_id: targetClientId,
-        items: [{
-          id: Math.random().toString(36).substr(2, 9),
-          saleId,
-          productId,
-          quantity,
-          price: product.price
-        }]
-      };
-      
-      dataService.saveSales([...sales, createdSale]);
-
-      await dataService.logAction({
-        action: 'Venta realizada',
-        entity: 'sale',
-        entity_id: createdSale.id,
-        client_id: targetClientId,
-        description: `Se registro una venta de ${product.name}`,
-        metadata: {
-          productId,
-          productName: product.name,
-          quantity,
-          paymentMethod: paymentMethod || null,
-          totalPrice: createdSale.totalPrice,
-        },
+        client_id: targetClientId
       });
+    } catch (error) {
+      console.error('Error adding sale to Supabase:', error);
+      throw error;
     }
+
+    await dataService.logAction({
+      action: 'Venta realizada',
+      entity: 'sale',
+      entity_id: createdSale.id,
+      client_id: targetClientId,
+      description: `Se registro una venta de ${product.name}`,
+      metadata: {
+        productId,
+        productName: product.name,
+        quantity,
+        paymentMethod: paymentMethod || null,
+        totalPrice: createdSale.totalPrice,
+      },
+    });
 
     return createdSale;
   },
@@ -824,23 +835,15 @@ export const api = {
     const sale = sales.find(s => s.id === id);
     const targetClientId = clientId || sale?.client_id;
 
-    if (isSupabaseConfigured()) {
-      try {
-        await supabaseService.deleteSale(id, targetClientId);
-      } catch (error) {
-        console.error('Error deleting sale from Supabase:', error);
-      }
-    } else {
-      if (sale) {
-        // Restore stock locally
-        const products = await dataService.getProducts(clientId);
-        const updatedProducts = products.map(p => 
-          p.id === sale.productId ? { ...p, stock: p.stock + getSaleQuantity(sale) } : p
-        );
-        await dataService.saveProducts(updatedProducts);
-      }
+    if (!isSupabaseConfigured()) {
+      throw new Error('Operación denegada: Sin conexión a Supabase.');
+    }
 
-      dataService.saveSales(sales.filter(s => s.id !== id));
+    try {
+      await supabaseService.deleteSale(id, targetClientId);
+    } catch (error) {
+      console.error('Error deleting sale:', error);
+      throw error;
     }
 
     if (sale && targetClientId) {
@@ -871,16 +874,15 @@ export const api = {
 
     let createdProduct: Product | undefined;
     
-    if (isSupabaseConfigured()) {
-      try {
-        createdProduct = await supabaseService.addProduct({ ...product, client_id: targetClientId });
-      } catch (error) {
-        console.error('Error adding product to Supabase:', error);
-      }
-    } else {
-      const products = await dataService.getProducts(targetClientId);
-      createdProduct = { ...product, id: Math.random().toString(36).substr(2, 9), client_id: targetClientId };
-      dataService.saveProducts([...products, createdProduct]);
+    if (!isSupabaseConfigured()) {
+      throw new Error('Operación denegada: Sin conexión a Supabase.');
+    }
+
+    try {
+      createdProduct = await supabaseService.addProduct({ ...product, client_id: targetClientId });
+    } catch (error) {
+      console.error('Error adding product:', error);
+      throw error;
     }
 
     if (!createdProduct) {
@@ -910,15 +912,15 @@ export const api = {
     const product = products.find(p => p.id === id);
     const targetClientId = requireClientId(clientId || product?.client_id, 'Actualizar producto');
 
-    if (isSupabaseConfigured()) {
-      try {
-        await supabaseService.updateProduct(id, updates, targetClientId);
-      } catch (error) {
-        console.error('Error updating product in Supabase:', error);
-      }
-    } else {
-      const updated = products.map(p => p.id === id ? { ...p, ...updates } : p);
-      dataService.saveProducts(updated);
+    if (!isSupabaseConfigured()) {
+      throw new Error('Operación denegada: Sin conexión a Supabase.');
+    }
+
+    try {
+      await supabaseService.updateProduct(id, updates, targetClientId);
+    } catch (error) {
+      console.error('Error updating product:', error);
+      throw error;
     }
 
     if (product) {
@@ -947,14 +949,15 @@ export const api = {
     const product = products.find(p => p.id === id);
     const targetClientId = requireClientId(clientId || product?.client_id, 'Eliminar producto');
 
-    if (isSupabaseConfigured()) {
-      try {
-        await supabaseService.deleteProduct(id, targetClientId);
-      } catch (error) {
-        console.error('Error deleting product from Supabase:', error);
-      }
-    } else {
-      dataService.saveProducts(products.filter(p => p.id !== id));
+    if (!isSupabaseConfigured()) {
+      throw new Error('Operación denegada: Sin conexión a Supabase.');
+    }
+
+    try {
+      await supabaseService.deleteProduct(id, targetClientId);
+    } catch (error) {
+      console.error('Error deleting product:', error);
+      throw error;
     }
 
     if (product) {
@@ -981,23 +984,15 @@ export const api = {
       'Actualizar stock',
     );
 
-    if (isSupabaseConfigured()) {
-      try {
-        await supabaseService.bulkUpdateStock(updates, targetClientId);
-      } catch (error) {
-        console.error('Error in bulk stock update in Supabase:', error);
-        throw error;
-      }
-    } else {
-      const updatedProducts = products.map(p => {
-        const update = updates.find(u => u.productId === p.id);
-        if (update) {
-          return { ...p, stock: update.newStock };
-        }
-        return p;
-      });
-      
-      await dataService.saveProducts(updatedProducts);
+    if (!isSupabaseConfigured()) {
+      throw new Error('Operación denegada: Sin conexión a Supabase.');
+    }
+
+    try {
+      await supabaseService.bulkUpdateStock(updates, targetClientId);
+    } catch (error) {
+      console.error('Error in bulk stock update:', error);
+      throw error;
     }
 
     await dataService.logAction({
@@ -1032,16 +1027,15 @@ export const api = {
 
     let createdPitch: Pitch | undefined;
     
-    if (isSupabaseConfigured()) {
-      try {
-        createdPitch = await supabaseService.addPitch({ ...pitch, client_id: targetClientId });
-      } catch (error) {
-        console.error('Error adding pitch to Supabase:', error);
-      }
-    } else {
-      const pitches = await dataService.getPitches(targetClientId);
-      createdPitch = { ...pitch, id: Math.random().toString(36).substr(2, 9), client_id: targetClientId };
-      dataService.savePitches([...pitches, createdPitch]);
+    if (!isSupabaseConfigured()) {
+      throw new Error('Operación denegada: Sin conexión a Supabase.');
+    }
+
+    try {
+      createdPitch = await supabaseService.addPitch({ ...pitch, client_id: targetClientId });
+    } catch (error) {
+      console.error('Error adding pitch:', error);
+      throw error;
     }
 
     if (!createdPitch) {
@@ -1070,15 +1064,15 @@ export const api = {
     const pitch = pitches.find(p => p.id === id);
     const targetClientId = requireClientId(clientId || pitch?.client_id, 'Actualizar cancha');
 
-    if (isSupabaseConfigured()) {
-      try {
-        await supabaseService.updatePitch(id, updates, targetClientId);
-      } catch (error) {
-        console.error('Error updating pitch in Supabase:', error);
-      }
-    } else {
-      const updated = pitches.map(p => p.id === id ? { ...p, ...updates } : p);
-      dataService.savePitches(updated);
+    if (!isSupabaseConfigured()) {
+      throw new Error('Operación denegada: Sin conexión a Supabase.');
+    }
+
+    try {
+      await supabaseService.updatePitch(id, updates, targetClientId);
+    } catch (error) {
+      console.error('Error updating pitch:', error);
+      throw error;
     }
 
     if (pitch) {
@@ -1106,14 +1100,15 @@ export const api = {
     const pitch = pitches.find(p => p.id === id);
     const targetClientId = requireClientId(clientId || pitch?.client_id, 'Eliminar cancha');
 
-    if (isSupabaseConfigured()) {
-      try {
-        await supabaseService.deletePitch(id, targetClientId);
-      } catch (error) {
-        console.error('Error deleting pitch from Supabase:', error);
-      }
-    } else {
-      dataService.savePitches(pitches.filter(p => p.id !== id));
+    if (!isSupabaseConfigured()) {
+      throw new Error('Operación denegada: Sin conexión a Supabase.');
+    }
+
+    try {
+      await supabaseService.deletePitch(id, targetClientId);
+    } catch (error) {
+      console.error('Error deleting pitch:', error);
+      throw error;
     }
 
     if (pitch) {

@@ -35,6 +35,7 @@ import {
   AreaChart,
   Area
 } from 'recharts';
+import { Skeleton } from '../components/ui/SkeletonLoader';
 
 const SmartStats: React.FC = () => {
   const [data, setData] = useState<AnalyticsData | null>(null);
@@ -47,28 +48,49 @@ const SmartStats: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    let ignore = false;
     const fetchData = async () => {
       if (!user) return;
       setLoading(true);
       try {
         const analytics = await analyticsService.getAnalytics(days, user?.client_id);
-        setData(analytics);
+        if (!ignore) setData(analytics);
       } catch (error) {
         console.error('Error fetching analytics:', error);
       } finally {
-        setLoading(false);
+        if (!ignore) setLoading(false);
       }
     };
 
     fetchData();
-  }, [days, user]);
+    return () => { ignore = true; };
+  }, [days, user?.client_id]);
 
   if (loading || !data) {
     return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <div className="flex flex-col items-center gap-4">
-          <div className="w-12 h-12 border-4 border-zinc-200 border-t-zinc-900 rounded-full animate-spin" />
-          <p className="text-zinc-500 font-bold animate-pulse uppercase tracking-widest text-[10px]">Calculando Estadísticas Inteligentes...</p>
+      <div className="space-y-8 pb-20">
+        {/* Header Skeleton */}
+        <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+          <div>
+            <Skeleton className="h-4 w-48 mb-4" />
+            <Skeleton className="h-12 w-96 mb-3" />
+            <Skeleton className="h-5 w-full max-w-md" />
+          </div>
+          <Skeleton className="h-12 w-56 rounded-2xl" />
+        </div>
+
+        {/* Metric Cards Skeleton */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <Skeleton className="h-44 rounded-[40px]" />
+          <Skeleton className="h-44 rounded-[40px]" />
+          <Skeleton className="h-44 rounded-[40px]" />
+          <Skeleton className="h-44 rounded-[40px]" />
+        </div>
+
+        {/* Charts Skeleton */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <Skeleton className="lg:col-span-2 h-[400px] rounded-[40px]" />
+          <Skeleton className="h-[400px] rounded-[40px]" />
         </div>
       </div>
     );
@@ -79,24 +101,38 @@ const SmartStats: React.FC = () => {
       style: 'currency',
       currency: 'ARS',
       maximumFractionDigits: 0
-    }).format(amount);
+    }).format(amount || 0);
   };
 
-  const chartData = Object.entries(data.bookingsByDay).map(([day, count]) => ({
+  const totalIncome = data.totalIncome || 0;
+  const averageIncomePerDay = data.averageIncomePerDay || 0;
+  const averageIncomePerBooking = data.averageIncomePerBooking || 0;
+  const occupancyRate = data.occupancyRate || 0;
+  const totalBookings = data.totalBookings || 0;
+  const lostIncomeEstimation = data.lostIncomeEstimation || 0;
+  const strongestDay = data.strongestDay || 'N/A';
+  const weakestDay = data.weakestDay || 'N/A';
+  const lowDemandHours = data.lowDemandHours || [];
+  const projections = data.projections || { monthly: 0, trend: 'stable' };
+
+  const chartData = Object.entries(data.bookingsByDay || {}).map(([day, count]) => ({
     name: day.split('-').slice(2).join('/'),
     reservas: count,
-    ingresos: data.incomeByDay[day] || 0
+    ingresos: (data.incomeByDay || {})[day] || 0
   }));
 
-  const dayOfWeekData = Object.entries(data.bookingsByDayOfWeek).map(([day, count]) => ({
+  const dayOfWeekData = Object.entries(data.bookingsByDayOfWeek || {}).map(([day, count]) => ({
     name: ['Dom', 'Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab'][parseInt(day)],
     count
   }));
 
-  const pitchData = Object.entries(data.incomeByPitch).map(([id, income]) => ({
+  const pitchData = Object.entries(data.incomeByPitch || {}).map(([id, income]) => ({
     name: `Cancha ${id.replace('p', '')}`,
     income: income as number
   }));
+
+  const hasChartData = chartData.some(d => d.reservas > 0 || d.ingresos > 0);
+  const hasDayOfWeekData = dayOfWeekData.some(d => (d.count as number) > 0);
 
   return (
     <div className="space-y-8 pb-20">
@@ -135,21 +171,21 @@ const SmartStats: React.FC = () => {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <MetricCard 
           title="Ingresos Totales" 
-          value={formatCurrency(data.totalIncome)} 
+          value={formatCurrency(totalIncome)} 
           icon={<DollarSign className="w-5 h-5" />}
-          subtitle={`Promedio: ${formatCurrency(data.averageIncomePerDay)}/día`}
+          subtitle={`Promedio: ${formatCurrency(averageIncomePerDay)}/día`}
           color="emerald"
         />
         <MetricCard 
           title="Ocupación Real" 
-          value={`${data.occupancyRate.toFixed(1)}%`} 
+          value={`${occupancyRate.toFixed(1)}%`} 
           icon={<Activity className="w-5 h-5" />}
           subtitle="Capacidad utilizada"
           color="sky"
         />
         <MetricCard 
           title="Ingreso x Turno" 
-          value={formatCurrency(data.averageIncomePerBooking)} 
+          value={formatCurrency(averageIncomePerBooking)} 
           icon={<Target className="w-5 h-5" />}
           subtitle="Ticket promedio"
           color="indigo"
@@ -179,6 +215,7 @@ const SmartStats: React.FC = () => {
             </div>
           </div>
           <div className="h-[300px] w-full">
+            {hasChartData ? (
             <ResponsiveContainer width="100%" height="100%" minWidth={0}>
               <AreaChart data={chartData}>
                 <defs>
@@ -219,6 +256,12 @@ const SmartStats: React.FC = () => {
                 />
               </AreaChart>
             </ResponsiveContainer>
+            ) : (
+              <div className="w-full h-full flex flex-col items-center justify-center text-zinc-400 gap-2">
+                <BarChart3 className="w-8 h-8 opacity-20" />
+                <span className="text-xs font-bold uppercase tracking-widest text-center px-4">Sin datos registrados para este período</span>
+              </div>
+            )}
           </div>
         </div>
 
@@ -238,17 +281,17 @@ const SmartStats: React.FC = () => {
             </p>
             <div className="space-y-2">
               <span className="text-5xl font-black tracking-tighter block">
-                {formatCurrency(data.projections.monthly)}
+                {formatCurrency(projections.monthly)}
               </span>
               <div className="flex items-center gap-2">
                 <div className={cn(
                   "px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest flex items-center gap-1",
-                  data.projections.trend === 'up' ? "bg-emerald-500/20 text-emerald-400" : 
-                  data.projections.trend === 'down' ? "bg-red-500/20 text-red-400" : "bg-zinc-500/20 text-zinc-400"
+                  projections.trend === 'up' ? "bg-emerald-500/20 text-emerald-400" : 
+                  projections.trend === 'down' ? "bg-red-500/20 text-red-400" : "bg-zinc-500/20 text-zinc-400"
                 )}>
-                  {data.projections.trend === 'up' ? <ArrowUpRight className="w-3 h-3" /> : 
-                   data.projections.trend === 'down' ? <ArrowDownRight className="w-3 h-3" /> : <Activity className="w-3 h-3" />}
-                  Tendencia {data.projections.trend === 'up' ? 'Alcista' : data.projections.trend === 'down' ? 'Bajista' : 'Estable'}
+                  {projections.trend === 'up' ? <ArrowUpRight className="w-3 h-3" /> : 
+                   projections.trend === 'down' ? <ArrowDownRight className="w-3 h-3" /> : <Activity className="w-3 h-3" />}
+                  Tendencia {projections.trend === 'up' ? 'Alcista' : projections.trend === 'down' ? 'Bajista' : 'Estable'}
                 </div>
               </div>
             </div>
@@ -256,7 +299,7 @@ const SmartStats: React.FC = () => {
           <div className="mt-8 pt-8 border-t border-white/10">
             <div className="flex items-center justify-between text-xs font-bold uppercase tracking-widest text-zinc-500">
               <span>Día más fuerte</span>
-              <span className="text-white">{data.strongestDay}</span>
+              <span className="text-white">{strongestDay}</span>
             </div>
           </div>
         </div>
@@ -271,6 +314,7 @@ const SmartStats: React.FC = () => {
             Ocupación por Día
           </h3>
           <div className="h-[250px] w-full">
+            {hasDayOfWeekData ? (
             <ResponsiveContainer width="100%" height="100%" minWidth={0}>
               <BarChart data={dayOfWeekData}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f4f4f5" />
@@ -292,6 +336,12 @@ const SmartStats: React.FC = () => {
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
+            ) : (
+              <div className="w-full h-full flex flex-col items-center justify-center text-zinc-400 gap-2">
+                <BarChart3 className="w-8 h-8 opacity-20" />
+                <span className="text-xs font-bold uppercase tracking-widest text-center px-4">Sin datos registrados para este período</span>
+              </div>
+            )}
           </div>
         </div>
 
@@ -306,23 +356,24 @@ const SmartStats: React.FC = () => {
               <div className="flex items-center justify-between p-6 bg-zinc-50 rounded-3xl border border-zinc-100">
                 <div>
                   <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest mb-1">Turnos Vacíos</p>
-                  <p className="text-3xl font-black text-zinc-900">{(100 - data.occupancyRate).toFixed(1)}%</p>
+                  <p className="text-3xl font-black text-zinc-900">{(100 - occupancyRate).toFixed(1)}%</p>
                 </div>
                 <div className="text-right">
                   <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest mb-1">Ingresos Perdidos (Est.)</p>
-                  <p className="text-xl font-black text-red-500">{formatCurrency(data.lostIncomeEstimation)}</p>
+                  <p className="text-xl font-black text-red-500">{formatCurrency(lostIncomeEstimation)}</p>
                 </div>
               </div>
               
               <div className="space-y-4">
                 <p className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Horarios Críticos</p>
                 <div className="flex flex-wrap gap-2">
-                  {data.lowDemandHours.map(h => (
+                  {lowDemandHours.map(h => (
                     <div key={h} className="px-4 py-2 bg-red-50 text-red-600 rounded-xl text-xs font-bold border border-red-100 flex items-center gap-2">
                       <Clock className="w-3 h-3" />
                       {h}:00 hs
                     </div>
                   ))}
+                  {lowDemandHours.length === 0 && <span className="text-xs text-zinc-400 italic">No hay datos</span>}
                 </div>
               </div>
             </div>
@@ -332,7 +383,7 @@ const SmartStats: React.FC = () => {
               <Info className="w-5 h-5 text-amber-600" />
             </div>
             <p className="text-[10px] font-bold text-amber-800 leading-relaxed">
-              Dato: El día {data.weakestDay} presenta la menor actividad. Considerar promociones "Full Day" para este día.
+              Dato: El día {weakestDay} presenta la menor actividad. Considerar promociones "Full Day" para este día.
             </p>
           </div>
         </div>
@@ -357,7 +408,7 @@ const SmartStats: React.FC = () => {
                 <BarChart3 className="w-24 h-24" />
               </div>
               <p className="text-zinc-600 font-medium leading-relaxed relative z-10">
-                Durante los últimos <span className="text-zinc-900 font-black">{days} días</span>, el sistema ha procesado un total de <span className="text-zinc-900 font-black">{data.totalBookings} reservas</span>, generando un ingreso total de <span className="text-emerald-600 font-black">{formatCurrency(data.totalIncome)}</span>. La ocupación promedio se mantiene en un <span className="text-sky-600 font-black">{data.occupancyRate.toFixed(1)}%</span>.
+                Durante los últimos <span className="text-zinc-900 font-black">{days} días</span>, el sistema ha procesado un total de <span className="text-zinc-900 font-black">{totalBookings} reservas</span>, generando un ingreso total de <span className="text-emerald-600 font-black">{formatCurrency(totalIncome)}</span>. La ocupación promedio se mantiene en un <span className="text-sky-600 font-black">{occupancyRate.toFixed(1)}%</span>.
               </p>
             </div>
           </div>
@@ -369,7 +420,7 @@ const SmartStats: React.FC = () => {
               Rendimiento por Cancha
             </h3>
             <div className="grid grid-cols-1 gap-3">
-              {pitchData.map((pitch, idx) => (
+              {pitchData.length > 0 ? pitchData.map((pitch, idx) => (
                 <div key={idx} className="flex items-center justify-between p-4 bg-white rounded-2xl border border-zinc-100 shadow-sm hover:border-zinc-300 transition-colors">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-xl bg-zinc-100 flex items-center justify-center font-black text-zinc-400 text-xs">
@@ -379,7 +430,11 @@ const SmartStats: React.FC = () => {
                   </div>
                   <span className="font-black text-zinc-900">{formatCurrency(pitch.income)}</span>
                 </div>
-              ))}
+              )) : (
+                <div className="text-center py-4 text-zinc-400 text-sm">
+                  No hay canchas registradas.
+                </div>
+              )}
             </div>
           </div>
         </div>

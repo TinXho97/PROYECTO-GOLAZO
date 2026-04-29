@@ -1,73 +1,62 @@
+# ⚽ Golazo - Plataforma SaaS de Gestión de Canchas
 
+Aplicación intuitiva y de alto rendimiento para la reserva y gestión multi-tenant de turnos de canchas de fútbol.
 
-# Run and deploy your AI Studio app
+## 🚀 Stack Tecnológico
 
-This contains everything you need to run your app locally.
+* **Frontend:** React (Vite), TypeScript
+* **Estilos & UI:** Tailwind CSS, Framer Motion (Skeleton Loaders), Recharts (Gráficos)
+* **Backend & BaaS:** Supabase (Auth, Database, Storage, Edge Functions)
+* **PWA:** Soporte offline shell y manifest instalable
 
-View your app in AI Studio: https://ai.studio/apps/9f5e08e0-f1a5-4c36-badd-e4024d628af2
+## 🏗️ Arquitectura y Experiencia de Usuario (UX)
 
-## Run Locally
+El proyecto utiliza una arquitectura estrictamente SaaS y Multi-tenant, garantizando consistencia, seguridad y rendimiento a escala:
 
-**Prerequisites:**  Node.js
+* **SaaS Estricto (Zero Fallback):** La aplicación requiere conexión obligatoria a Supabase. Se ha eliminado por completo el fallback a `localStorage` para evitar la fragmentación de datos (Split-brain). En caso de pérdida de conexión, el sistema lanza errores controlados que bloquean la mutación de estado.
+* **Procesamiento de Datos Aislado:** La lógica compleja de procesamiento de analíticas y métricas avanzadas ha sido extraída a `src/services/analyticsProcessing.ts`. Al utilizar funciones puras, se asegura un alto rendimiento y se facilita el unit testing aislado de la capa de componentes.
+* **Zero Layout Shift:** Implementación de **Skeleton Loaders** integrados con Framer Motion y Tailwind. Esto garantiza que la carga de datos asíncrona mantenga la estructura visual intacta, eliminando los saltos de interfaz y brindando una sensación de carga instantánea.
 
+## ⚙️ Instalación Local
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+**Requisitos:** Node.js
 
-## PWA
+1. Instalar las dependencias del proyecto:
+   ```bash
+   npm install
+   ```
+2. Configurar las variables de entorno en el archivo `.env` (basado en `.env.example`):
+   ```env
+   VITE_SUPABASE_URL=https://<tu-proyecto>.supabase.co
+   VITE_SUPABASE_ANON_KEY=<tu-anon-key>
+   VITE_SUPERADMIN_PASSWORD=<clave-superadmin>
+   ```
+3. Iniciar el servidor de desarrollo:
+   ```bash
+   npm run dev
+   ```
 
-This project now includes a basic Progressive Web App setup:
+## ☁️ Despliegue y Configuración de Supabase (Multi-tenant)
 
-1. Installable app via `manifest.webmanifest`
-2. Offline shell fallback through `public/sw.js`
-3. App icons in `public/icons`
+Para que la lógica Multi-tenant y el panel de Super Admin operen correctamente, es fundamental el despliegue de las funciones Serverless.
 
-To verify it:
+1. **Despliegue de Edge Functions:**
+   ```bash
+   supabase functions deploy admin-ops
+   ```
+2. **Configuración de Secrets en Supabase:**
+   Deberás configurar los secretos del entorno en tu dashboard de Supabase para que la función asuma el rol de servicio:
+   * `SUPERADMIN_PASSWORD` (Debe coincidir con tu `VITE_SUPERADMIN_PASSWORD`)
+   * `SUPABASE_URL`
+   * `SUPABASE_SERVICE_ROLE_KEY`
 
-1. Run `npm run build`
-2. Run `npm run preview`
-3. Open DevTools -> Application
-4. Check `Manifest` and `Service Workers`
-5. Test install flow and offline reload
+### ⚠️ Advertencia de Seguridad (Roles y Permisos)
+Queda **estrictamente prohibido** el uso de `user_metadata` para la validación de roles críticos (ej. superadmin, tenant admin). Toda la autorización, herencia de roles y segmentación de datos debe delegarse exclusivamente al esquema relacional (`profiles` y `client_users`) respaldado por las políticas de Row Level Security (RLS) en la base de datos.
 
+## 📱 Progressive Web App (PWA)
 
-## Supabase + Super Admin setup (required in this project)
+El proyecto incluye configuración nativa de PWA:
+1. App instalable vía `manifest.webmanifest`.
+2. Fallback offline mediante Service Worker en `public/sw.js`.
 
-If Supabase is not configured, this app falls back to localStorage mode.
-
-1. Create `.env` from `.env.example` and set:
-   - `VITE_SUPABASE_URL=https://<your-project-ref>.supabase.co`
-   - `VITE_SUPABASE_ANON_KEY=<your-anon-key>`
-   - `VITE_SUPERADMIN_PASSWORD=<shared-superadmin-password>`
-2. Restart dev server after changing env vars.
-3. Deploy Edge Function:
-   - `supabase functions deploy admin-ops`
-4. Set Edge Function secrets in Supabase:
-   - `SUPERADMIN_PASSWORD` (must match `VITE_SUPERADMIN_PASSWORD`)
-   - `SUPABASE_URL`
-   - `SUPABASE_SERVICE_ROLE_KEY`
-5. Ensure the super admin user has metadata:
-   - `role: "superadmin"`
-6. Open super admin panel route:
-   - `/panel-interno-golazo-...` (secret internal route)
-
-## Troubleshooting data to share (safe)
-
-If you see localStorage fallback warnings, share these (mask secrets):
-
-1. Browser console output for:
-   - `[Supabase] ...` and `[DataService] ...` warnings.
-2. Value format checks (masked):
-   - `VITE_SUPABASE_URL` (full URL is OK to share),
-   - `VITE_SUPABASE_ANON_KEY` first 10 chars only (`eyJ...` legacy or `sb_publishable_...` new format).
-3. Network result of:
-   - `GET https://<project-ref>.supabase.co/rest/v1/clients?select=id&limit=1` (status code + response body).
-4. Supabase Auth user metadata for your super admin user:
-   - must include `role: "superadmin"`.
-5. Edge Function `admin-ops` status:
-   - deployed yes/no,
-   - secrets configured (`SUPERADMIN_PASSWORD`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`),
-   - whether `SUPERADMIN_PASSWORD` matches `VITE_SUPERADMIN_PASSWORD`.
+Para probar la versión PWA compilada localmente, ejecuta `npm run build` seguido de `npm run preview`. Puedes auditar la instalación desde la pestaña "Application" en las DevTools de tu navegador.

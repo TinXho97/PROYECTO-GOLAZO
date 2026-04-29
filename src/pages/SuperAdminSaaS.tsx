@@ -7,6 +7,7 @@ import { es } from 'date-fns/locale';
 import { toast, Toaster } from 'sonner';
 import { dataService } from '../services/dataService';
 import { Modal } from '../components/Modal';
+import { AvatarFallback } from '../components/ui/AvatarFallback';
 
 type ClientFeatureKey = 'reservas' | 'ventas' | 'ranking' | 'estadisticas';
 
@@ -275,6 +276,7 @@ export default function SuperAdminSaaS() {
         apikey: getSupabaseAnonKey(),
         Authorization: `Bearer ${session.access_token}`,
         'Content-Type': 'application/json',
+        'x-superadmin-password': import.meta.env.VITE_SUPERADMIN_PASSWORD || '',
       },
       cache: 'no-store',
       body: JSON.stringify({ action, payload }),
@@ -283,6 +285,16 @@ export default function SuperAdminSaaS() {
     const responseBody = await response.json().catch(() => null);
 
     if (!response.ok) {
+      if (response.status === 403) {
+        console.error('[admin-ops] Permisos Insuficientes (403): La contraseña de superadmin (x-superadmin-password) o el token son inválidos o no coinciden con los secrets del backend.');
+      } else if (response.status === 404) {
+        console.error('[admin-ops] No Encontrado (404): La Edge Function "admin-ops" no ha sido desplegada en Supabase.');
+      } else if (response.status >= 500) {
+        console.error(`[admin-ops] Error de Servidor (${response.status}): La Edge Function falló al procesar la solicitud. Revisa los logs en el dashboard de Supabase.`);
+      } else {
+        console.error(`[admin-ops] HTTP Error ${response.status}:`, responseBody);
+      }
+
       const code = responseBody?.error?.code;
       const message = responseBody?.error?.message || responseBody?.error;
 
@@ -290,7 +302,7 @@ export default function SuperAdminSaaS() {
         throw new Error(message || `Sesion invalida (${code}).`);
       }
 
-      if (code === 'forbidden') {
+      if (response.status === 403 || code === 'forbidden') {
         throw new Error('No tenes permisos de superadmin.');
       }
 
@@ -626,7 +638,7 @@ export default function SuperAdminSaaS() {
         <div className="bg-[#111827]/80 backdrop-blur-xl p-10 rounded-[32px] w-full max-w-md border border-white/5 shadow-2xl relative z-10">
           <div className="flex justify-center mb-8">
             <div className="w-24 h-24 bg-white rounded-2xl flex items-center justify-center shadow-lg shadow-[#FF6B00]/20 p-2">
-              <img src="https://i.postimg.cc/2y1YR7V8/Logo-de-SUR-Byte-S-con-robot-naranja.png" alt="SUR ByteS Logo" className="w-full h-full object-contain" referrerPolicy="no-referrer" />
+              <AvatarFallback src="https://i.postimg.cc/2y1YR7V8/Logo-de-SUR-Byte-S-con-robot-naranja.png" name="SUR ByteS" className="w-full h-full rounded-xl bg-transparent" />
             </div>
           </div>
           <div className="text-center mb-8">
@@ -718,7 +730,7 @@ export default function SuperAdminSaaS() {
         <div className="h-20 flex items-center px-6 border-b border-white/5">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-lg bg-white flex items-center justify-center shadow-lg shadow-[#FF6B00]/20 p-1">
-              <img src="https://i.postimg.cc/2y1YR7V8/Logo-de-SUR-Byte-S-con-robot-naranja.png" alt="SUR ByteS Logo" className="w-full h-full object-contain" referrerPolicy="no-referrer" />
+              <AvatarFallback src="https://i.postimg.cc/2y1YR7V8/Logo-de-SUR-Byte-S-con-robot-naranja.png" name="SUR ByteS" className="w-full h-full rounded-md bg-transparent" />
             </div>
             <span className="text-xl font-black text-white tracking-tight">SUR <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#FF6B00] to-[#FF8F00]">ByteS</span></span>
           </div>
@@ -1957,4 +1969,3 @@ export default function SuperAdminSaaS() {
     </div>
   );
 }
-

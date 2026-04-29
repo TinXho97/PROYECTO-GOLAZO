@@ -46,7 +46,10 @@ interface CalendarProps {
   onClearInitialBooking?: () => void;
 }
 
-import { ShareAvailabilityModal } from '../components/ShareAvailabilityModal';
+import { ShareAvailabilityModal } from '../components/modals/ShareAvailabilityModal';
+import { BookingModal, BookingFormData } from '../components/modals/BookingModal';
+import { BookingDetailModal } from '../components/modals/BookingDetailModal';
+import { ReceiptModal } from '../components/modals/ReceiptModal';
 
 export default function CalendarPage({ user, initialBookingId, onClearInitialBooking }: CalendarProps) {
   const [pitches, setPitches] = useState<Pitch[]>([]);
@@ -64,10 +67,10 @@ export default function CalendarPage({ user, initialBookingId, onClearInitialBoo
   
   const [isBookingModalOpen, setIsBookingModalOpen] = useState(false);
   const [bookingTimer, setBookingTimer] = useState<number | null>(null);
-  const [bookingData, setBookingData] = useState({
+  const [bookingData, setBookingData] = useState<BookingFormData>({
     pitch: null as Pitch | null,
     date: new Date(),
-    time: '',
+    time: '', // Garantizamos que NO haya '18:00' por defecto. Debe inyectarse desde el click del slot.
     clientName: user.role === 'client' ? user.name : '',
     clientPhone: '',
     receipt: null as string | null,
@@ -209,6 +212,12 @@ export default function CalendarPage({ user, initialBookingId, onClearInitialBoo
     e.preventDefault();
     if (!bookingData.pitch || !bookingData.time) return;
 
+    const [h, m] = bookingData.time.split(':').map(Number);
+    if (isNaN(h) || isNaN(m)) {
+      toast.error('Error: Horario inválido. Por favor selecciona el turno nuevamente en la grilla.');
+      return;
+    }
+
     const deposit = Number(bookingData.depositAmount) || 0;
     if (deposit < 500) {
       toast.error('La seña mínima es de $500.');
@@ -220,7 +229,6 @@ export default function CalendarPage({ user, initialBookingId, onClearInitialBoo
       return;
     }
 
-    const [h, m] = bookingData.time.split(':').map(Number);
     const startTime = new Date(bookingData.date);
     startTime.setHours(h, m, 0, 0);
     const endTime = addHours(startTime, 1);
@@ -349,7 +357,7 @@ export default function CalendarPage({ user, initialBookingId, onClearInitialBoo
                 ...bookingData,
                 pitch: pitches[0] || null,
                 date: new Date(),
-                time: "18:00"
+                time: `${(new Date().getHours() + 1).toString().padStart(2, '0')}:00`
               });
               setIsBookingModalOpen(true);
             }}
@@ -1298,45 +1306,11 @@ export default function CalendarPage({ user, initialBookingId, onClearInitialBoo
         selectedDate={selectedDate}
       />
 
-      {/* Receipt Modal */}
-      <Modal
+      <ReceiptModal
         isOpen={!!selectedReceipt}
         onClose={() => setSelectedReceipt(null)}
-        title="Comprobante de Pago"
-      >
-        <div className="p-4">
-          {selectedReceipt && (
-            selectedReceipt.startsWith('data:application/pdf') ? (
-              <div className="w-full h-64 flex flex-col items-center justify-center p-6 text-center bg-zinc-100 rounded-2xl">
-                <FileText className="w-16 h-16 text-zinc-400 mb-4" />
-                <p className="text-zinc-500 font-bold mb-4">Comprobante en formato PDF</p>
-                <Button 
-                  variant="secondary" 
-                  className="rounded-xl"
-                  onClick={() => {
-                    const link = document.createElement('a');
-                    link.href = selectedReceipt;
-                    link.download = `comprobante.pdf`;
-                    link.click();
-                  }}
-                >
-                  <Download className="w-4 h-4 mr-2" />
-                  Descargar PDF
-                </Button>
-              </div>
-            ) : (
-              <div className="relative w-full rounded-2xl overflow-hidden bg-zinc-100 border border-zinc-200">
-                <img 
-                  src={selectedReceipt} 
-                  alt="Comprobante" 
-                  className="w-full h-auto object-contain max-h-[70vh]"
-                  referrerPolicy="no-referrer"
-                />
-              </div>
-            )
-          )}
-        </div>
-      </Modal>
+        receiptUrl={selectedReceipt}
+      />
     </div>
   );
 }

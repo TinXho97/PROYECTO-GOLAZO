@@ -21,6 +21,7 @@ import { analyticsService, AnalyticsData } from '../services/analyticsService';
 import { dataService } from '../services/dataService';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { Skeleton } from '../components/ui/SkeletonLoader';
 
 const BusinessAnalysis: React.FC = () => {
   const [data, setData] = useState<AnalyticsData | null>(null);
@@ -33,28 +34,51 @@ const BusinessAnalysis: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    let ignore = false;
     const fetchData = async () => {
       if (!user) return;
       setLoading(true);
       try {
         const analytics = await analyticsService.getAnalytics(days, user?.client_id);
-        setData(analytics);
+        if (!ignore) setData(analytics);
       } catch (error) {
         console.error('Error fetching analytics:', error);
       } finally {
-        setLoading(false);
+        if (!ignore) setLoading(false);
       }
     };
 
     fetchData();
+    return () => { ignore = true; };
   }, [days, user?.client_id]);
 
   if (loading || !data) {
     return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <div className="flex flex-col items-center gap-4">
-          <div className="w-12 h-12 border-4 border-zinc-200 border-t-zinc-900 rounded-full animate-spin" />
-          <p className="text-zinc-500 font-medium animate-pulse">Analizando datos reales...</p>
+      <div className="p-4 md:p-8 space-y-8 max-w-7xl mx-auto">
+        {/* Header Skeleton */}
+        <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+          <div>
+            <Skeleton className="h-10 w-80 mb-2" />
+            <Skeleton className="h-5 w-96" />
+          </div>
+          <Skeleton className="h-10 w-64 rounded-xl" />
+        </div>
+
+        {/* Stat Cards Skeleton */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <Skeleton className="h-32 rounded-3xl" />
+          <Skeleton className="h-32 rounded-3xl" />
+          <Skeleton className="h-32 rounded-3xl" />
+          <Skeleton className="h-32 rounded-3xl" />
+        </div>
+
+        {/* Main Content Skeleton */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          <div className="lg:col-span-2 space-y-8">
+            <Skeleton className="h-64 rounded-3xl" />
+            <Skeleton className="h-48 rounded-3xl" />
+          </div>
+          <Skeleton className="h-96 rounded-3xl" />
         </div>
       </div>
     );
@@ -67,6 +91,17 @@ const BusinessAnalysis: React.FC = () => {
       maximumFractionDigits: 0
     }).format(amount);
   };
+
+  const totalIncome = data.totalIncome || 0;
+  const averageIncomePerDay = data.averageIncomePerDay || 0;
+  const totalBookings = data.totalBookings || 0;
+  const occupancyRate = data.occupancyRate || 0;
+  const peakHours = data.peakHours || [];
+  const lowDemandHours = data.lowDemandHours || [];
+  const incomeByPitch = data.incomeByPitch || {};
+  const alerts = data.alerts || [];
+  const insights = data.insights || [];
+  const recommendations = data.recommendations || [];
 
   return (
     <div className="p-4 md:p-8 space-y-8 max-w-7xl mx-auto">
@@ -101,28 +136,28 @@ const BusinessAnalysis: React.FC = () => {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard 
           title="Ingresos Totales" 
-          value={formatCurrency(data.totalIncome)} 
           icon={<DollarSign className="w-5 h-5" />}
-          trend={data.totalIncome > 0 ? "up" : "neutral"}
-          subtitle={`Promedio: ${formatCurrency(data.averageIncomePerDay)}/día`}
+          value={formatCurrency(totalIncome)} 
+          trend={totalIncome > 0 ? "up" : "neutral"}
+          subtitle={`Promedio: ${formatCurrency(averageIncomePerDay)}/día`}
         />
         <StatCard 
           title="Reservas Totales" 
-          value={data.totalBookings.toString()} 
           icon={<Calendar className="w-5 h-5" />}
+          value={totalBookings.toString()} 
           trend="neutral"
-          subtitle={`${(data.totalBookings / days).toFixed(1)} reservas/día`}
+          subtitle={`${(totalBookings / days).toFixed(1)} reservas/día`}
         />
         <StatCard 
           title="Ocupación Promedio" 
-          value={`${data.occupancyRate.toFixed(1)}%`} 
           icon={<PieChart className="w-5 h-5" />}
-          trend={data.occupancyRate > 50 ? "up" : "down"}
+          value={`${occupancyRate.toFixed(1)}%`} 
+          trend={occupancyRate > 50 ? "up" : "down"}
           subtitle="Basado en horarios disponibles"
         />
         <StatCard 
           title="Horario Pico" 
-          value={data.peakHours.length > 0 ? `${data.peakHours[0]}:00 hs` : "N/A"} 
+          value={peakHours.length > 0 ? `${peakHours[0]}:00 hs` : "N/A"} 
           icon={<Clock className="w-5 h-5" />}
           trend="neutral"
           subtitle="Mayor demanda detectada"
@@ -130,9 +165,9 @@ const BusinessAnalysis: React.FC = () => {
       </div>
 
       {/* Alerts Section */}
-      {data.alerts.length > 0 && (
+      {alerts.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {data.alerts.map((alert, idx) => (
+          {alerts.map((alert, idx) => (
             <motion.div 
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
@@ -169,15 +204,15 @@ const BusinessAnalysis: React.FC = () => {
                 <div className="space-y-2">
                   <p className="text-xs font-bold text-zinc-400 uppercase tracking-widest">Estado del Negocio</p>
                   <p className="text-zinc-700 leading-relaxed">
-                    Durante los últimos {days} días, el sistema ha procesado un total de <span className="font-bold text-zinc-900">{data.totalBookings} reservas</span>, 
-                    generando un ingreso total de <span className="font-bold text-zinc-900">{formatCurrency(data.totalIncome)}</span>. 
-                    La ocupación promedio se mantiene en un <span className="font-bold text-zinc-900">{data.occupancyRate.toFixed(1)}%</span>.
+                    Durante los últimos {days} días, el sistema ha procesado un total de <span className="font-bold text-zinc-900">{totalBookings} reservas</span>, 
+                    generando un ingreso total de <span className="font-bold text-zinc-900">{formatCurrency(totalIncome)}</span>. 
+                    La ocupación promedio se mantiene en un <span className="font-bold text-zinc-900">{occupancyRate.toFixed(1)}%</span>.
                   </p>
                 </div>
                 <div className="space-y-2">
                   <p className="text-xs font-bold text-zinc-400 uppercase tracking-widest">Rendimiento por Cancha</p>
                   <div className="space-y-2">
-                    {Object.entries(data.incomeByPitch).map(([id, income]) => (
+                    {Object.entries(incomeByPitch).map(([id, income]) => (
                       <div key={id} className="flex items-center justify-between text-sm">
                         <span className="text-zinc-600">{data.pitchNames[id] || `Cancha ${id.replace('p', '')}`}</span>
                         <span className="font-bold text-zinc-900">{formatCurrency(income as number)}</span>
@@ -199,13 +234,13 @@ const BusinessAnalysis: React.FC = () => {
               2. Problemas Detectados
             </h2>
             <div className="space-y-3">
-              {data.insights.filter(i => i.includes('bajo') || i.includes('menos') || i.includes('No hay')).map((insight, idx) => (
+              {insights.filter(i => i.includes('bajo') || i.includes('menos') || i.includes('No hay')).map((insight, idx) => (
                 <div key={idx} className="flex items-start gap-3 p-3 bg-white/5 rounded-xl border border-white/10">
                   <div className="mt-1 w-1.5 h-1.5 rounded-full bg-red-400 shrink-0" />
                   <p className="text-sm text-zinc-300 font-medium">{insight}</p>
                 </div>
               ))}
-              {data.insights.filter(i => i.includes('bajo') || i.includes('menos') || i.includes('No hay')).length === 0 && (
+              {insights.filter(i => i.includes('bajo') || i.includes('menos') || i.includes('No hay')).length === 0 && (
                 <p className="text-zinc-500 italic text-sm">No se han detectado problemas críticos con los datos actuales.</p>
               )}
             </div>
@@ -221,23 +256,23 @@ const BusinessAnalysis: React.FC = () => {
               <div className="p-4 bg-indigo-50 rounded-2xl border border-indigo-100">
                 <p className="text-xs font-bold text-indigo-400 uppercase tracking-widest mb-2">Horarios a Potenciar</p>
                 <div className="flex flex-wrap gap-2">
-                  {data.lowDemandHours.map(h => (
+                  {lowDemandHours.map(h => (
                     <span key={h} className="px-3 py-1 bg-white rounded-lg text-xs font-bold text-indigo-600 shadow-sm">
                       {h}:00 hs
                     </span>
                   ))}
-                  {data.lowDemandHours.length === 0 && <span className="text-xs text-indigo-400 italic">No hay datos suficientes</span>}
+                  {lowDemandHours.length === 0 && <span className="text-xs text-indigo-400 italic">No hay datos suficientes</span>}
                 </div>
               </div>
               <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-100">
                 <p className="text-xs font-bold text-emerald-400 uppercase tracking-widest mb-2">Horarios de Éxito</p>
                 <div className="flex flex-wrap gap-2">
-                  {data.peakHours.map(h => (
+                  {peakHours.map(h => (
                     <span key={h} className="px-3 py-1 bg-white rounded-lg text-xs font-bold text-emerald-600 shadow-sm">
                       {h}:00 hs
                     </span>
                   ))}
-                  {data.peakHours.length === 0 && <span className="text-xs text-emerald-400 italic">No hay datos suficientes</span>}
+                  {peakHours.length === 0 && <span className="text-xs text-emerald-400 italic">No hay datos suficientes</span>}
                 </div>
               </div>
             </div>
@@ -252,7 +287,7 @@ const BusinessAnalysis: React.FC = () => {
               4. Recomendaciones
             </h2>
             <div className="space-y-4">
-              {data.recommendations.map((rec, idx) => (
+              {recommendations.map((rec, idx) => (
                 <motion.div 
                   whileHover={{ x: 5 }}
                   key={idx} 
@@ -270,7 +305,7 @@ const BusinessAnalysis: React.FC = () => {
                   </div>
                 </motion.div>
               ))}
-              {data.recommendations.length === 0 && (
+              {recommendations.length === 0 && (
                 <div className="text-center py-12">
                   <p className="text-zinc-400 text-sm italic">Esperando más datos para generar recomendaciones estratégicas...</p>
                 </div>
