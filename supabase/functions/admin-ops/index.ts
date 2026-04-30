@@ -1,9 +1,9 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3'
 
-const corsHeaders = {
+export const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-superadmin-password',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 }
 
@@ -1561,4 +1561,5 @@ serve(async (req) => {
     logError(context, 'unhandled request error', error)
     return fail(500, 'internal_error', 'Error inesperado en admin-ops.', formatErrorDetails(error))
   }
+})
 })

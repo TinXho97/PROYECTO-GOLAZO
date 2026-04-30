@@ -6,6 +6,17 @@ import { getPublicPortalClientById } from './publicPortalClients';
 import { supabase, getSupabaseDiagnostics } from '../lib/supabase';
 
 
+export interface PendingBookingData {
+  pitchId: string;
+  date: string;
+  time: string;
+  clientId: string;
+  clientName: string;
+  clientPhone: string;
+  depositAmount: string;
+  timestamp: number;
+}
+
 // Initial Mock Data (Fallback)
 const MOCK_PITCHES: Pitch[] = [
   { id: 'p1', name: 'Cancha 1', type: 'F5', price: 1500, active: true },
@@ -194,6 +205,31 @@ export const dataService = {
   },
   clearPublicClientSelection: () => {
     clearPublicClientSelection();
+  },
+  savePendingBooking: (data: Omit<PendingBookingData, 'timestamp'>) => {
+    const pendingData: PendingBookingData = {
+      ...data,
+      timestamp: Date.now()
+    };
+    sessionStorage.setItem('golazo_pending_booking', JSON.stringify(pendingData));
+  },
+  getPendingBooking: (): PendingBookingData | null => {
+    const stored = sessionStorage.getItem('golazo_pending_booking');
+    if (!stored) return null;
+    try {
+      const parsed: PendingBookingData = JSON.parse(stored);
+      const MAX_AGE = 30 * 60 * 1000; // 30 minutos de vigencia
+      if (Date.now() - parsed.timestamp > MAX_AGE) {
+        sessionStorage.removeItem('golazo_pending_booking');
+        return null;
+      }
+      return parsed;
+    } catch {
+      return null;
+    }
+  },
+  clearPendingBooking: () => {
+    sessionStorage.removeItem('golazo_pending_booking');
   },
   getPublicClients: async () => {
     if (isSupabaseConfigured()) {

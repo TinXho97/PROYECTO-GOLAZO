@@ -45,6 +45,7 @@ import { ArgentinaLogo } from '../components/ArgentinaLogo';
 import { NotificationsPanel } from '../components/NotificationsPanel';
 import { dataService, api } from '../services/dataService';
 import { Pitch, Booking, User as UserType, Sale, Product, Client } from '../types';
+import { supabase } from '../lib/supabase';
 import { cn } from '../lib/utils';
 
 interface DashboardProps {
@@ -174,33 +175,43 @@ export default function Dashboard({ user, onNavigate, onLogout, onNotificationCl
 
     try {
       if (isPublicPortalUser) {
-        const publicClientSlug = clientConfig?.slug || selectedPitch.client_slug;
+        const publicClientId = clientConfig?.id || selectedPitch.client_id;
 
-        if (!publicClientSlug) {
-          throw new Error('No se pudo identificar el complejo para esta reserva pública.');
+        if (!publicClientId) {
+          toast.error('No se pudo identificar el complejo para esta reserva pública.');
+          return;
         }
 
-        const result = await dataService.createPublicBooking({
-          client_slug: publicClientSlug,
-          pitch_id: selectedPitch.id,
-          start_time: startTime.toISOString(),
-          client_name: formData.clientName.trim(),
-          client_phone: formData.clientPhone.trim(),
-          notes: formData.notes.trim(),
+        dataService.savePendingBooking({
+          pitchId: selectedPitch.id,
+          date: selectedDate.toISOString(),
+          time: selectedTime,
+          clientId: publicClientId,
+          clientName: formData.clientName.trim(),
+          clientPhone: formData.clientPhone.trim(),
+          depositAmount: formData.depositAmount
         });
 
         persistGuestInfo();
         setIsBookingModalOpen(false);
         resetBookingForm();
 
-        if ((result.booking.status || '').toLowerCase() === 'pending') {
-          toast.success('Reserva pendiente de confirmación', {
-            description: result.message || 'Te avisaremos cuando el complejo la confirme.',
-          });
-        } else {
-          toast.success('Reserva confirmada', {
-            description: result.message || 'Tu reserva fue creada correctamente.',
-          });
+        const returnUrl = new URL(window.location.href);
+
+        const { error } = await supabase.auth.signInWithOAuth({
+          provider: 'google',
+          options: {
+            redirectTo: returnUrl.toString(),
+            queryParams: {
+              access_type: 'offline',
+              prompt: 'consent',
+            }
+          }
+        });
+
+        if (error) {
+          toast.error('Error al conectar con Google.');
+          dataService.clearPendingBooking();
         }
 
         return;

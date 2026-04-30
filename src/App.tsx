@@ -141,6 +141,42 @@ export default function App() {
       setUser(currentUser);
       setSelectedClientId(nextSelectedClientId);
 
+      // Procesar reserva pendiente si existe (Post-Login OAuth)
+      if (currentUser) {
+        const pending = dataService.getPendingBooking();
+        if (pending) {
+          try {
+            const [h, m] = pending.time.split(':').map(Number);
+            const startTime = new Date(pending.date);
+            startTime.setHours(h, m, 0, 0);
+            const endTime = new Date(startTime);
+            endTime.setHours(startTime.getHours() + 1);
+
+            await api.addBooking({
+              pitchId: pending.pitchId,
+              userId: currentUser.id,
+              clientName: pending.clientName,
+              clientPhone: pending.clientPhone,
+              startTime,
+              endTime,
+              status: 'confirmed',
+              depositAmount: Number(pending.depositAmount) || 0,
+              client_id: pending.clientId
+            }, pending.clientId);
+
+            toast.success('¡Reserva confirmada con éxito!', {
+              description: 'Tu turno fue agendado correctamente tras iniciar sesión.'
+            });
+          } catch (error: any) {
+            toast.error('Error al procesar tu reserva pendiente', {
+              description: error.message
+            });
+          } finally {
+            dataService.clearPendingBooking();
+          }
+        }
+      }
+
       if (!isSuperAdminRoute && currentUser.client_id) {
         dataService.setPublicClientSelection(currentUser.client_id);
         setSelectedPublicClientId(currentUser.client_id);
