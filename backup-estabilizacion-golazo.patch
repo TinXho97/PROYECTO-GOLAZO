@@ -1,0 +1,2193 @@
+diff --git a/src/App.tsx b/src/App.tsx
+index d664b56..7ee983b 100644
+--- a/src/App.tsx
++++ b/src/App.tsx
+@@ -253,13 +253,21 @@ export default function App() {
+     setCurrentPage('dashboard');
+   };
+ 
+-  const handleSelectPublicClient = (client: Client) => {
++  const handleSelectPublicClient = async (client: Client) => {
+     dataService.setPublicClientSelection(client.id);
+     setSelectedPublicClientId(client.id);
+     setClientConfig(client);
+     setUser(null);
+     setLoginError(null);
+     setCurrentPage('dashboard');
++
++    try {
++      const publicConfig = await dataService.getPublicClientConfig(client.id);
++      setClientConfig(publicConfig || client);
++    } catch (error) {
++      console.error('Error loading selected public client config:', error);
++      setClientConfig(client);
++    }
+   };
+ 
+   const handleBackToClientSelector = () => {
+@@ -437,7 +445,7 @@ export default function App() {
+   if (!user) {
+     if (isPublicRoute && !selectedPublicClientId) {
+       return (
+-        <div className="min-h-screen bg-zinc-950 text-white relative overflow-hidden">
++        <div className="min-h-screen bg-zinc-950 text-white relative overflow-x-hidden">
+           <div
+             className="absolute inset-0"
+             style={{
+@@ -449,117 +457,117 @@ export default function App() {
+           />
+           <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(2,6,23,0.58)_0%,rgba(2,6,23,0.74)_34%,rgba(2,6,23,0.9)_100%)]" />
+ 
+-          <div className="relative z-10 mx-auto flex min-h-screen w-full max-w-7xl flex-col px-5 py-6 sm:px-6 md:px-10 md:py-10">
+-            <div className="mb-8 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+-              <div className="max-w-4xl space-y-5">
+-                <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-4 py-2 text-[11px] font-black uppercase tracking-[0.28em] text-emerald-200 backdrop-blur-xl">
++          <div className="relative z-10 mx-auto flex min-h-screen w-full max-w-[1280px] flex-col px-4 py-4 sm:px-6 md:px-8 md:py-6">
++            <div className="mb-5 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
++              <div className="max-w-3xl space-y-4">
++                <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3.5 py-1.5 text-[10px] font-black uppercase tracking-[0.24em] text-emerald-200 backdrop-blur-xl">
+                   <Target className="w-4 h-4 text-emerald-300" />
+                   Acceso Público
+                 </div>
+-                <div className="space-y-4">
+-                  <h1 className="max-w-4xl text-4xl font-black leading-[0.92] tracking-[-0.04em] text-white md:text-6xl xl:text-7xl">
+-                    Elegí tu complejo y entrá a reservar con una experiencia más pro.
++                <div className="space-y-2.5">
++                  <h1 className="max-w-3xl text-3xl font-black leading-[0.96] tracking-[-0.04em] text-white sm:text-4xl lg:text-5xl xl:text-6xl">
++                    Reservá tu cancha en minutos
+                   </h1>
+-                  <p className="max-w-2xl text-sm leading-6 text-zinc-200 md:text-lg md:leading-8">
+-                    Seleccioná el complejo donde querés reservar y seguí al panel público.
++                  <p className="max-w-xl text-sm leading-6 text-zinc-200 md:text-base">
++                    Elegí complejo, horario y jugá.
+                   </p>
+                 </div>
+               </div>
+             </div>
+ 
+-            <div className="mb-8 grid gap-4 lg:grid-cols-[minmax(0,1fr)_220px] lg:items-center">
+-              <div className="relative">
+-                <Search className="absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-300/80" />
++            <div className="mb-5 grid max-w-4xl gap-3 lg:grid-cols-[minmax(0,1fr)_180px] lg:items-center">
++              <div className="relative max-w-2xl">
++                <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-300/80" />
+                 <input
+                   type="text"
+                   value={publicSearchTerm}
+                   onChange={(e) => setPublicSearchTerm(e.target.value)}
+-                  placeholder="Buscar complejo o dirección"
+-                  className="h-14 w-full rounded-[24px] border border-white/15 bg-black/25 pl-14 pr-5 text-sm text-white placeholder:text-zinc-300/60 backdrop-blur-xl outline-none transition-all focus:border-emerald-300/60 focus:bg-black/35 md:h-16 md:text-base"
++                  placeholder="Buscar complejo"
++                  className="h-12 w-full rounded-2xl border border-white/15 bg-black/25 pl-11 pr-4 text-sm text-white placeholder:text-zinc-300/60 backdrop-blur-xl outline-none transition-all focus:border-emerald-300/60 focus:bg-black/35"
+                 />
+               </div>
+-              <div className="rounded-[24px] border border-white/12 bg-white/10 px-5 py-4 backdrop-blur-xl">
+-                <p className="text-[10px] font-black uppercase tracking-[0.28em] text-zinc-300">Complejos activos</p>
+-                <p className="mt-2 text-3xl font-black tracking-tight text-white">{filteredPublicClients.length}</p>
++              <div className="rounded-2xl border border-white/12 bg-white/10 px-4 py-3 backdrop-blur-xl">
++                <p className="text-[9px] font-black uppercase tracking-[0.24em] text-zinc-300">Complejos activos</p>
++                <p className="mt-1 text-2xl font-black tracking-tight text-white">{filteredPublicClients.length}</p>
+               </div>
+             </div>
+ 
+             {isPublicClientsLoading ? (
+-              <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
++              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                 {Array.from({ length: 6 }).map((_, index) => (
+-                  <div key={index} className="h-[360px] rounded-[36px] border border-white/10 bg-white/10 animate-pulse backdrop-blur-xl" />
++                  <div key={index} className="h-[220px] rounded-[28px] border border-white/10 bg-white/10 animate-pulse backdrop-blur-xl" />
+                 ))}
+               </div>
+             ) : filteredPublicClients.length === 0 ? (
+-              <div className="rounded-[36px] border border-white/10 bg-black/30 p-10 text-center text-zinc-200 backdrop-blur-xl">
++              <div className="rounded-[28px] border border-white/10 bg-black/30 p-8 text-center text-zinc-200 backdrop-blur-xl">
+                 No hay complejos activos disponibles para mostrar.
+               </div>
+             ) : (
+-              <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
++              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                 {filteredPublicClients.map((client) => (
+                   <button
+                     key={client.id}
+                     type="button"
+                     onClick={() => handleSelectPublicClient(client)}
+-                    className="group relative overflow-hidden rounded-[36px] border border-white/12 bg-white/10 p-6 text-left shadow-[0_24px_80px_rgba(0,0,0,0.35)] backdrop-blur-2xl transition-all duration-300 hover:-translate-y-1.5 hover:border-emerald-300/45 hover:bg-white/14"
++                    className="group relative overflow-hidden rounded-[28px] border border-white/12 bg-white/10 p-4 text-left shadow-[0_18px_60px_rgba(0,0,0,0.28)] backdrop-blur-2xl transition-all duration-300 hover:-translate-y-1 hover:border-emerald-300/45 hover:bg-white/14 sm:p-5"
+                   >
+                     <div className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
+                       <div className="absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-emerald-300/14 to-transparent" />
+                       <div className="absolute -right-10 bottom-0 h-40 w-40 rounded-full bg-sky-400/12 blur-3xl" />
+                     </div>
+ 
+-                    <div className="relative z-10 mb-8 flex items-start justify-between gap-4">
+-                      <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-[28px] border border-white/15 bg-white/95 text-zinc-900 shadow-[0_18px_40px_rgba(255,255,255,0.12)] sm:h-28 sm:w-28">
++                    <div className="relative z-10 mb-4 flex items-start justify-between gap-3">
++                      <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-2xl border border-white/15 bg-white/95 text-zinc-900 shadow-[0_14px_30px_rgba(255,255,255,0.1)] sm:h-18 sm:w-18">
+                         {client.logo_url ? (
+                           <img
+                             src={client.logo_url}
+                             alt={getClientDisplayName(client)}
+-                            className="h-full w-full object-contain p-3"
++                            className="h-full w-full object-contain p-2"
+                             loading="lazy"
+                           />
+                         ) : (
+                           <div className="flex h-full w-full flex-col items-center justify-center bg-[linear-gradient(135deg,#f8fafc_0%,#dbeafe_45%,#dcfce7_100%)] p-3 text-center">
+-                            <span className="text-2xl font-black tracking-[-0.06em] text-slate-900">
++                            <span className="text-xl font-black tracking-[-0.06em] text-slate-900">
+                               {getClientInitials(client)}
+                             </span>
+-                            <span className="mt-1 text-[9px] font-black uppercase tracking-[0.24em] text-slate-500">
++                            <span className="mt-0.5 text-[8px] font-black uppercase tracking-[0.2em] text-slate-500">
+                               Sin logo
+                             </span>
+                           </div>
+                         )}
+                       </div>
+-                      <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-black/20 px-3 py-2 text-[10px] font-black uppercase tracking-[0.24em] text-emerald-200 backdrop-blur-md">
+-                        Entrar ahora
++                      <div className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-black/20 px-3 py-2 text-[10px] font-black uppercase tracking-[0.2em] text-emerald-200 backdrop-blur-md">
++                        Reservar
+                         <ChevronRight className="w-4 h-4 transition-transform duration-300 group-hover:translate-x-1.5" />
+                       </div>
+                     </div>
+ 
+-                    <div className="relative z-10 flex min-h-[170px] flex-col">
+-                      <div className="mb-4">
+-                        <p className="mb-2 text-[10px] font-black uppercase tracking-[0.3em] text-zinc-300/80">
++                    <div className="relative z-10 flex min-h-[120px] flex-col">
++                      <div className="mb-3">
++                        <p className="mb-1.5 text-[9px] font-black uppercase tracking-[0.26em] text-zinc-300/80">
+                           Complejo deportivo
+                         </p>
+-                        <h2 className="text-2xl font-black tracking-[-0.04em] text-white md:text-[2rem]">
++                        <h2 className="line-clamp-2 text-xl font-black tracking-[-0.04em] text-white sm:text-2xl">
+                           {getClientDisplayName(client)}
+                         </h2>
+                       </div>
+-                      <div className="mt-auto space-y-4">
+-                        <div className="flex min-h-[72px] items-start gap-3 rounded-[24px] border border-white/10 bg-black/20 px-4 py-4 backdrop-blur-md">
++                      <div className="mt-auto space-y-3">
++                        <div className="flex min-h-[54px] items-start gap-2.5 rounded-2xl border border-white/10 bg-black/20 px-3 py-3 backdrop-blur-md">
+                           <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-emerald-300" />
+                           <div>
+-                            <p className="text-[10px] font-black uppercase tracking-[0.24em] text-zinc-400">Dirección</p>
+-                            <p className="mt-1 text-sm leading-6 text-zinc-100">
++                            <p className="text-[9px] font-black uppercase tracking-[0.2em] text-zinc-400">Dirección</p>
++                            <p className="mt-0.5 line-clamp-2 text-xs leading-5 text-zinc-100">
+                         {client.address || 'Complejo habilitado para reservas y acceso público.'}
+                       </p>
+                           </div>
+                         </div>
+ 
+-                        <div className="flex items-center justify-between border-t border-white/10 pt-4">
+-                          <span className="text-[11px] font-black uppercase tracking-[0.28em] text-zinc-300">
++                        <div className="flex items-center justify-between border-t border-white/10 pt-3">
++                          <span className="text-[10px] font-black uppercase tracking-[0.24em] text-zinc-300">
+                             Reservas online
+                           </span>
+-                          <span className="inline-flex h-11 items-center gap-2 rounded-full bg-white px-4 text-xs font-black uppercase tracking-[0.18em] text-slate-900 shadow-lg transition-transform duration-300 group-hover:translate-x-1">
+-                            Entrar
++                          <span className="inline-flex h-9 items-center gap-2 rounded-full bg-white px-3.5 text-[11px] font-black uppercase tracking-[0.16em] text-slate-900 shadow-lg transition-transform duration-300 group-hover:translate-x-1">
++                            Reservar
+                             <ChevronRight className="h-4 w-4" />
+                           </span>
+                         </div>
+@@ -699,7 +707,7 @@ export default function App() {
+         return <BookingsList user={activeUser} />;
+       case 'calendar': 
+         if (clientConfig && clientConfig.features?.reservas === false) return renderDashboard();
+-        return <CalendarPage user={activeUser} initialBookingId={selectedBookingId} onClearInitialBooking={() => setSelectedBookingId(null)} />;
++        return <CalendarPage user={activeUser} clientConfig={clientConfig} initialBookingId={selectedBookingId} onClearInitialBooking={() => setSelectedBookingId(null)} />;
+       case 'ranking': 
+         if (clientConfig && clientConfig.features?.ranking === false) return renderDashboard();
+         return <RankingPage user={activeUser} />;
+@@ -733,10 +741,10 @@ export default function App() {
+         <div className="fixed inset-0 bg-[linear-gradient(180deg,rgba(2,6,23,0.62)_0%,rgba(2,6,23,0.78)_42%,rgba(2,6,23,0.94)_100%)]" />
+ 
+         <div className="relative z-10 flex min-h-screen flex-col">
+-          <header className="sticky top-0 z-40 border-b border-white/10 bg-slate-950/55 px-4 py-3 backdrop-blur-2xl sm:px-6 lg:px-10">
+-            <div className="mx-auto flex w-full max-w-7xl items-center justify-between gap-4">
++          <header className="sticky top-0 z-40 border-b border-white/10 bg-slate-950/62 px-4 py-2 backdrop-blur-2xl sm:px-6 lg:px-10">
++            <div className="mx-auto flex w-full max-w-[1440px] items-center justify-between gap-4">
+               <div className="flex min-w-0 items-center gap-3">
+-                <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-white/15 bg-white shadow-xl sm:h-16 sm:w-16">
++                <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/15 bg-white shadow-xl sm:h-12 sm:w-12">
+                   {publicPortalLogo ? (
+                     <img src={publicPortalLogo} alt={publicPortalClientName} className="h-full w-full object-contain p-2" />
+                   ) : selectedPublicClient ? (
+@@ -748,21 +756,21 @@ export default function App() {
+                   )}
+                 </div>
+                 <div className="min-w-0">
+-                  <p className="text-[9px] font-black uppercase tracking-[0.28em] text-emerald-200">Reservas Golazo</p>
+-                  <h1 className="truncate text-xl font-black tracking-[-0.04em] text-white sm:text-2xl">
++                  <p className="text-[8px] font-black uppercase tracking-[0.24em] text-emerald-200">Reservas Golazo</p>
++                  <h1 className="truncate text-base font-black tracking-[-0.04em] text-white sm:text-xl">
+                     {publicPortalClientName}
+                   </h1>
+                 </div>
+               </div>
+ 
+-              <div className="hidden items-center gap-2 lg:flex">
++              <nav className="hidden items-center gap-2 lg:flex">
+                 {filteredNavItems.map((item) => (
+                   <button
+                     key={item.id}
+                     type="button"
+                     onClick={() => setCurrentPage(item.id as Page)}
+                     className={cn(
+-                      "inline-flex h-12 items-center gap-2 rounded-2xl px-4 text-xs font-black uppercase tracking-[0.18em] transition-all",
++                      "inline-flex h-10 items-center gap-2 rounded-xl px-3 text-[10px] font-black uppercase tracking-[0.16em] transition-all",
+                       currentPage === item.id
+                         ? "bg-white text-slate-950 shadow-xl"
+                         : "border border-white/10 bg-white/10 text-white/75 hover:bg-white/15 hover:text-white",
+@@ -772,12 +780,12 @@ export default function App() {
+                     {getPublicNavLabel(item)}
+                   </button>
+                 ))}
+-              </div>
++              </nav>
+ 
+               <button
+                 type="button"
+                 onClick={handleBackToClientSelector}
+-                className="inline-flex h-11 shrink-0 items-center gap-2 rounded-2xl border border-white/15 bg-white/10 px-3 text-[10px] font-black uppercase tracking-[0.18em] text-white backdrop-blur-xl transition-all hover:bg-white/15 sm:px-4"
++                className="inline-flex h-10 shrink-0 items-center gap-2 rounded-xl border border-white/15 bg-white/10 px-3 text-[9px] font-black uppercase tracking-[0.16em] text-white backdrop-blur-xl transition-all hover:bg-white/15 sm:px-4"
+               >
+                 <ArrowLeft className="h-4 w-4" />
+                 <span className="hidden sm:inline">Cambiar complejo</span>
+@@ -785,20 +793,20 @@ export default function App() {
+             </div>
+           </header>
+ 
+-          <main className="relative z-10 mx-auto w-full max-w-7xl flex-1 px-4 pb-28 pt-5 sm:px-6 sm:pt-8 lg:px-10 lg:pb-10">
++          <main className="relative z-10 mx-auto w-full max-w-[1440px] flex-1 px-4 pb-28 pt-4 sm:px-6 sm:pt-6 lg:px-8 lg:pb-10">
+             <motion.div
+               key={currentPage}
+               initial={{ opacity: 0, y: 10 }}
+               animate={{ opacity: 1, y: 0 }}
+               transition={{ duration: 0.2 }}
+-              className="rounded-[32px] border border-white/10 bg-white/95 p-3 text-zinc-900 shadow-[0_32px_120px_rgba(0,0,0,0.35)] backdrop-blur-2xl sm:p-5 lg:p-7"
++              className="min-w-0 w-full"
+             >
+               {renderPage()}
+             </motion.div>
+           </main>
+ 
+           <nav
+-            className="fixed inset-x-3 bottom-3 z-50 grid gap-2 rounded-[28px] border border-white/15 bg-slate-950/82 p-2 shadow-2xl backdrop-blur-2xl lg:hidden"
++            className="fixed inset-x-3 bottom-3 z-50 grid gap-2 rounded-[24px] border border-white/15 bg-slate-950/86 p-1.5 shadow-2xl backdrop-blur-2xl lg:hidden"
+             style={{ gridTemplateColumns: `repeat(${filteredNavItems.length}, minmax(0, 1fr))` }}
+           >
+             {filteredNavItems.map((item) => (
+@@ -807,7 +815,7 @@ export default function App() {
+                 type="button"
+                 onClick={() => setCurrentPage(item.id as Page)}
+                 className={cn(
+-                  "flex min-h-16 flex-col items-center justify-center gap-1 rounded-2xl px-1 text-[9px] font-black uppercase tracking-tight transition-all",
++                  "flex min-h-14 flex-col items-center justify-center gap-1 rounded-2xl px-1 text-[9px] font-black uppercase tracking-tight transition-all",
+                   currentPage === item.id
+                     ? "bg-white text-slate-950"
+                     : "text-white/65 hover:bg-white/10 hover:text-white",
+diff --git a/src/pages/Admin.tsx b/src/pages/Admin.tsx
+index 70abecd..b49b411 100644
+--- a/src/pages/Admin.tsx
++++ b/src/pages/Admin.tsx
+@@ -31,7 +31,7 @@ import { Modal } from '../components/Modal';
+ import { ConfirmModal } from '../components/ConfirmModal';
+ import { Badge } from '../components/Badge';
+ import { dataService, api } from '../services/dataService';
+-import { Pitch, Product, AuditLog, User } from '../types';
++import { Pitch, Product, AuditLog, User, Client, PublicPaymentSettings } from '../types';
+ import { cn } from '../lib/utils';
+ import { getEffectiveClientId } from '../lib/tenant';
+ import { toast } from 'sonner';
+@@ -53,6 +53,8 @@ export default function Admin({ onLogout }: AdminProps) {
+   const [confirmDelete, setConfirmDelete] = useState<{ type: 'pitch' | 'product', id: string } | null>(null);
+   const [isLogoutConfirmOpen, setIsLogoutConfirmOpen] = useState(false);
+   const [customLogo, setCustomLogo] = useState<string | null>(localStorage.getItem('golazo_custom_logo'));
++  const [clientConfig, setClientConfig] = useState<Client | null>(null);
++  const [isSavingPaymentSettings, setIsSavingPaymentSettings] = useState(false);
+   
+   const [activeTab, setActiveTab] = useState<'general' | 'canchas' | 'productos' | 'sistema'>('general');
+   const [supabaseStatus, setSupabaseStatus] = useState<'checking' | 'connected' | 'disconnected'>('checking');
+@@ -91,6 +93,17 @@ export default function Admin({ onLogout }: AdminProps) {
+   };
+ 
+   const [productForm, setProductForm] = useState(defaultProductForm);
++  const defaultPaymentPublicForm: PublicPaymentSettings = {
++    enabled: false,
++    min_deposit: 500,
++    bank_name: '',
++    account_holder: '',
++    account_number: '',
++    alias: '',
++    tax_id: '',
++    instructions: '',
++  };
++  const [paymentPublicForm, setPaymentPublicForm] = useState<PublicPaymentSettings>(defaultPaymentPublicForm);
+ 
+   const [user, setUser] = useState<User | null>(null);
+   const effectiveClientId = getEffectiveClientId(user);
+@@ -106,9 +119,15 @@ export default function Admin({ onLogout }: AdminProps) {
+       const pi = await dataService.getPitches(clientId);
+       const pr = await dataService.getProducts(clientId);
+       const logs = await dataService.getAuditLogs(clientId);
++      const config = clientId ? await dataService.getClientConfig(clientId) : null;
+       setPitches(pi);
+       setProducts(pr);
+       setAuditLogs(logs);
++      setClientConfig(config);
++      setPaymentPublicForm({
++        ...defaultPaymentPublicForm,
++        ...(config?.settings?.payment_public || {}),
++      });
+     };
+     fetchData();
+   }, [user, effectiveClientId]);
+@@ -119,9 +138,57 @@ export default function Admin({ onLogout }: AdminProps) {
+     const pi = await dataService.getPitches(clientId);
+     const pr = await dataService.getProducts(clientId);
+     const logs = await dataService.getAuditLogs(clientId);
++    const config = clientId ? await dataService.getClientConfig(clientId) : null;
+     setPitches(pi);
+     setProducts(pr);
+     setAuditLogs(logs);
++    setClientConfig(config);
++    setPaymentPublicForm({
++      ...defaultPaymentPublicForm,
++      ...(config?.settings?.payment_public || {}),
++    });
++  };
++
++  const handleSavePaymentPublicSettings = async (e: React.FormEvent) => {
++    e.preventDefault();
++    if (!effectiveClientId) {
++      toast.error('No se pudo identificar el complejo.');
++      return;
++    }
++
++    setIsSavingPaymentSettings(true);
++    try {
++      const payment_public: PublicPaymentSettings = {
++        enabled: paymentPublicForm.enabled,
++        min_deposit: Number(paymentPublicForm.min_deposit) || 0,
++        bank_name: paymentPublicForm.bank_name.trim(),
++        account_holder: paymentPublicForm.account_holder.trim(),
++        account_number: paymentPublicForm.account_number.trim(),
++        alias: paymentPublicForm.alias.trim(),
++        tax_id: paymentPublicForm.tax_id?.trim() || '',
++        instructions: paymentPublicForm.instructions?.trim() || '',
++      };
++
++      const updatedClient = await dataService.updateClientSettings(effectiveClientId, { payment_public });
++      if (updatedClient) {
++        setClientConfig(updatedClient);
++      } else {
++        setClientConfig((prev) => prev ? ({
++          ...prev,
++          settings: {
++            ...(prev.settings || {}),
++            payment_public,
++          },
++        }) : prev);
++      }
++      setPaymentPublicForm(payment_public);
++      toast.success('Datos de pago publicos guardados');
++    } catch (error) {
++      console.error('Error saving public payment settings:', error);
++      toast.error('No se pudieron guardar los datos de pago');
++    } finally {
++      setIsSavingPaymentSettings(false);
++    }
+   };
+ 
+   const handleSavePitch = async (e: React.FormEvent) => {
+@@ -450,6 +517,115 @@ export default function Admin({ onLogout }: AdminProps) {
+                       </CardContent>
+                     </Card>
+ 
++                    <Card className="border border-sky-100 shadow-xl shadow-zinc-200/30 rounded-[36px] overflow-hidden bg-white">
++                      <CardHeader className="p-8 pb-4">
++                        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
++                          <div className="space-y-1">
++                            <h3 className="text-xl font-black text-zinc-900 flex items-center gap-3 tracking-tight uppercase">
++                              <DollarSign className="w-6 h-6 text-sky-500" />
++                              Datos de pago para reservas publicas
++                            </h3>
++                            <p className="text-zinc-500 text-xs font-medium">
++                              Estos datos aparecen en el modal de reserva del jugador.
++                            </p>
++                          </div>
++                          <label className="flex cursor-pointer items-center gap-3 rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3">
++                            <input
++                              type="checkbox"
++                              className="h-4 w-4 accent-sky-600"
++                              checked={paymentPublicForm.enabled}
++                              onChange={(e) => setPaymentPublicForm((prev) => ({ ...prev, enabled: e.target.checked }))}
++                            />
++                            <span className="text-[10px] font-black uppercase tracking-widest text-zinc-700">Activo</span>
++                          </label>
++                        </div>
++                      </CardHeader>
++                      <CardContent className="p-8 pt-4">
++                        <form onSubmit={handleSavePaymentPublicSettings} className="space-y-5">
++                          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
++                            <div className="space-y-1.5">
++                              <label className="ml-1 text-xs font-bold text-zinc-700">Monto minimo de seña</label>
++                              <input
++                                type="number"
++                                min="0"
++                                className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm font-bold text-zinc-900 placeholder:text-zinc-400 outline-none focus:ring-2 focus:ring-sky-500/20"
++                                value={paymentPublicForm.min_deposit}
++                                onChange={(e) => setPaymentPublicForm((prev) => ({ ...prev, min_deposit: Number(e.target.value) }))}
++                              />
++                            </div>
++                            <div className="space-y-1.5">
++                              <label className="ml-1 text-xs font-bold text-zinc-700">Banco o billetera</label>
++                              <input
++                                type="text"
++                                placeholder="Ej: Mercado Pago, Banco..."
++                                className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm font-medium text-zinc-900 placeholder:text-zinc-400 outline-none focus:ring-2 focus:ring-sky-500/20"
++                                value={paymentPublicForm.bank_name}
++                                onChange={(e) => setPaymentPublicForm((prev) => ({ ...prev, bank_name: e.target.value }))}
++                              />
++                            </div>
++                            <div className="space-y-1.5">
++                              <label className="ml-1 text-xs font-bold text-zinc-700">Titular de la cuenta</label>
++                              <input
++                                type="text"
++                                className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm font-medium text-zinc-900 placeholder:text-zinc-400 outline-none focus:ring-2 focus:ring-sky-500/20"
++                                value={paymentPublicForm.account_holder}
++                                onChange={(e) => setPaymentPublicForm((prev) => ({ ...prev, account_holder: e.target.value }))}
++                              />
++                            </div>
++                            <div className="space-y-1.5">
++                              <label className="ml-1 text-xs font-bold text-zinc-700">CBU / CVU</label>
++                              <input
++                                type="text"
++                                className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm font-medium text-zinc-900 placeholder:text-zinc-400 outline-none focus:ring-2 focus:ring-sky-500/20"
++                                value={paymentPublicForm.account_number}
++                                onChange={(e) => setPaymentPublicForm((prev) => ({ ...prev, account_number: e.target.value }))}
++                              />
++                            </div>
++                            <div className="space-y-1.5">
++                              <label className="ml-1 text-xs font-bold text-zinc-700">Alias</label>
++                              <input
++                                type="text"
++                                className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm font-medium text-zinc-900 placeholder:text-zinc-400 outline-none focus:ring-2 focus:ring-sky-500/20"
++                                value={paymentPublicForm.alias}
++                                onChange={(e) => setPaymentPublicForm((prev) => ({ ...prev, alias: e.target.value }))}
++                              />
++                            </div>
++                            <div className="space-y-1.5">
++                              <label className="ml-1 text-xs font-bold text-zinc-700">CUIT / DNI opcional</label>
++                              <input
++                                type="text"
++                                className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm font-medium text-zinc-900 placeholder:text-zinc-400 outline-none focus:ring-2 focus:ring-sky-500/20"
++                                value={paymentPublicForm.tax_id || ''}
++                                onChange={(e) => setPaymentPublicForm((prev) => ({ ...prev, tax_id: e.target.value }))}
++                              />
++                            </div>
++                          </div>
++                          <div className="space-y-1.5">
++                            <label className="ml-1 text-xs font-bold text-zinc-700">Instrucciones para el jugador</label>
++                            <textarea
++                              rows={3}
++                              placeholder="Ej: Envia el comprobante y espera confirmacion del complejo."
++                              className="w-full resize-none rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm font-medium text-zinc-900 placeholder:text-zinc-400 outline-none focus:ring-2 focus:ring-sky-500/20"
++                              value={paymentPublicForm.instructions || ''}
++                              onChange={(e) => setPaymentPublicForm((prev) => ({ ...prev, instructions: e.target.value }))}
++                            />
++                          </div>
++                          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
++                            <p className="text-xs font-medium text-zinc-500">
++                              Se guarda dentro de settings.payment_public sin modificar otras configuraciones.
++                            </p>
++                            <Button
++                              type="submit"
++                              disabled={isSavingPaymentSettings}
++                              className="h-12 rounded-2xl px-6 text-xs font-black uppercase tracking-widest shadow-lg shadow-sky-500/20"
++                            >
++                              {isSavingPaymentSettings ? 'Guardando...' : 'Guardar datos de pago'}
++                            </Button>
++                          </div>
++                        </form>
++                      </CardContent>
++                    </Card>
++
+                     {/* Quick Stats / Info Grid */}
+                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                       <div className="p-8 bg-white rounded-[40px] border border-zinc-100 shadow-xl shadow-zinc-200/20 flex items-center gap-6">
+diff --git a/src/pages/BookingsList.tsx b/src/pages/BookingsList.tsx
+index 4a8e34c..250192f 100644
+--- a/src/pages/BookingsList.tsx
++++ b/src/pages/BookingsList.tsx
+@@ -220,7 +220,7 @@ export default function BookingsList({ user }: BookingsListProps) {
+             <div className="flex flex-col md:flex-row">
+               {/* Time Section */}
+               <div className={cn(
+-                "md:w-48 p-6 flex flex-col items-center justify-center text-center border-b md:border-b-0 md:border-r border-zinc-100",
++                cn("flex flex-col items-center justify-center text-center border-b md:border-b-0 md:border-r border-zinc-100", isPlayerUser ? "p-4 md:w-36" : "md:w-48 p-6"),
+                 isInPlay ? "bg-emerald-500 text-white" :
+                 booking.status === 'confirmed' ? "bg-emerald-50/30" : 
+                 booking.status === 'pending' ? "bg-amber-50/30" :
+@@ -240,13 +240,13 @@ export default function BookingsList({ user }: BookingsListProps) {
+                   )} />
+                 )}
+                 <span className={cn(
+-                  "text-2xl font-black leading-none",
++                  cn("font-black leading-none", isPlayerUser ? "text-xl" : "text-2xl"),
+                   isInPlay ? "text-white" : "text-zinc-900"
+                 )}>
+                   {format(booking.startTime, 'HH:mm')}
+                 </span>
+                 <span className={cn(
+-                  "text-sm font-black uppercase tracking-widest mt-1",
++                  cn("font-black uppercase tracking-widest mt-1", isPlayerUser ? "text-xs" : "text-sm"),
+                   isInPlay ? "text-emerald-100" : "text-zinc-500"
+                 )}>
+                   a {format(booking.endTime, 'HH:mm')} hs
+@@ -254,10 +254,10 @@ export default function BookingsList({ user }: BookingsListProps) {
+               </div>
+ 
+               {/* Main Content */}
+-              <div className="flex-1 p-6 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+-                <div className="space-y-4 flex-1">
++              <div className={cn("flex-1 flex flex-col lg:flex-row lg:items-center justify-between", isPlayerUser ? "gap-4 p-4" : "p-6 gap-6")}>
++                <div className={cn("flex-1", isPlayerUser ? "space-y-3" : "space-y-4")}>
+                   <div className="flex flex-wrap items-center gap-3">
+-                    <h4 className="text-xl font-black text-zinc-900">{booking.clientName}</h4>
++                    <h4 className={cn("font-black text-zinc-900", isPlayerUser ? "text-lg" : "text-xl")}>{booking.clientName}</h4>
+                     <div className="flex gap-2">
+                       {isInPlay ? (
+                         <Badge className="bg-emerald-500 text-white border-none animate-pulse">EN JUEGO</Badge>
+@@ -279,7 +279,7 @@ export default function BookingsList({ user }: BookingsListProps) {
+                     </div>
+                   </div>
+ 
+-                  <div className="flex items-center gap-2 text-zinc-900 font-black text-lg">
++                  <div className={cn("flex items-center gap-2 text-zinc-900 font-black", isPlayerUser ? "text-base" : "text-lg")}>
+                     <MapPin className="w-5 h-5 text-sky-500" />
+                     {pitch?.name || 'Cancha eliminada'}
+                   </div>
+@@ -417,33 +417,44 @@ export default function BookingsList({ user }: BookingsListProps) {
+   }
+ 
+   return (
+-    <div className="space-y-8 pb-20">
+-      <header className="flex flex-col md:flex-row md:items-center justify-between gap-6">
++    <div className={cn("w-full pb-20", isPlayerUser ? "space-y-4" : "space-y-8")}>
++      <header className={cn(
++        "flex flex-col md:flex-row md:items-center justify-between",
++        isPlayerUser ? "gap-3 rounded-[24px] border border-white/10 bg-white/95 p-4 shadow-2xl shadow-slate-950/20 backdrop-blur-xl sm:p-5" : "gap-6"
++      )}>
+         <div>
+-          <h1 className="text-4xl font-black text-zinc-900 tracking-tighter">
+-            {user.role === 'admin' ? 'Gestión de Reservas' : 'Mis Reservas'}
++          <h1 className={cn("font-black text-zinc-900 tracking-tighter", isPlayerUser ? "text-2xl sm:text-3xl" : "text-3xl sm:text-4xl")}>
++            {user.role === 'admin' ? 'Gestión de Reservas' : 'Mis turnos'}
+           </h1>
+-          <p className="text-zinc-500 font-medium">
+-            {isPlayerUser ? 'Tus turnos y reservas del complejo' : 'Panel de control y seguimiento'}
++          <p className={cn("text-zinc-500 font-medium", isPlayerUser && "text-sm")}>
++            {isPlayerUser ? 'Tus reservas del complejo, simples y ordenadas' : 'Panel de control y seguimiento'}
+           </p>
+         </div>
+       </header>
+ 
+       {/* Filters */}
+-      <div className="bg-white p-6 rounded-[32px] border border-zinc-100 shadow-sm space-y-4">
+-        <div className="flex flex-col lg:flex-row gap-4">
++      <div className={cn(
++        "space-y-4",
++        isPlayerUser
++          ? "bg-white/95 p-3 rounded-[24px] border border-white/40 shadow-2xl shadow-slate-950/15 backdrop-blur-xl sm:p-4"
++          : "bg-white p-6 rounded-[32px] border border-zinc-100 shadow-sm"
++      )}>
++        <div className={cn("flex flex-col lg:flex-row", isPlayerUser ? "gap-3" : "gap-4")}>
+           <div className="relative flex-1">
+             <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-400" />
+             <input
+               type="text"
+               placeholder="Buscar por nombre o teléfono..."
+-              className="w-full pl-12 pr-4 py-4 bg-zinc-50 border-none rounded-2xl focus:ring-2 focus:ring-sky-500 outline-none transition-all font-medium"
++              className={cn(
++                "w-full pl-12 pr-4 bg-zinc-50 border-none rounded-2xl focus:ring-2 focus:ring-sky-500 outline-none transition-all font-medium",
++                isPlayerUser ? "py-3 text-sm" : "py-4"
++              )}
+               value={searchTerm}
+               onChange={e => setSearchTerm(e.target.value)}
+             />
+           </div>
+           <div className="flex flex-wrap gap-3">
+-            <div className="flex items-center gap-2 bg-zinc-50 px-4 py-2 rounded-2xl border border-zinc-100">
++            <div className={cn("flex items-center gap-2 bg-zinc-50 px-4 rounded-2xl border border-zinc-100", isPlayerUser ? "py-2.5" : "py-2")}>
+               <Filter className="w-4 h-4 text-zinc-400" />
+               <select
+                 className="bg-transparent font-bold text-sm outline-none text-zinc-600"
+@@ -462,12 +473,12 @@ export default function BookingsList({ user }: BookingsListProps) {
+         </div>
+       </div>
+ 
+-      <div className="space-y-12">
++      <div className={cn(isPlayerUser ? "space-y-6" : "space-y-12")}>
+         {groupedBookings.map((group, groupIndex) => (
+-          <section key={group.title} className="space-y-6">
++          <section key={group.title} className={cn(isPlayerUser ? "space-y-3" : "space-y-6")}>
+             <div className="flex items-center gap-3">
+               <div className={cn(
+-                "w-10 h-10 rounded-xl flex items-center justify-center text-white shadow-lg",
++                cn("rounded-xl flex items-center justify-center text-white shadow-lg", isPlayerUser ? "h-8 w-8" : "w-10 h-10"),
+                 group.title === 'HOY' ? "bg-emerald-500 shadow-emerald-200" :
+                 group.title === 'AYER' ? "bg-sky-500 shadow-sky-200" :
+                 "bg-zinc-400 shadow-zinc-200"
+@@ -476,7 +487,7 @@ export default function BookingsList({ user }: BookingsListProps) {
+                  group.title === 'AYER' ? <History className="w-5 h-5" /> :
+                  <CalendarIcon className="w-5 h-5" />}
+               </div>
+-              <h2 className="text-2xl font-black text-zinc-900 tracking-tight uppercase">{group.title}</h2>
++              <h2 className={cn("font-black text-zinc-900 tracking-tight uppercase", isPlayerUser ? "text-xl" : "text-2xl")}>{group.title}</h2>
+               <Badge variant="neutral" className={cn(
+                 "border-none",
+                 group.title === 'HOY' ? "bg-emerald-100 text-emerald-700" :
+@@ -486,7 +497,7 @@ export default function BookingsList({ user }: BookingsListProps) {
+                 {group.bookings.length} {group.bookings.length === 1 ? 'reserva' : 'reservas'}
+               </Badge>
+             </div>
+-            <div className="space-y-4">
++            <div className={cn(isPlayerUser ? "space-y-3" : "space-y-4")}>
+               {group.bookings.map((booking, i) => renderBookingCard(booking, i))}
+             </div>
+           </section>
+@@ -494,14 +505,17 @@ export default function BookingsList({ user }: BookingsListProps) {
+ 
+         {filteredBookings.length === 0 && (
+           <motion.div 
+-            initial={{ opacity: 0, scale: 0.95 }}
+-            animate={{ opacity: 1, scale: 1 }}
+-            className="text-center py-24 bg-white rounded-[40px] border-2 border-dashed border-zinc-100"
++            initial={{ opacity: 0, y: 12 }}
++            animate={{ opacity: 1, y: 0 }}
++            className={cn(
++              "text-center bg-white border-2 border-dashed border-zinc-100",
++              isPlayerUser ? "rounded-[28px] px-6 py-14" : "py-24 rounded-[40px]"
++            )}
+           >
+-            <div className="w-20 h-20 bg-zinc-50 rounded-3xl flex items-center justify-center mx-auto mb-6">
+-              <AlertCircle className="w-10 h-10 text-zinc-200" />
++            <div className={cn("bg-zinc-50 rounded-3xl flex items-center justify-center mx-auto", isPlayerUser ? "mb-4 h-14 w-14" : "w-20 h-20 mb-6")}>
++              <AlertCircle className={cn("text-zinc-200", isPlayerUser ? "h-7 w-7" : "w-10 h-10")} />
+             </div>
+-            <h3 className="text-xl font-black text-zinc-900 mb-2">No se encontraron reservas</h3>
++            <h3 className="text-xl font-black text-zinc-900 mb-2">{isPlayerUser ? 'Todavia no tenes turnos' : 'No se encontraron reservas'}</h3>
+             <p className="text-zinc-400 font-medium">
+               {isPlayerUser ? 'Todavía no hay reservas asociadas a tu teléfono.' : 'Intenta cambiar los filtros o realiza una nueva reserva.'}
+             </p>
+diff --git a/src/pages/Calendar.tsx b/src/pages/Calendar.tsx
+index e6d35b2..2968e00 100644
+--- a/src/pages/Calendar.tsx
++++ b/src/pages/Calendar.tsx
+@@ -37,19 +37,20 @@ import { Badge } from '../components/Badge';
+ import { Modal } from '../components/Modal';
+ import { ConfirmModal } from '../components/ConfirmModal';
+ import { dataService, api } from '../services/dataService';
+-import { Pitch, Booking, User as UserType } from '../types';
++import { Pitch, Booking, Client, User as UserType } from '../types';
+ import { cn } from '../lib/utils';
+ import { getEffectiveClientId } from '../lib/tenant';
+ 
+ interface CalendarProps {
+   user: UserType;
++  clientConfig?: Client | null;
+   initialBookingId?: string | null;
+   onClearInitialBooking?: () => void;
+ }
+ 
+ import { ShareAvailabilityModal } from '../components/ShareAvailabilityModal';
+ 
+-export default function CalendarPage({ user, initialBookingId, onClearInitialBooking }: CalendarProps) {
++export default function CalendarPage({ user, clientConfig, initialBookingId, onClearInitialBooking }: CalendarProps) {
+   const effectiveClientId = getEffectiveClientId(user);
+   const isPlayerUser = user.role === 'client';
+   const [pitches, setPitches] = useState<Pitch[]>([]);
+@@ -80,6 +81,70 @@ export default function CalendarPage({ user, initialBookingId, onClearInitialBoo
+     paymentUrl: ''
+   });
+ 
++  const getStringValue = (source: unknown, keys: string[]) => {
++    if (!source || typeof source !== 'object') return '';
++    const record = source as Record<string, unknown>;
++
++    for (const key of keys) {
++      const value = record[key];
++      if (typeof value === 'string' && value.trim()) return value.trim();
++    }
++
++    return '';
++  };
++
++  const getNumberValue = (source: unknown, keys: string[], fallback: number) => {
++    if (!source || typeof source !== 'object') return fallback;
++    const record = source as Record<string, unknown>;
++
++    for (const key of keys) {
++      const value = record[key];
++      if (typeof value === 'number' && Number.isFinite(value)) return value;
++      if (typeof value === 'string' && value.trim()) {
++        const parsed = Number(value);
++        if (Number.isFinite(parsed)) return parsed;
++      }
++    }
++
++    return fallback;
++  };
++
++  const getNestedRecord = (source: unknown, keys: string[]) => {
++    if (!source || typeof source !== 'object') return null;
++    const record = source as Record<string, unknown>;
++
++    for (const key of keys) {
++      const value = record[key];
++      if (value && typeof value === 'object') return value as Record<string, unknown>;
++    }
++
++    return null;
++  };
++
++  const paymentPublic = clientConfig?.settings?.payment_public || clientConfig?.payment_public;
++  const paymentSettings =
++    isPlayerUser
++      ? paymentPublic
++      : paymentPublic ||
++        getNestedRecord(user, ['payment_public', 'clientConfig', 'settings', 'client_settings', 'public_settings', 'payment_settings']) ||
++        getNestedRecord(bookingData.pitch, ['payment_public', 'settings', 'client_settings', 'public_settings', 'payment_settings']);
++
++  const bankDetails = {
++    bank: getStringValue(paymentSettings, ['bank_name', 'bankName', 'bank', 'banco']),
++    holder: getStringValue(paymentSettings, ['account_holder', 'accountHolder', 'holder', 'titular']),
++    cbu: getStringValue(paymentSettings, ['account_number', 'accountNumber', 'cbu', 'cvu', 'account_cbu']),
++    alias: getStringValue(paymentSettings, ['alias', 'account_alias']),
++    taxId: getStringValue(paymentSettings, ['tax_id', 'taxId', 'cuit', 'dni']),
++    instructions: getStringValue(paymentSettings, ['instructions', 'notes']),
++  };
++  const paymentPublicEnabled = Boolean(
++    paymentSettings &&
++    typeof paymentSettings === 'object' &&
++    ((paymentSettings as { enabled?: boolean | string }).enabled === true ||
++      (paymentSettings as { enabled?: boolean | string }).enabled === 'true')
++  );
++  const publicMinDeposit = getNumberValue(paymentSettings, ['min_deposit', 'minDeposit'], 500);
++
+   useEffect(() => {
+     const fetchData = async () => {
+       setIsCalendarLoading(true);
+@@ -101,11 +166,15 @@ export default function CalendarPage({ user, initialBookingId, onClearInitialBoo
+         setPitches(fetchedPitches);
+ 
+         let fetchedBookings: Booking[] = [];
+-        try {
+-          fetchedBookings = await dataService.getBookings(clientId);
+-          setBookings(fetchedBookings);
+-        } catch (bookingsError) {
+-          console.error('Error loading bookings:', bookingsError);
++        if (!isPlayerUser) {
++          try {
++            fetchedBookings = await dataService.getBookings(clientId);
++            setBookings(fetchedBookings);
++          } catch (bookingsError) {
++            console.error('Error loading bookings:', bookingsError);
++            setBookings([]);
++          }
++        } else {
+           setBookings([]);
+         }
+ 
+@@ -257,6 +326,83 @@ export default function CalendarPage({ user, initialBookingId, onClearInitialBoo
+     e.preventDefault();
+     if (!bookingData.pitch || !bookingData.time) return;
+ 
++    if (user.role === 'client') {
++      const clientId = effectiveClientId;
++      const [publicHour, publicMinute] = bookingData.time.split(':').map(Number);
++      const publicStartTime = new Date(bookingData.date);
++      publicStartTime.setHours(publicHour, publicMinute, 0, 0);
++
++      try {
++        if (!clientId) {
++          throw new Error('No se pudo identificar el complejo para esta reserva publica.');
++        }
++
++        if (!bookingData.pitch.client_slug) {
++          throw new Error('No se pudo identificar el complejo para esta reserva publica.');
++        }
++
++        const result = await dataService.createPublicBooking({
++          client_slug: bookingData.pitch.client_slug,
++          pitch_id: bookingData.pitch.id,
++          start_time: publicStartTime.toISOString(),
++          client_name: bookingData.clientName.trim(),
++          client_phone: bookingData.clientPhone.trim(),
++        });
++
++        const createdBooking = result.booking;
++        setBookings(prev => [
++          ...prev.filter(booking => booking.id !== createdBooking.id),
++          {
++            id: createdBooking.id,
++            pitchId: createdBooking.pitch_id,
++            userId: user.id,
++            clientName: createdBooking.client_name,
++            clientPhone: createdBooking.client_phone,
++            startTime: new Date(createdBooking.start_time),
++            endTime: new Date(createdBooking.end_time),
++            status: createdBooking.status as Booking['status'],
++            createdAt: new Date(createdBooking.created_at),
++            client_id: createdBooking.client_id,
++          },
++        ]);
++
++        const refreshedPitches = await dataService.getPublicPitches(clientId);
++        setPitches(refreshedPitches);
++        setIsBookingModalOpen(false);
++        setBookingData(prev => ({
++          ...prev,
++          receipt: null,
++          depositAmount: '',
++          paymentMethod: 'transferencia',
++          paymentUrl: ''
++        }));
++
++        if ((createdBooking.status || '').toLowerCase() === 'pending') {
++          toast.success('Reserva pendiente de confirmacion', {
++            description: result.message || 'Te avisaremos cuando el complejo la confirme.',
++          });
++        } else {
++          toast.success('Reserva confirmada', {
++            description: result.message || 'Tu reserva fue creada correctamente.',
++          });
++        }
++      } catch (error: any) {
++        const errorCode = typeof error?.code === 'string' ? error.code : '';
++        const publicMessages: Record<string, string> = {
++          validation_error: 'Revisa los datos ingresados e intenta nuevamente.',
++          past_booking_not_allowed: 'No podes reservar un horario pasado.',
++          client_not_found: 'No encontramos el complejo seleccionado.',
++          client_not_publicly_bookable: 'Este complejo no acepta reservas publicas en este momento.',
++          pitch_not_available: 'La cancha seleccionada no esta disponible para reservas publicas.',
++          slot_occupied: 'Ese horario ya no esta disponible. Elegi otro turno.',
++        };
++
++        toast.error(publicMessages[errorCode] || error?.message || 'No se pudo crear la reserva publica.');
++      }
++
++      return;
++    }
++
+     const deposit = Number(bookingData.depositAmount) || 0;
+     if (deposit < 500) {
+       toast.error('La seña mínima es de $500.');
+@@ -336,16 +482,404 @@ export default function CalendarPage({ user, initialBookingId, onClearInitialBoo
+     );
+   }
+ 
++  if (isPlayerUser) {
++    const playerSelectedPitch = filterPitch !== 'all'
++      ? pitches.find((pitch) => pitch.id === filterPitch) || pitches[0]
++      : pitches[0];
++    const playerPitchList = playerSelectedPitch ? [playerSelectedPitch] : [];
++
++    return (
++      <div className="mx-auto w-full max-w-[1280px] space-y-5 pb-6">
++        <section className="overflow-hidden rounded-[28px] border border-white/15 bg-slate-950 text-white shadow-2xl shadow-slate-950/25">
++          <div className="relative p-4 sm:p-6 lg:p-7">
++            <div className="absolute inset-0 opacity-20" style={{ background: 'var(--bg-flag-ar)' }} />
++            <div className="relative z-10 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
++              <div className="flex items-center gap-3">
++                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-sky-500 text-white shadow-lg shadow-sky-500/30 sm:h-14 sm:w-14">
++                  <CalendarIcon className="h-6 w-6" />
++                </div>
++                <div>
++                  <p className="text-[9px] font-black uppercase tracking-[0.24em] text-emerald-200">Reservas online</p>
++                  <h1 className="text-2xl font-black italic tracking-[-0.04em] sm:text-4xl">Reservar cancha</h1>
++                  <p className="mt-1 text-sm font-bold capitalize text-white/70">
++                    {format(selectedDate, "EEEE d 'de' MMMM", { locale: es })}
++                  </p>
++                </div>
++              </div>
++
++              <div className="space-y-2">
++                <div className="grid grid-cols-[auto_1fr_auto] gap-2 sm:flex sm:items-center">
++                  <Button
++                    variant="secondary"
++                    className="h-11 rounded-2xl bg-white/10 px-3 text-white hover:bg-white/15"
++                    onClick={() => setSelectedDate(date => addDays(date, -1))}
++                  >
++                    <ChevronLeft className="h-5 w-5" />
++                  </Button>
++                  <Button
++                    variant="secondary"
++                    className="h-11 rounded-2xl bg-white px-5 text-xs font-black uppercase tracking-widest text-slate-950 hover:bg-white/90"
++                    onClick={() => setSelectedDate(new Date())}
++                  >
++                    Hoy
++                  </Button>
++                  <Button
++                    variant="secondary"
++                    className="h-11 rounded-2xl bg-white/10 px-3 text-white hover:bg-white/15"
++                    onClick={() => setSelectedDate(date => addDays(date, 1))}
++                  >
++                    <ChevronRight className="h-5 w-5" />
++                  </Button>
++                </div>
++                <div className="rounded-2xl border border-white/10 bg-white/10 px-4 py-2 text-center backdrop-blur-xl">
++                  <p className="text-[9px] font-black uppercase tracking-[0.22em] text-emerald-200">Fecha seleccionada</p>
++                  <p className="text-sm font-black capitalize text-white">
++                    {format(selectedDate, "EEEE d 'de' MMMM", { locale: es })}
++                  </p>
++                </div>
++              </div>
++            </div>
++          </div>
++        </section>
++
++        <div className="grid gap-5 xl:grid-cols-[300px_minmax(0,1fr)]">
++          <aside className="space-y-4">
++            <div className="rounded-[24px] border border-white/40 bg-white/95 p-4 shadow-xl shadow-slate-950/15 backdrop-blur-xl">
++              <p className="text-[10px] font-black uppercase tracking-[0.24em] text-zinc-400">Elegir cancha</p>
++              {shouldShowEmptyPitches ? (
++                <div className="mt-4 rounded-2xl border border-amber-100 bg-amber-50 p-4 text-sm font-bold text-amber-800">
++                  {emptyPitchesMessage}
++                </div>
++              ) : (
++              <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
++                  {pitches.map((pitch) => {
++                    const isSelected = playerSelectedPitch?.id === pitch.id;
++                    return (
++                      <button
++                        key={pitch.id}
++                        type="button"
++                        onClick={() => setFilterPitch(pitch.id)}
++                        className={cn(
++                          "flex items-center justify-between rounded-2xl border px-4 py-3 text-left transition-all",
++                          isSelected
++                            ? "border-sky-300 bg-sky-50 text-sky-900 shadow-sm"
++                            : "border-zinc-100 bg-white text-zinc-700 hover:border-sky-200 hover:bg-sky-50/40"
++                        )}
++                      >
++                        <span>
++                          <span className="block text-sm font-black">{pitch.name}</span>
++                          <span className="text-[10px] font-black uppercase tracking-widest text-zinc-400">{pitch.type}</span>
++                        </span>
++                        <span className={cn(
++                          "h-3 w-3 rounded-full",
++                          isSelected ? "bg-sky-500" : "bg-zinc-200"
++                        )} />
++                      </button>
++                    );
++                  })}
++                </div>
++              )}
++            </div>
++
++            <div className="rounded-[24px] border border-white/40 bg-white/90 p-4 shadow-xl shadow-slate-950/10 backdrop-blur-xl">
++              <p className="text-[10px] font-black uppercase tracking-[0.24em] text-zinc-400">Fecha</p>
++              <button
++                type="button"
++                onClick={() => setIsCalendarOpen(!isCalendarOpen)}
++                className="mt-3 flex h-12 w-full items-center justify-between rounded-2xl border border-zinc-100 bg-white px-4 text-left text-sm font-black text-zinc-900 shadow-sm"
++              >
++                <span>{format(selectedDate, "d 'de' MMMM", { locale: es })}</span>
++                <CalendarIcon className="h-4 w-4 text-sky-500" />
++              </button>
++              <AnimatePresence>
++                {isCalendarOpen && (
++                  <motion.div
++                    initial={{ opacity: 0, y: 10 }}
++                    animate={{ opacity: 1, y: 0 }}
++                    exit={{ opacity: 0, y: 10 }}
++                    className="mt-3 rounded-3xl border border-zinc-100 bg-white p-4 shadow-xl"
++                  >
++                    <DayPicker
++                      mode="single"
++                      selected={selectedDate}
++                      onSelect={(date) => {
++                        if (date) setSelectedDate(date);
++                        setIsCalendarOpen(false);
++                      }}
++                      locale={es}
++                      className="rdp-custom"
++                    />
++                  </motion.div>
++                )}
++              </AnimatePresence>
++            </div>
++          </aside>
++
++          <section className="rounded-[28px] border border-white/40 bg-white/95 p-4 shadow-2xl shadow-slate-950/15 backdrop-blur-xl sm:p-5">
++            <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
++              <div>
++                <p className="text-[10px] font-black uppercase tracking-[0.24em] text-zinc-400">Horarios disponibles</p>
++                <h2 className="mt-1 text-2xl font-black tracking-[-0.04em] text-zinc-900">
++                  {playerSelectedPitch?.name || 'Sin cancha seleccionada'}
++                </h2>
++              </div>
++              <Badge variant="neutral" className="w-fit border-none bg-emerald-100 text-emerald-700">
++                {hours.length} turnos
++              </Badge>
++            </div>
++
++            {shouldShowEmptyPitches || playerPitchList.length === 0 ? (
++              <div className="flex min-h-[220px] flex-col items-center justify-center rounded-[24px] border-2 border-dashed border-zinc-100 bg-zinc-50 p-6 text-center">
++                <AlertCircle className="mb-3 h-8 w-8 text-amber-500" />
++                <p className="text-sm font-black uppercase tracking-widest text-zinc-900">No hay canchas para mostrar</p>
++                <p className="mt-2 text-sm font-medium text-zinc-500">{emptyPitchesMessage}</p>
++              </div>
++            ) : (
++              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
++                {hours.map((hour) => {
++                  const pitch = playerSelectedPitch;
++                  if (!pitch) return null;
++
++                  const status = getSlotStatus(selectedDate, hour, pitch.id);
++                  const isPast = status === 'past';
++                  const isAvailable = status === 'available';
++                  const isOccupied = status === 'occupied' || status === 'partial';
++                  const isBlocked = status === 'deactivated';
++                  const statusText = isPast
++                    ? 'Pasado'
++                    : isBlocked
++                      ? 'No disponible'
++                      : isOccupied
++                        ? 'Ocupado'
++                        : 'Disponible';
++
++                  return (
++                    <article
++                      key={`${pitch.id}-${format(selectedDate, 'yyyy-MM-dd')}-${hour}`}
++                      className={cn(
++                        "rounded-[22px] border p-4 transition-all",
++                        isAvailable
++                          ? "border-emerald-100 bg-emerald-50 shadow-sm"
++                          : isPast
++                            ? "border-zinc-100 bg-zinc-50 text-zinc-400"
++                            : "border-red-100 bg-red-50 text-red-700"
++                      )}
++                    >
++                      <div className="flex items-start justify-between gap-3">
++                        <div>
++                          <p className="text-3xl font-black tracking-[-0.04em] text-zinc-900">
++                            {formatSlotTime(hour)}
++                          </p>
++                          <p className="mt-1 text-xs font-black uppercase tracking-widest opacity-70">
++                            {pitch.name}
++                          </p>
++                        </div>
++                        <span className={cn(
++                          "rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-widest",
++                          isAvailable
++                            ? "bg-emerald-500 text-white"
++                            : isPast
++                              ? "bg-zinc-200 text-zinc-500"
++                              : "bg-red-500 text-white"
++                        )}>
++                          {statusText}
++                        </span>
++                      </div>
++
++                      <div className="mt-4 flex items-center justify-between gap-3">
++                        <div className="flex items-center gap-2 text-xs font-bold text-zinc-500">
++                          <Clock className="h-4 w-4" />
++                          60 min
++                        </div>
++                        <Button
++                          type="button"
++                          disabled={!isAvailable}
++                          className={cn(
++                            "h-11 rounded-2xl px-5 text-xs font-black uppercase tracking-widest",
++                            isAvailable
++                              ? "bg-sky-600 text-white hover:bg-sky-700"
++                              : "cursor-not-allowed bg-zinc-200 text-zinc-500 hover:bg-zinc-200"
++                          )}
++                          onClick={() => openBookingModal(pitch, selectedDate, formatSlotTime(hour))}
++                        >
++                          Reservar
++                        </Button>
++                      </div>
++                    </article>
++                  );
++                })}
++              </div>
++            )}
++          </section>
++        </div>
++
++        <Modal
++          isOpen={isBookingModalOpen}
++          onClose={() => setIsBookingModalOpen(false)}
++          title="Reservar cancha"
++          className="max-h-[90vh] max-w-[calc(100vw-24px)] rounded-[24px] sm:max-w-lg sm:rounded-[28px]"
++        >
++          {bookingTimer !== null && (
++            <div className="mb-5 flex items-center justify-center gap-2 rounded-2xl border border-red-100 bg-red-50 py-3 text-red-600">
++              <Timer className="h-5 w-5" />
++              <span className="text-xs font-black uppercase tracking-widest">
++                Tiempo restante: {Math.floor(bookingTimer / 60)}:{(bookingTimer % 60).toString().padStart(2, '0')}
++              </span>
++            </div>
++          )}
++          <form onSubmit={handleBookingSubmit} className="space-y-5">
++            <section className="flex items-start gap-3 rounded-2xl border border-sky-100 bg-sky-50/70 p-4 sm:items-center">
++              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-sky-100 bg-white shadow-sm sm:h-12 sm:w-12">
++                <CalendarIcon className="h-5 w-5 text-sky-600 sm:h-6 sm:w-6" />
++              </div>
++              <div className="min-w-0">
++                <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">Detalles del turno</p>
++                <h3 className="text-base font-black text-zinc-900">
++                  {bookingData.pitch?.name} - {bookingData.time} hs
++                </h3>
++                <p className="text-xs font-semibold capitalize text-zinc-600">{format(bookingData.date, "EEEE d 'de' MMMM", { locale: es })}</p>
++              </div>
++            </section>
++
++            <section className="space-y-3">
++              <div>
++                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-zinc-400">Tus datos</p>
++                <h4 className="text-sm font-black text-zinc-900">Te contactamos por esta reserva</h4>
++              </div>
++              <div className="space-y-1.5">
++                <label className="ml-1 text-xs font-semibold text-zinc-700">Nombre</label>
++                <input
++                  type="text"
++                  required
++                  placeholder="Ej: Juan Perez"
++                  className="w-full rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm font-medium text-zinc-900 placeholder:text-zinc-400 outline-none focus:ring-2 focus:ring-sky-500/20"
++                  value={bookingData.clientName}
++                  onChange={e => setBookingData(prev => ({ ...prev, clientName: e.target.value }))}
++                />
++              </div>
++              <div className="space-y-1.5">
++                <label className="ml-1 text-xs font-semibold text-zinc-700">Telefono</label>
++                <input
++                  type="tel"
++                  required
++                  placeholder="Ej: 11 2345 6789"
++                  className="w-full rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm font-medium text-zinc-900 placeholder:text-zinc-400 outline-none focus:ring-2 focus:ring-sky-500/20"
++                  value={bookingData.clientPhone}
++                  onChange={e => setBookingData(prev => ({ ...prev, clientPhone: e.target.value }))}
++                />
++              </div>
++            </section>
++
++            <section className="space-y-3 rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
++              <div className="flex items-center justify-between gap-3">
++                <div>
++                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-zinc-400">Seña / pago</p>
++                  <h4 className="text-sm font-black text-zinc-900">Monto mínimo de seña</h4>
++                </div>
++                <span className="rounded-full bg-white px-3 py-1 text-sm font-black text-sky-700 shadow-sm">
++                  ${publicMinDeposit}
++                </span>
++              </div>
++
++              <div className="rounded-2xl border border-sky-100 bg-white p-3">
++                <p className="mb-2 text-xs font-black text-sky-800">Datos de transferencia</p>
++                {paymentPublicEnabled ? (
++                  <div className="space-y-1 text-xs font-semibold text-zinc-700">
++                    {bankDetails.bank && <p><span className="text-zinc-500">Banco / billetera:</span> {bankDetails.bank}</p>}
++                    {bankDetails.holder && <p><span className="text-zinc-500">Titular:</span> {bankDetails.holder}</p>}
++                    {bankDetails.cbu && <p><span className="text-zinc-500">CBU / CVU:</span> {bankDetails.cbu}</p>}
++                    {bankDetails.alias && <p><span className="text-zinc-500">Alias:</span> {bankDetails.alias}</p>}
++                    {bankDetails.taxId && <p><span className="text-zinc-500">CUIT / DNI:</span> {bankDetails.taxId}</p>}
++                    {bankDetails.instructions && <p className="pt-1 leading-relaxed"><span className="text-zinc-500">Instrucciones:</span> {bankDetails.instructions}</p>}
++                  </div>
++                ) : (
++                  <p className="text-xs font-semibold leading-relaxed text-zinc-600">
++                    Este complejo todavia no cargo datos de transferencia. Coordina el pago con el complejo antes de transferir.
++                  </p>
++                )}
++              </div>
++
++              <div className="space-y-1.5">
++                <label className="ml-1 text-xs font-semibold text-zinc-700">Monto de seña ($)</label>
++                <div className="relative">
++                  <DollarSign className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" />
++                  <input
++                    type="number"
++                    placeholder={String(publicMinDeposit)}
++                    className="w-full rounded-xl border border-zinc-200 bg-white py-3 pl-10 pr-4 text-sm font-medium text-zinc-900 placeholder:text-zinc-400 outline-none focus:ring-2 focus:ring-sky-500/20"
++                    value={bookingData.depositAmount}
++                    onChange={e => setBookingData(prev => ({ ...prev, depositAmount: e.target.value }))}
++                  />
++                </div>
++              </div>
++            </section>
++
++            <section className="space-y-2">
++              <label className="ml-1 text-xs font-semibold text-zinc-700">Comprobante</label>
++              <input
++                type="file"
++                accept="image/*,application/pdf"
++                onChange={handleFileChange}
++                className="hidden"
++                id="public-receipt-upload"
++              />
++              <label
++                htmlFor="public-receipt-upload"
++                className={cn(
++                  "flex w-full cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed px-4 py-4 text-center transition-all",
++                  bookingData.receipt ? "border-emerald-500 bg-emerald-50" : "border-zinc-200 bg-white hover:border-sky-300 hover:bg-sky-50"
++                )}
++              >
++                {bookingData.receipt ? (
++                  <>
++                    <CheckCircle2 className="h-5 w-5 text-emerald-500" />
++                    <p className="text-xs font-black text-emerald-700">Comprobante cargado</p>
++                  </>
++                ) : (
++                  <>
++                    <Download className="h-5 w-5 text-zinc-400" />
++                    <div>
++                      <p className="text-xs font-black text-zinc-900">Subir comprobante</p>
++                      <p className="text-[10px] font-semibold text-zinc-500">Imagen o PDF</p>
++                    </div>
++                  </>
++                )}
++              </label>
++            </section>
++
++            <div className="flex flex-col-reverse gap-3 pt-2 sm:flex-row sm:items-center sm:justify-end">
++              <Button type="button" variant="ghost" className="h-12 rounded-2xl font-bold" onClick={() => setIsBookingModalOpen(false)}>
++                Cancelar
++              </Button>
++              <Button type="submit" className="h-12 rounded-2xl px-8 font-black uppercase tracking-widest shadow-lg shadow-sky-500/20">
++                Confirmar Reserva
++              </Button>
++            </div>
++          </form>
++        </Modal>
++      </div>
++    );
++  }
++
+   return (
+-    <div className="space-y-6">
++    <div className={cn("w-full space-y-6", isPlayerUser && "pb-2")}>
+       {/* Header: Editorial & Professional */}
+-      <header className="flex flex-col lg:flex-row lg:items-center justify-between gap-8 pb-4">
+-        <div className="flex items-center gap-6">
+-          <div className="w-20 h-20 bg-sky-600 rounded-[32px] flex items-center justify-center shadow-2xl shadow-sky-200 rotate-3 hover:rotate-0 transition-transform duration-500">
+-            <CalendarIcon className="w-10 h-10 text-white" />
++      <header className={cn(
++        "flex flex-col lg:flex-row lg:items-center justify-between gap-8 pb-4",
++        isPlayerUser && "rounded-[26px] border border-white/10 bg-white/95 p-3 text-zinc-900 shadow-2xl shadow-slate-950/20 backdrop-blur-xl sm:p-4 lg:p-5"
++      )}>
++        <div className={cn("flex items-center", isPlayerUser ? "gap-3" : "gap-6")}>
++          <div className={cn(
++            "bg-sky-600 flex items-center justify-center shadow-2xl shadow-sky-200 rotate-3 hover:rotate-0 transition-transform duration-500",
++            isPlayerUser ? "w-12 h-12 rounded-2xl sm:h-14 sm:w-14" : "w-20 h-20 rounded-[32px]"
++          )}>
++            <CalendarIcon className={cn("text-white", isPlayerUser ? "h-6 w-6 sm:h-7 sm:w-7" : "w-10 h-10")} />
+           </div>
+           <div>
+-            <h1 className="text-5xl font-black tracking-tighter text-zinc-900 mb-1 italic">
++            <h1 className={cn(
++              "font-black tracking-tighter text-zinc-900 mb-1 italic",
++              isPlayerUser ? "text-2xl sm:text-4xl" : "text-5xl"
++            )}>
+               {isPlayerUser ? 'Reservá tu cancha' : 'Calendario'}
+             </h1>
+             <div className="flex items-center gap-3">
+@@ -357,12 +891,15 @@ export default function CalendarPage({ user, initialBookingId, onClearInitialBoo
+           </div>
+         </div>
+ 
+-        <div className="flex flex-wrap items-center gap-4">
+-          <div className="flex items-center bg-zinc-100 p-2 rounded-[24px] border border-zinc-200 shadow-inner">
++        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-4">
++          <div className={cn(
++            "flex items-center bg-zinc-100 border border-zinc-200 shadow-inner",
++            isPlayerUser ? "rounded-2xl p-1.5" : "p-2 rounded-[24px]"
++          )}>
+             <button
+               onClick={() => setView('day')}
+               className={cn(
+-                "px-8 py-3.5 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all duration-300",
++                cn("rounded-xl text-[11px] font-black uppercase tracking-widest transition-all duration-300", isPlayerUser ? "px-5 py-2.5" : "px-8 py-3.5"),
+                 view === 'day' ? "bg-white text-zinc-900 shadow-xl" : "text-zinc-500 hover:text-zinc-700"
+               )}
+             >
+@@ -371,7 +908,7 @@ export default function CalendarPage({ user, initialBookingId, onClearInitialBoo
+             <button
+               onClick={() => setView('week')}
+               className={cn(
+-                "px-8 py-3.5 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all duration-300",
++                cn("rounded-xl text-[11px] font-black uppercase tracking-widest transition-all duration-300", isPlayerUser ? "px-5 py-2.5" : "px-8 py-3.5"),
+                 view === 'week' ? "bg-white text-zinc-900 shadow-xl" : "text-zinc-500 hover:text-zinc-700"
+               )}
+             >
+@@ -395,7 +932,10 @@ export default function CalendarPage({ user, initialBookingId, onClearInitialBoo
+           )}
+ 
+           <Button 
+-            className="h-16 px-10 rounded-[24px] bg-sky-600 text-white hover:bg-sky-700 shadow-2xl shadow-sky-200 gap-4 font-black text-[11px] uppercase tracking-widest transition-all hover:-translate-y-1 active:translate-y-0"
++            className={cn(
++              "rounded-[24px] bg-sky-600 text-white hover:bg-sky-700 shadow-2xl shadow-sky-200 gap-4 font-black text-[11px] uppercase tracking-widest transition-all hover:-translate-y-1 active:translate-y-0",
++              isPlayerUser ? "h-12 w-full px-5 sm:w-auto" : "h-16 px-10"
++            )}
+             onClick={() => {
+               if (!hasVisiblePitches) {
+                 toast.error(emptyPitchesMessage);
+@@ -412,25 +952,33 @@ export default function CalendarPage({ user, initialBookingId, onClearInitialBoo
+             }}
+           >
+             <Plus className="w-5 h-5" />
+-            {isPlayerUser ? 'Reservar cancha' : 'Nueva Reserva'}
++            {isPlayerUser ? 'Reservar cancha' : 'Nueva reserva'}
+           </Button>
+         </div>
+       </header>
+ 
+       {/* Navigation & Filters Bar: Clean Utility */}
+-      <div className="flex flex-col xl:flex-row items-stretch xl:items-center gap-6 bg-white p-6 rounded-[40px] border border-zinc-100 shadow-2xl shadow-zinc-200/20">
++      <div className={cn(
++        "flex flex-col xl:flex-row items-stretch xl:items-center gap-6",
++        isPlayerUser
++          ? "bg-white/95 p-3 rounded-[24px] border border-white/40 shadow-2xl shadow-slate-950/15 backdrop-blur-xl sm:p-4"
++          : "bg-white p-6 rounded-[40px] border border-zinc-100 shadow-2xl shadow-zinc-200/20"
++      )}>
+         <div className="flex flex-col sm:flex-row items-center gap-4 flex-1">
+           <div className="flex items-center bg-zinc-50 rounded-[24px] border border-zinc-200 p-2 w-full sm:w-auto">
+             <Button 
+               variant="ghost" 
+-              className="h-12 w-12 p-0 rounded-xl hover:bg-white hover:shadow-md transition-all" 
++              className={cn("p-0 rounded-xl hover:bg-white hover:shadow-md transition-all", isPlayerUser ? "h-10 w-10" : "h-12 w-12")} 
+               onClick={() => setSelectedDate(d => addDays(d, view === 'day' ? -1 : -7))}
+             >
+               <ChevronLeft className="w-6 h-6" />
+             </Button>
+             <button 
+               onClick={() => setIsCalendarOpen(!isCalendarOpen)}
+-              className="flex-1 sm:flex-none px-8 text-sm font-black text-zinc-900 min-w-[200px] text-center hover:bg-white hover:shadow-md h-12 rounded-xl transition-all flex items-center justify-center gap-3 relative"
++              className={cn(
++                "flex-1 sm:flex-none text-sm font-black text-zinc-900 text-center hover:bg-white hover:shadow-md rounded-xl transition-all flex items-center justify-center gap-3 relative",
++                isPlayerUser ? "h-10 min-w-[170px] px-4" : "h-12 min-w-[200px] px-8"
++              )}
+             >
+               <CalendarIcon className="w-4 h-4 text-sky-500" />
+               {view === 'day' 
+@@ -462,7 +1010,7 @@ export default function CalendarPage({ user, initialBookingId, onClearInitialBoo
+             </button>
+             <Button 
+               variant="ghost" 
+-              className="h-12 w-12 p-0 rounded-xl hover:bg-white hover:shadow-md transition-all" 
++              className={cn("p-0 rounded-xl hover:bg-white hover:shadow-md transition-all", isPlayerUser ? "h-10 w-10" : "h-12 w-12")} 
+               onClick={() => setSelectedDate(d => addDays(d, view === 'day' ? 1 : 7))}
+             >
+               <ChevronRight className="w-6 h-6" />
+@@ -471,7 +1019,10 @@ export default function CalendarPage({ user, initialBookingId, onClearInitialBoo
+ 
+           <Button 
+             variant="outline" 
+-            className="h-16 px-10 rounded-[24px] border-zinc-200 font-black text-[11px] uppercase tracking-widest hover:bg-zinc-50 w-full sm:w-auto"
++            className={cn(
++              "rounded-[20px] border-zinc-200 font-black text-[11px] uppercase tracking-widest hover:bg-zinc-50 w-full sm:w-auto",
++              isPlayerUser ? "h-11 px-6" : "h-16 px-10"
++            )}
+             onClick={() => setSelectedDate(new Date())}
+           >
+             HOY
+@@ -482,7 +1033,10 @@ export default function CalendarPage({ user, initialBookingId, onClearInitialBoo
+           <div className="relative w-full sm:w-80">
+             <Filter className="absolute left-6 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
+             <select
+-              className="w-full bg-zinc-50 pl-14 pr-8 h-16 rounded-[24px] border border-zinc-200 font-black text-[11px] uppercase tracking-widest outline-none focus:ring-4 focus:ring-sky-500/10 appearance-none cursor-pointer hover:bg-white transition-all"
++              className={cn(
++                "w-full bg-zinc-50 pl-14 pr-8 rounded-[20px] border border-zinc-200 font-black text-[11px] uppercase tracking-widest outline-none focus:ring-4 focus:ring-sky-500/10 appearance-none cursor-pointer hover:bg-white transition-all",
++                isPlayerUser ? "h-11" : "h-16"
++              )}
+               value={filterPitch}
+               onChange={e => setFilterPitch(e.target.value)}
+             >
+@@ -513,12 +1067,20 @@ export default function CalendarPage({ user, initialBookingId, onClearInitialBoo
+       </div>
+ 
+       {/* Calendar Grid & Mobile List View */}
+-      <div className="space-y-6">
++      <div className={cn(isPlayerUser ? "space-y-4" : "space-y-6")}>
+         {/* Desktop Grid View */}
+         <div className="hidden md:block">
+-          <Card className="border-none shadow-2xl rounded-[32px] bg-white overflow-hidden border border-zinc-100">
++          <Card className={cn(
++            "border-none shadow-2xl overflow-hidden border",
++            isPlayerUser
++              ? "rounded-[24px] bg-white/95 border-white/40 backdrop-blur-xl"
++              : "rounded-[32px] bg-white border-zinc-100"
++          )}>
+             {shouldShowEmptyPitches ? (
+-              <div className="flex min-h-[360px] flex-col items-center justify-center gap-4 p-10 text-center">
++              <div className={cn(
++                "flex flex-col items-center justify-center gap-4 text-center",
++                isPlayerUser ? "min-h-[220px] p-6" : "min-h-[360px] p-10"
++              )}>
+                 <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-amber-50 text-amber-600">
+                   <AlertCircle className="h-8 w-8" />
+                 </div>
+@@ -533,7 +1095,7 @@ export default function CalendarPage({ user, initialBookingId, onClearInitialBoo
+               </div>
+             ) : (
+             <div className="w-full overflow-x-auto custom-scrollbar">
+-              <div className="min-w-[1000px] lg:min-w-full relative">
++              <div className={cn(isPlayerUser ? "min-w-[860px]" : "min-w-[1000px]", "lg:min-w-full relative")}>
+                 {/* Header Row */}
+                 <div 
+                   className="grid border-b border-zinc-100 bg-zinc-50/80 backdrop-blur-md sticky top-0 z-40"
+@@ -543,13 +1105,13 @@ export default function CalendarPage({ user, initialBookingId, onClearInitialBoo
+                       : `120px repeat(7, 1fr)` 
+                   }}
+                 >
+-                  <div className="p-6 flex flex-col items-center justify-center border-r border-zinc-100 bg-white">
++                  <div className={cn("flex flex-col items-center justify-center border-r border-zinc-100 bg-white", isPlayerUser ? "p-3" : "p-6")}>
+                     <Clock className="w-5 h-5 text-zinc-400 mb-1" />
+                     <span className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Hora</span>
+                   </div>
+                   {view === 'day' ? (
+                     filteredPitches.map(pitch => (
+-                      <div key={pitch.id} className="p-6 text-center border-r border-zinc-100 last:border-r-0 transition-all relative group">
++                      <div key={pitch.id} className={cn("text-center border-r border-zinc-100 last:border-r-0 transition-all relative group", isPlayerUser ? "p-3" : "p-6")}>
+                         <p className="text-[10px] uppercase tracking-[0.3em] font-black text-sky-600 mb-1">{pitch.type}</p>
+                         <p className="text-xl font-black tracking-tight text-zinc-900">{pitch.name}</p>
+                         {user.role === 'admin' && (
+@@ -565,7 +1127,7 @@ export default function CalendarPage({ user, initialBookingId, onClearInitialBoo
+                     ))
+                   ) : (
+                     days.map(day => (
+-                      <div key={day.toISOString()} className="p-6 text-center border-r border-zinc-100 last:border-r-0 transition-all">
++                      <div key={day.toISOString()} className={cn("text-center border-r border-zinc-100 last:border-r-0 transition-all", isPlayerUser ? "p-3" : "p-6")}>
+                         <p className="text-[10px] uppercase tracking-[0.3em] font-black text-sky-600 mb-1">{format(day, 'EEE', { locale: es })}</p>
+                         <p className="text-xl font-black tracking-tight text-zinc-900">{format(day, 'd MMM')}</p>
+                       </div>
+@@ -578,7 +1140,7 @@ export default function CalendarPage({ user, initialBookingId, onClearInitialBoo
+                   {hours.map(hour => (
+                     <div 
+                       key={hour} 
+-                      className="grid group/row min-h-[80px]"
++                      className={cn("grid group/row", isPlayerUser ? "min-h-[62px]" : "min-h-[80px]")}
+                       style={{ 
+                         gridTemplateColumns: view === 'day' 
+                           ? `120px repeat(${filteredPitches.length}, 1fr)` 
+@@ -586,7 +1148,7 @@ export default function CalendarPage({ user, initialBookingId, onClearInitialBoo
+                       }}
+                     >
+                       <div className={cn(
+-                        "p-6 border-r border-zinc-100 bg-white flex items-center justify-center sticky left-0 z-20 transition-colors duration-500",
++                        cn("border-r border-zinc-100 bg-white flex items-center justify-center sticky left-0 z-20 transition-colors duration-500", isPlayerUser ? "p-3" : "p-6"),
+                         isSameDay(selectedDate, currentTime) && currentTime.getHours() === hour && "bg-sky-50/50"
+                       )}>
+                         <div className="flex flex-col items-center">
+@@ -647,7 +1209,7 @@ export default function CalendarPage({ user, initialBookingId, onClearInitialBoo
+                                   }
+                                 }}
+                                 className={cn(
+-                                  "w-full h-full min-h-[60px] p-3 rounded-2xl text-left transition-all relative overflow-hidden flex flex-col justify-center border-2",
++                                  cn("w-full h-full rounded-2xl text-left transition-all relative overflow-hidden flex flex-col justify-center border-2", isPlayerUser ? "min-h-[46px] p-2" : "min-h-[60px] p-3"),
+                                   isPast && "bg-zinc-100 border-zinc-200 text-zinc-400 cursor-not-allowed grayscale",
+                                   status === 'deactivated' && "bg-zinc-200 border-zinc-300 text-zinc-500 opacity-50",
+                                   isOccupied && !isPartial && "bg-red-50 border-red-100 text-red-700 hover:bg-red-100/50",
+@@ -726,7 +1288,7 @@ export default function CalendarPage({ user, initialBookingId, onClearInitialBoo
+                                   }
+                                 }}
+                                 className={cn(
+-                                  "w-full h-full min-h-[60px] p-3 rounded-2xl text-left transition-all relative overflow-hidden flex flex-col justify-center border-2",
++                                  cn("w-full h-full rounded-2xl text-left transition-all relative overflow-hidden flex flex-col justify-center border-2", isPlayerUser ? "min-h-[46px] p-2" : "min-h-[60px] p-3"),
+                                   isPast && "bg-zinc-100 border-zinc-200 text-zinc-400 cursor-not-allowed grayscale",
+                                   status === 'deactivated' && "bg-zinc-200 border-zinc-300 text-zinc-500 opacity-50",
+                                   isOccupied && !isPartial && "bg-red-50 border-red-100 text-red-700 hover:bg-red-100/50",
+@@ -761,7 +1323,10 @@ export default function CalendarPage({ user, initialBookingId, onClearInitialBoo
+         </div>
+ 
+         {/* Mobile List View: Vertical Agenda */}
+-        <div className="md:hidden space-y-4">
++        <div className={cn(
++          "md:hidden space-y-4",
++          isPlayerUser && "rounded-[28px] border border-white/40 bg-white/95 py-4 shadow-2xl shadow-slate-950/15 backdrop-blur-xl"
++        )}>
+           <div className="flex items-center justify-between px-4">
+             <h3 className="text-xl font-black text-zinc-900 uppercase tracking-tight">
+               {view === 'day' ? 'Agenda del Día' : 'Agenda Semanal'}
+@@ -781,10 +1346,13 @@ export default function CalendarPage({ user, initialBookingId, onClearInitialBoo
+               </p>
+             </div>
+           ) : (
+-          <div className="space-y-6">
++          <div className={cn(isPlayerUser ? "space-y-4" : "space-y-6")}>
+             {hours.map(hour => (
+               <div key={hour} className="space-y-3">
+-                <div className="flex items-center gap-3 px-4 sticky top-0 bg-zinc-50/90 backdrop-blur-sm py-2 z-10">
++                <div className={cn(
++                  "flex items-center gap-3 px-4 sticky top-0 backdrop-blur-sm py-2 z-10",
++                  isPlayerUser ? "bg-white/90" : "bg-zinc-50/90"
++                )}>
+                   <span className={cn(
+                     "text-sm font-black uppercase tracking-widest",
+                     isSameDay(selectedDate, currentTime) && currentTime.getHours() === hour ? "text-sky-600" : "text-zinc-900"
+@@ -799,7 +1367,7 @@ export default function CalendarPage({ user, initialBookingId, onClearInitialBoo
+                   <div className="h-px flex-1 bg-zinc-200" />
+                 </div>
+                 
+-                <div className="grid grid-cols-1 gap-3 px-4">
++                <div className={cn("grid grid-cols-1 px-4", isPlayerUser ? "gap-2" : "gap-3")}>
+                   {view === 'day' ? (
+                     filteredPitches.map(pitch => {
+                       const status = getSlotStatus(selectedDate, hour, pitch.id);
+@@ -838,7 +1406,7 @@ export default function CalendarPage({ user, initialBookingId, onClearInitialBoo
+                             }
+                           }}
+                           className={cn(
+-                            "w-full p-4 rounded-2xl text-left transition-all flex items-center justify-between border-2",
++                            cn("w-full rounded-2xl text-left transition-all flex items-center justify-between border-2", isPlayerUser ? "p-3" : "p-4"),
+                             isPast && "bg-zinc-100 border-zinc-200 text-zinc-400 grayscale opacity-60",
+                             status === 'deactivated' && "bg-zinc-200 border-zinc-300 text-zinc-500 opacity-50",
+                             isOccupied && !isPartial && "bg-red-50 border-red-100 text-red-700",
+@@ -915,7 +1483,7 @@ export default function CalendarPage({ user, initialBookingId, onClearInitialBoo
+                             }
+                           }}
+                           className={cn(
+-                            "w-full p-4 rounded-2xl text-left transition-all flex items-center justify-between border-2",
++                            cn("w-full rounded-2xl text-left transition-all flex items-center justify-between border-2", isPlayerUser ? "p-3" : "p-4"),
+                             isPast && "bg-zinc-100 border-zinc-200 text-zinc-400 grayscale opacity-60",
+                             status === 'deactivated' && "bg-zinc-200 border-zinc-300 text-zinc-500 opacity-50",
+                             isOccupied && !isPartial && "bg-red-50 border-red-100 text-red-700",
+@@ -963,7 +1531,8 @@ export default function CalendarPage({ user, initialBookingId, onClearInitialBoo
+       <Modal
+         isOpen={isBookingModalOpen}
+         onClose={() => setIsBookingModalOpen(false)}
+-        title="Nueva Reserva"
++        title={isPlayerUser ? 'Reservar cancha' : 'Nueva reserva'}
++        className="max-h-[90vh]"
+       >
+         {bookingTimer !== null && (
+           <div className="flex items-center justify-center gap-2 bg-red-50 text-red-600 py-3 rounded-2xl border border-red-100 mb-6 animate-pulse">
+@@ -994,7 +1563,7 @@ export default function CalendarPage({ user, initialBookingId, onClearInitialBoo
+                 type="text" 
+                 required
+                 placeholder="Ej: Juan Pérez"
+-                className="w-full px-4 py-2.5 bg-white border border-zinc-200 rounded-xl focus:ring-2 focus:ring-primary/20 outline-none text-sm font-medium"
++                className="w-full rounded-xl border border-zinc-200 bg-white px-4 py-2.5 text-sm font-medium text-zinc-900 placeholder:text-zinc-400 outline-none focus:ring-2 focus:ring-sky-500/20"
+                 value={bookingData.clientName}
+                 onChange={e => setBookingData(prev => ({ ...prev, clientName: e.target.value }))}
+               />
+@@ -1005,7 +1574,7 @@ export default function CalendarPage({ user, initialBookingId, onClearInitialBoo
+                 type="tel" 
+                 required
+                 placeholder="Ej: 11 2345 6789"
+-                className="w-full px-4 py-2.5 bg-white border border-zinc-200 rounded-xl focus:ring-2 focus:ring-primary/20 outline-none text-sm font-medium"
++                className="w-full rounded-xl border border-zinc-200 bg-white px-4 py-2.5 text-sm font-medium text-zinc-900 placeholder:text-zinc-400 outline-none focus:ring-2 focus:ring-sky-500/20"
+                 value={bookingData.clientPhone}
+                 onChange={e => setBookingData(prev => ({ ...prev, clientPhone: e.target.value }))}
+               />
+@@ -1046,12 +1615,20 @@ export default function CalendarPage({ user, initialBookingId, onClearInitialBoo
+             <div className="space-y-3">
+               <div className="bg-sky-50/50 p-3 rounded-2xl border border-sky-100 space-y-2">
+                 <p className="text-xs font-bold text-sky-800">Datos Bancarios</p>
+-                <div className="text-[11px] text-sky-700 space-y-1">
+-                  <p><span className="font-semibold">Banco:</span> Banco Nación</p>
+-                  <p><span className="font-semibold">Titular:</span> Complejo Golazo</p>
+-                  <p><span className="font-semibold">CBU:</span> 1234567890123456789012</p>
+-                  <p><span className="font-semibold">Alias:</span> GOLAZO.CANCHA</p>
+-                </div>
++                {paymentPublicEnabled ? (
++                  <div className="space-y-1 text-[11px] text-sky-700">
++                    {bankDetails.bank && <p><span className="font-semibold">Banco / billetera:</span> {bankDetails.bank}</p>}
++                    {bankDetails.holder && <p><span className="font-semibold">Titular:</span> {bankDetails.holder}</p>}
++                    {bankDetails.cbu && <p><span className="font-semibold">CBU / CVU:</span> {bankDetails.cbu}</p>}
++                    {bankDetails.alias && <p><span className="font-semibold">Alias:</span> {bankDetails.alias}</p>}
++                    {bankDetails.taxId && <p><span className="font-semibold">CUIT / DNI:</span> {bankDetails.taxId}</p>}
++                    {bankDetails.instructions && <p><span className="font-semibold">Instrucciones:</span> {bankDetails.instructions}</p>}
++                  </div>
++                ) : (
++                  <p className="text-[11px] font-medium leading-relaxed text-sky-700">
++                    Este complejo todavia no cargo datos de transferencia. Coordina el pago con el complejo antes de transferir.
++                  </p>
++                )}
+               </div>
+               
+               <div className="space-y-1.5">
+@@ -1107,7 +1684,7 @@ export default function CalendarPage({ user, initialBookingId, onClearInitialBoo
+               <input 
+                 type="number" 
+                 placeholder="0.00"
+-                className="w-full pl-10 pr-4 py-2.5 bg-white border border-zinc-200 rounded-xl focus:ring-2 focus:ring-primary/20 outline-none text-sm font-medium"
++                className="w-full rounded-xl border border-zinc-200 bg-white py-2.5 pl-10 pr-4 text-sm font-medium text-zinc-900 placeholder:text-zinc-400 outline-none focus:ring-2 focus:ring-sky-500/20"
+                 value={bookingData.depositAmount}
+                 onChange={e => setBookingData(prev => ({ ...prev, depositAmount: e.target.value }))}
+               />
+diff --git a/src/pages/Dashboard.tsx b/src/pages/Dashboard.tsx
+index 2c93698..cdc647b 100644
+--- a/src/pages/Dashboard.tsx
++++ b/src/pages/Dashboard.tsx
+@@ -468,14 +468,14 @@ export default function Dashboard({ user, onNavigate, onLogout, onNotificationCl
+     const todayLabel = format(new Date(), "EEEE d 'de' MMMM", { locale: es });
+ 
+     return (
+-      <div className="mx-auto max-w-6xl space-y-6 pb-6">
+-        <header className="relative overflow-hidden rounded-[32px] bg-slate-950 p-5 text-white shadow-2xl sm:p-8 lg:p-10">
++      <div className="mx-auto w-full max-w-[1280px] space-y-5 pb-8">
++        <header className="relative overflow-hidden rounded-[28px] bg-slate-950 p-4 text-white shadow-2xl sm:p-6 lg:p-8">
+           <div className="absolute inset-0 opacity-25" style={{ background: 'var(--bg-flag-ar)' }} />
+           <div className="absolute -right-20 -top-24 h-72 w-72 rounded-full bg-sky-400/20 blur-3xl" />
+-          <div className="relative z-10 grid gap-8 lg:grid-cols-[1fr_320px] lg:items-end">
+-            <div className="space-y-6">
++          <div className="relative z-10 grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-end">
++            <div className="space-y-4">
+               <div className="flex items-center gap-4">
+-                <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-3xl bg-white shadow-xl sm:h-20 sm:w-20">
++                <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-white shadow-xl sm:h-16 sm:w-16">
+                   {clientConfig?.logo_url ? (
+                     <img src={clientConfig.logo_url} alt={complexName} className="h-full w-full object-contain p-2" />
+                   ) : (
+@@ -483,24 +483,24 @@ export default function Dashboard({ user, onNavigate, onLogout, onNotificationCl
+                   )}
+                 </div>
+                 <div className="min-w-0">
+-                  <p className="text-[10px] font-black uppercase tracking-[0.28em] text-emerald-200">Portal de reservas</p>
+-                  <h1 className="truncate text-3xl font-black italic tracking-[-0.05em] text-white sm:text-5xl">
++                  <p className="text-[9px] font-black uppercase tracking-[0.24em] text-emerald-200">Portal de reservas</p>
++                  <h1 className="truncate text-2xl font-black italic tracking-[-0.05em] text-white sm:text-4xl">
+                     {complexName}
+                   </h1>
+                 </div>
+               </div>
+ 
+-              <div className="max-w-2xl space-y-3">
+-                <p className="text-lg font-black text-sky-100 sm:text-2xl">
++              <div className="max-w-3xl space-y-2.5">
++                <p className="text-base font-black text-sky-100 sm:text-xl">
+                   Hola, {user.name}. Elegí cancha, día y horario en segundos.
+                 </p>
+-                <div className="flex flex-wrap gap-3 text-sm font-bold text-white/75">
+-                  <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/10 px-4 py-2">
++                <div className="flex flex-wrap gap-2 text-xs font-bold text-white/75 sm:text-sm">
++                  <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/10 px-3 py-1.5">
+                     <CalendarIcon className="h-4 w-4 text-sky-200" />
+                     {todayLabel}
+                   </span>
+                   {clientConfig?.address && (
+-                    <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/10 px-4 py-2">
++                    <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/10 px-3 py-1.5">
+                       <MapPin className="h-4 w-4 text-emerald-200" />
+                       {clientConfig.address}
+                     </span>
+@@ -514,21 +514,21 @@ export default function Dashboard({ user, onNavigate, onLogout, onNotificationCl
+               onClick={() => onNavigate && onNavigate('calendar')}
+               disabled={activePitches.length === 0}
+               className={cn(
+-                "group rounded-[28px] bg-white p-5 text-left text-slate-950 shadow-2xl transition-all sm:p-6",
++                "group rounded-[24px] bg-white p-5 text-left text-slate-950 shadow-2xl transition-all sm:p-6",
+                 activePitches.length > 0 ? "hover:-translate-y-1 hover:shadow-sky-950/30" : "cursor-not-allowed opacity-70",
+               )}
+             >
+-              <div className="mb-8 flex items-start justify-between gap-4">
+-                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-sky-500 text-white shadow-lg shadow-sky-500/30">
+-                  <CalendarIcon className="h-7 w-7" />
++              <div className="mb-4 flex items-start justify-between gap-3">
++                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-sky-500 text-white shadow-lg shadow-sky-500/30">
++                  <CalendarIcon className="h-6 w-6" />
+                 </div>
+                 <span className="rounded-full bg-emerald-50 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-emerald-700">
+                   {isPitchesLoading ? 'Cargando' : activePitches.length > 0 ? 'Disponible' : 'Sin turnos'}
+                 </span>
+               </div>
+               <p className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-400">Acción principal</p>
+-              <h2 className="mt-2 text-3xl font-black italic tracking-[-0.05em]">Reservar cancha</h2>
+-              <p className="mt-3 text-sm font-bold leading-6 text-slate-500">
++              <h2 className="mt-1 text-2xl font-black italic tracking-[-0.05em]">Reservar cancha</h2>
++              <p className="mt-2 text-sm font-bold leading-5 text-slate-500">
+                 {primaryPitch
+                   ? activePitches.length > 1
+                     ? `${primaryPitch.name} y ${activePitches.length - 1} canchas más para elegir.`
+@@ -545,11 +545,11 @@ export default function Dashboard({ user, onNavigate, onLogout, onNotificationCl
+           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
+             <button
+               onClick={() => onNavigate && onNavigate('calendar')}
+-              className="group relative min-h-44 w-full overflow-hidden rounded-[28px] bg-gradient-to-br from-sky-500 to-blue-700 p-6 text-left shadow-lg shadow-sky-500/20 transition-all hover:-translate-y-1"
++              className="group relative min-h-32 w-full overflow-hidden rounded-[24px] bg-gradient-to-br from-sky-500 to-blue-700 p-5 text-left shadow-lg shadow-sky-950/20 transition-all hover:-translate-y-1 lg:min-h-36"
+             >
+               <div className="absolute inset-0 bg-white/10 opacity-0 transition-opacity group-hover:opacity-100" />
+-              <CalendarIcon className="mb-4 h-8 w-8 text-white" />
+-              <h3 className="text-2xl font-black uppercase italic tracking-tighter text-white">Reservar Cancha</h3>
++              <CalendarIcon className="mb-3 h-7 w-7 text-white" />
++              <h3 className="text-xl font-black uppercase italic tracking-tighter text-white">Reservar Cancha</h3>
+               <p className="mt-1 text-xs font-bold text-sky-100">Ver horarios disponibles</p>
+             </button>
+           </motion.div>
+@@ -557,10 +557,10 @@ export default function Dashboard({ user, onNavigate, onLogout, onNotificationCl
+           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
+             <button
+               onClick={() => onNavigate && onNavigate('bookings')}
+-              className="group relative min-h-44 w-full overflow-hidden rounded-[28px] border border-zinc-100 bg-white p-6 text-left shadow-sm transition-all hover:-translate-y-1 hover:border-sky-200 hover:shadow-md"
++              className="group relative min-h-32 w-full overflow-hidden rounded-[24px] border border-zinc-100 bg-white p-5 text-left shadow-sm transition-all hover:-translate-y-1 hover:border-sky-200 hover:shadow-md lg:min-h-36"
+             >
+-              <List className="mb-4 h-8 w-8 text-sky-500" />
+-              <h3 className="text-2xl font-black uppercase italic tracking-tighter text-zinc-900">Mis Reservas</h3>
++              <List className="mb-3 h-7 w-7 text-sky-500" />
++              <h3 className="text-xl font-black uppercase italic tracking-tighter text-zinc-900">Mis Reservas</h3>
+               <p className="mt-1 text-xs font-bold text-zinc-500">Ver próximas y anteriores</p>
+             </button>
+           </motion.div>
+@@ -569,10 +569,10 @@ export default function Dashboard({ user, onNavigate, onLogout, onNotificationCl
+             <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
+               <button
+                 onClick={() => onNavigate && onNavigate('ranking')}
+-                className="group relative min-h-44 w-full overflow-hidden rounded-[28px] border border-zinc-100 bg-white p-6 text-left shadow-sm transition-all hover:-translate-y-1 hover:border-yellow-200 hover:shadow-md"
++                className="group relative min-h-32 w-full overflow-hidden rounded-[24px] border border-zinc-100 bg-white p-5 text-left shadow-sm transition-all hover:-translate-y-1 hover:border-yellow-200 hover:shadow-md lg:min-h-36"
+               >
+-                <Trophy className="mb-4 h-8 w-8 text-yellow-500" />
+-                <h3 className="text-2xl font-black uppercase italic tracking-tighter text-zinc-900">Ranking</h3>
++                <Trophy className="mb-3 h-7 w-7 text-yellow-500" />
++                <h3 className="text-xl font-black uppercase italic tracking-tighter text-zinc-900">Ranking</h3>
+                 <p className="mt-1 text-xs font-bold text-zinc-500">Mis puntos: {userPoints}</p>
+               </button>
+             </motion.div>
+@@ -581,17 +581,17 @@ export default function Dashboard({ user, onNavigate, onLogout, onNotificationCl
+           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}>
+             <button
+               onClick={() => onLogout && onLogout()}
+-              className="group relative min-h-44 w-full overflow-hidden rounded-[28px] border border-emerald-100 bg-emerald-50 p-6 text-left shadow-sm transition-all hover:-translate-y-1 hover:bg-emerald-100"
++              className="group relative min-h-32 w-full overflow-hidden rounded-[24px] border border-emerald-100 bg-emerald-50 p-5 text-left shadow-sm transition-all hover:-translate-y-1 hover:bg-emerald-100 lg:min-h-36"
+             >
+-              <User className="mb-4 h-8 w-8 text-emerald-600" />
+-              <h3 className="text-2xl font-black uppercase italic tracking-tighter text-emerald-900">Cambiar Complejo</h3>
++              <User className="mb-3 h-7 w-7 text-emerald-600" />
++              <h3 className="text-xl font-black uppercase italic tracking-tighter text-emerald-900">Cambiar Complejo</h3>
+               <p className="mt-1 text-xs font-bold text-emerald-700/80">Volver al selector público</p>
+             </button>
+           </motion.div>
+         </section>
+ 
+         <section className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+-          <div className="rounded-[28px] border border-zinc-100 bg-white p-6 shadow-sm lg:col-span-2">
++          <div className="rounded-[24px] border border-zinc-100 bg-white p-5 shadow-sm lg:col-span-2">
+             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+               <div>
+                 <p className="text-[10px] font-black uppercase tracking-[0.24em] text-zinc-400">Canchas disponibles</p>
+@@ -602,13 +602,13 @@ export default function Dashboard({ user, onNavigate, onLogout, onNotificationCl
+               {primaryPitch && (
+                 <div className="rounded-2xl bg-sky-50 px-5 py-4 text-sky-800">
+                   <p className="text-[10px] font-black uppercase tracking-[0.22em] text-sky-500">Primera opción</p>
+-                  <p className="mt-1 text-lg font-black">{primaryPitch.name}</p>
++                  <p className="mt-1 text-base font-black">{primaryPitch.name}</p>
+                 </div>
+               )}
+             </div>
+           </div>
+ 
+-          <div className="rounded-[28px] border border-zinc-100 bg-white p-6 shadow-sm">
++          <div className="rounded-[24px] border border-zinc-100 bg-white p-5 shadow-sm">
+             <p className="text-[10px] font-black uppercase tracking-[0.24em] text-zinc-400">Tus puntos</p>
+             <p className="mt-2 text-3xl font-black tracking-[-0.04em] text-zinc-900">{userPoints}</p>
+             <p className="mt-2 text-sm font-bold text-zinc-500">Sumá jugando y seguí tu ranking.</p>
+diff --git a/src/pages/Ranking.tsx b/src/pages/Ranking.tsx
+index a8f14b7..1f98361 100644
+--- a/src/pages/Ranking.tsx
++++ b/src/pages/Ranking.tsx
+@@ -48,55 +48,55 @@ export default function RankingPage({ user }: RankingPageProps) {
+   ];
+ 
+   return (
+-    <div className="space-y-8 pb-20">
+-      <header className="relative overflow-hidden p-6 sm:p-8 rounded-3xl sm:rounded-[40px] bg-zinc-900 text-white shadow-2xl">
++    <div className="w-full space-y-5 pb-20">
++      <header className="relative overflow-hidden rounded-[28px] bg-zinc-900 p-4 text-white shadow-2xl sm:p-6">
+         <div className="absolute top-0 right-0 -mt-10 -mr-10 w-64 h-64 bg-sky-500/20 rounded-full blur-3xl" />
+-        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
++        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
+           <div className="space-y-2">
+-            <Badge variant="neutral" className="bg-sky-500/20 text-sky-400 border-sky-500/30 px-4 py-1">
++            <Badge variant="neutral" className="bg-sky-500/20 text-sky-400 border-sky-500/30 px-3 py-1">
+               TEMPORADA MARZO 2026
+             </Badge>
+-            <h1 className="text-2xl sm:text-4xl lg:text-5xl font-black tracking-tighter">Ranking Mensual</h1>
+-            <p className="text-zinc-400 font-medium text-base sm:text-lg">
++            <h1 className="text-2xl font-black tracking-tighter sm:text-4xl">Ranking Mensual</h1>
++            <p className="text-sm font-medium text-zinc-400 sm:text-base">
+               Sumá puntos reservando y jugá más para ganar premios.
+             </p>
+           </div>
+           {userPosition > 0 && (
+-            <div className="bg-white/10 backdrop-blur-xl p-6 rounded-3xl border border-white/10 flex items-center gap-4">
+-              <div className="w-12 h-12 bg-sky-500 rounded-2xl flex items-center justify-center shadow-lg shadow-sky-500/40">
+-                <TrendingUp className="w-6 h-6 text-white" />
++            <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/10 p-4 backdrop-blur-xl">
++              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-sky-500 shadow-lg shadow-sky-500/40">
++                <TrendingUp className="h-5 w-5 text-white" />
+               </div>
+               <div>
+                 <p className="text-[10px] font-black text-white/60 uppercase tracking-widest">Tu Posición</p>
+-                <p className="text-3xl font-black">Estás #{userPosition} <span className="text-sm font-bold text-sky-400">este mes</span></p>
++                <p className="text-2xl font-black">Estás #{userPosition} <span className="text-xs font-bold text-sky-400">este mes</span></p>
+               </div>
+             </div>
+           )}
+         </div>
+       </header>
+ 
+-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
++      <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
+         {/* User Status & Progress */}
+-        <div className="lg:col-span-1 space-y-6">
+-          <Card className="bg-sky-600 border-none shadow-2xl rounded-3xl sm:rounded-[40px] overflow-hidden text-white relative">
++        <div className="space-y-4 lg:col-span-1">
++          <Card className="relative overflow-hidden rounded-[28px] border-none bg-sky-600 text-white shadow-2xl">
+             <div className="absolute top-0 right-0 p-6 opacity-20">
+-              <Target className="w-24 h-24 sm:w-32 sm:h-32 rotate-12" />
++              <Target className="h-20 w-20 rotate-12 sm:h-24 sm:w-24" />
+             </div>
+-            <CardContent className="p-6 sm:p-8 space-y-6 sm:space-y-8 relative z-10">
++            <CardContent className="relative z-10 space-y-5 p-5 sm:p-6">
+               <div className="flex items-center justify-between">
+                 <div>
+                   <p className="text-xs font-black text-white/60 uppercase tracking-widest mb-1">Puntos Acumulados</p>
+                   <motion.p 
+                     key={userPoints}
+-                    initial={{ scale: 0.8, opacity: 0 }}
+-                    animate={{ scale: 1, opacity: 1 }}
+-                    className="text-3xl sm:text-5xl lg:text-6xl font-black"
++                    initial={{ opacity: 0, y: 8 }}
++                    animate={{ opacity: 1, y: 0 }}
++                    className="text-3xl font-black sm:text-5xl"
+                   >
+                     {userPoints}
+                   </motion.p>
+                 </div>
+-                <div className="w-12 h-12 sm:w-16 sm:h-16 bg-white/20 backdrop-blur-md rounded-2xl flex items-center justify-center shadow-lg">
+-                  <Star className="w-6 h-6 sm:w-8 sm:h-8 text-white fill-white" />
++                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/20 shadow-lg backdrop-blur-md sm:h-14 sm:w-14">
++                  <Star className="h-6 w-6 fill-white text-white sm:h-7 sm:w-7" />
+                 </div>
+               </div>
+ 
+@@ -109,12 +109,12 @@ export default function RankingPage({ user }: RankingPageProps) {
+                 </div>
+               )}
+ 
+-              <div className="space-y-4">
++              <div className="space-y-3">
+                 <div className="flex justify-between text-sm font-black uppercase tracking-widest">
+                   <span>Próximo Premio</span>
+                   <span>{userPoints % pointsToFreeTurn} / {pointsToFreeTurn}</span>
+                 </div>
+-                <div className="h-4 w-full bg-white/20 rounded-full overflow-hidden p-1">
++                <div className="h-3 w-full overflow-hidden rounded-full bg-white/20 p-0.5">
+                   <motion.div 
+                     initial={{ width: 0 }}
+                     animate={{ width: `${progress}%` }}
+@@ -129,14 +129,14 @@ export default function RankingPage({ user }: RankingPageProps) {
+             </CardContent>
+           </Card>
+ 
+-          <Card className="border-none shadow-xl rounded-3xl sm:rounded-[40px] overflow-hidden bg-white">
++          <Card className="overflow-hidden rounded-[28px] border-none bg-white shadow-xl">
+             <CardHeader className="pb-2">
+               <h3 className="text-lg sm:text-xl font-black text-zinc-900 flex items-center gap-2">
+                 <Gift className="w-5 h-5 sm:w-6 sm:h-6 text-sky-500" />
+                 Premios
+               </h3>
+             </CardHeader>
+-            <CardContent className="space-y-4 p-4 sm:p-6">
++            <CardContent className="space-y-3 p-4">
+               {prizes.map((prize) => {
+                 const isUnlocked = userPoints >= prize.points;
+                 const pointsNeeded = prize.points - userPoints;
+@@ -144,9 +144,8 @@ export default function RankingPage({ user }: RankingPageProps) {
+                 return (
+                   <motion.div 
+                     key={prize.id}
+-                    whileHover={{ scale: 1.02 }}
+                     className={cn(
+-                      "p-5 rounded-3xl border transition-all cursor-pointer relative overflow-hidden group",
++                      "p-4 rounded-2xl border transition-all cursor-pointer relative overflow-hidden group",
+                       isUnlocked 
+                         ? "bg-emerald-50 border-emerald-100" 
+                         : "bg-zinc-50 border-zinc-100 opacity-75"
+@@ -154,10 +153,10 @@ export default function RankingPage({ user }: RankingPageProps) {
+                   >
+                     <div className="flex items-center gap-4 relative z-10">
+                       <div className={cn(
+-                        "w-12 h-12 rounded-2xl flex items-center justify-center shadow-sm transition-colors",
++                        "w-10 h-10 rounded-xl flex items-center justify-center shadow-sm transition-colors",
+                         isUnlocked ? "bg-emerald-500 text-white" : "bg-white text-zinc-400"
+                       )}>
+-                        <prize.icon className="w-6 h-6" />
++                        <prize.icon className="h-5 w-5" />
+                       </div>
+                       <div className="flex-1">
+                         <p className="text-sm font-black text-zinc-900">{prize.name}</p>
+@@ -185,7 +184,7 @@ export default function RankingPage({ user }: RankingPageProps) {
+             </CardContent>
+           </Card>
+ 
+-          <div className="bg-zinc-900 p-6 rounded-[32px] text-white space-y-3">
++          <div className="space-y-3 rounded-[24px] bg-zinc-900 p-4 text-white">
+             <div className="flex items-center gap-2 text-sky-400">
+               <Info className="w-5 h-5" />
+               <span className="text-xs font-black uppercase tracking-widest">¿Cómo funciona?</span>
+@@ -197,16 +196,19 @@ export default function RankingPage({ user }: RankingPageProps) {
+         </div>
+ 
+         {/* Ranking List */}
+-        <div className="lg:col-span-2 space-y-6">
++        <div className="space-y-4 lg:col-span-2">
+           <div className="flex items-center justify-between">
+-            <h2 className="text-3xl font-black text-zinc-900 flex items-center gap-3 tracking-tight">
++            <h2 className={cn(
++              "text-xl font-black flex items-center gap-3 tracking-tight sm:text-2xl",
++              user.role === 'client' ? "text-white" : "text-zinc-900"
++            )}>
+               <Trophy className="w-8 h-8 text-yellow-500" />
+               Tabla de Posiciones
+             </h2>
+             <Badge variant="neutral" className="font-black">TOP 50</Badge>
+           </div>
+ 
+-          <Card className="border-none shadow-xl rounded-3xl sm:rounded-[40px] overflow-hidden bg-white">
++          <Card className="overflow-hidden rounded-[28px] border-none bg-white shadow-xl">
+             <CardContent className="p-0">
+               <div className="divide-y divide-zinc-50">
+                 {ranking.length === 0 ? (
+@@ -225,16 +227,16 @@ export default function RankingPage({ user }: RankingPageProps) {
+                         key={player.id} 
+                         whileHover={{ backgroundColor: "rgba(244, 244, 245, 0.5)" }}
+                         className={cn(
+-                          "p-4 sm:p-6 flex items-center justify-between transition-all relative group",
++                          "p-3 sm:p-4 flex items-center justify-between transition-all relative group",
+                           isUser ? "bg-sky-50/80" : ""
+                         )}
+                       >
+                         {isUser && <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-sky-500" />}
+                         
+-                        <div className="flex items-center gap-3 sm:gap-6">
++                        <div className="flex items-center gap-3 sm:gap-4">
+                           <div className={cn(
+-                            "w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl flex items-center justify-center font-black text-base sm:text-xl shadow-sm",
+-                            index === 0 ? "bg-gradient-to-br from-yellow-300 to-yellow-500 text-white scale-110 shadow-yellow-500/20" :
++                            "w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center font-black text-sm sm:text-base shadow-sm",
++                            index === 0 ? "bg-gradient-to-br from-yellow-300 to-yellow-500 text-white shadow-yellow-500/20" :
+                             index === 1 ? "bg-gradient-to-br from-zinc-300 to-zinc-400 text-white shadow-zinc-400/20" :
+                             index === 2 ? "bg-gradient-to-br from-orange-300 to-orange-500 text-white shadow-orange-500/20" :
+                             "bg-zinc-50 text-zinc-400"
+@@ -243,14 +245,14 @@ export default function RankingPage({ user }: RankingPageProps) {
+                           </div>
+                           <div className="flex items-center gap-2 sm:gap-4">
+                             <div className={cn(
+-                              "w-10 h-10 sm:w-14 sm:h-14 rounded-xl sm:rounded-2xl flex items-center justify-center transition-transform group-hover:scale-110",
++                              "w-9 h-9 sm:w-11 sm:h-11 rounded-xl flex items-center justify-center transition-colors",
+                               isUser ? "bg-sky-500 text-white" : "bg-zinc-100 text-zinc-400"
+                             )}>
+-                              <UserIcon className="w-5 h-5 sm:w-7 sm:h-7" />
++                              <UserIcon className="w-4 h-4 sm:w-5 sm:h-5" />
+                             </div>
+                             <div>
+                               <div className="flex items-center gap-1 sm:gap-2">
+-                                <p className={cn("font-black text-sm sm:text-lg truncate max-w-[100px] sm:max-w-none", isUser ? "text-sky-600" : "text-zinc-900")}>
++                                <p className={cn("font-black text-sm sm:text-base truncate max-w-[120px] sm:max-w-none", isUser ? "text-sky-600" : "text-zinc-900")}>
+                                   {player.name}
+                                 </p>
+                                 {isUser && <Badge variant="neutral" className="bg-sky-500 text-white border-none text-[8px] px-1 sm:px-2">TÚ</Badge>}
+@@ -267,7 +269,7 @@ export default function RankingPage({ user }: RankingPageProps) {
+                           </div>
+                         </div>
+                         <div className="text-right">
+-                          <p className={cn("text-xl sm:text-3xl font-black", isTop3 ? "text-zinc-900" : "text-zinc-500")}>
++                          <p className={cn("text-lg sm:text-2xl font-black", isTop3 ? "text-zinc-900" : "text-zinc-500")}>
+                             {player.points}
+                           </p>
+                           <p className="text-[8px] sm:text-[10px] font-black text-zinc-400 uppercase tracking-widest">Puntos</p>
+diff --git a/src/services/dataService.ts b/src/services/dataService.ts
+index 8dc8445..29ec834 100644
+--- a/src/services/dataService.ts
++++ b/src/services/dataService.ts
+@@ -201,7 +201,7 @@ export const dataService = {
+     if (isSupabaseConfigured()) {
+       const query = supabase
+         .from('clients')
+-        .select('id, name, complex_name, status, created_at, expires_at, ranking_reset_date, phone, address, enable_ranking, enable_sales, enable_reservations, enable_statistics, features')
++        .select('id, name, complex_name, status, created_at, expires_at, ranking_reset_date, phone, address, enable_ranking, enable_sales, enable_reservations, enable_statistics, features, settings')
+         .eq('id', clientId);
+       const { data, error } = await query.limit(1).single();
+       if (error) {
+@@ -230,6 +230,27 @@ export const dataService = {
+     }
+     return null;
+   },
++  updateClientSettings: async (clientId: string, settings: Record<string, unknown>) => {
++    const targetClientId = requireClientId(clientId, 'Actualizar configuracion del cliente');
++
++    if (isSupabaseConfigured()) {
++      return await supabaseService.updateClientSettings(targetClientId, settings);
++    }
++
++    const clients = getStorage<Client[]>('golazo_public_clients', []);
++    const updatedClients = clients.map((client) => {
++      if (client.id !== targetClientId) return client;
++      return {
++        ...client,
++        settings: {
++          ...(client.settings || {}),
++          ...settings,
++        },
++      };
++    });
++    setStorage('golazo_public_clients', updatedClients);
++    return updatedClients.find((client) => client.id === targetClientId) || null;
++  },
+   // Pitches
+   getPitches: async (clientId?: string) => {
+     if (isSupabaseConfigured()) {
+diff --git a/src/services/supabaseService.ts b/src/services/supabaseService.ts
+index ce47434..477ab94 100644
+--- a/src/services/supabaseService.ts
++++ b/src/services/supabaseService.ts
+@@ -141,7 +141,7 @@ export const supabaseService = {
+     log('Fetching public clients catalog...');
+     const { data, error } = await supabase
+       .from('public_clients_catalog_v1')
+-      .select('id, slug, display_name, description, address, phone, enable_ranking, enable_sales, enable_reservations, enable_statistics')
++      .select('id, slug, display_name, description, address, phone, enable_ranking, enable_sales, enable_reservations, enable_statistics, payment_public')
+       .order('display_name', { ascending: true });
+ 
+     if (error) {
+@@ -149,7 +149,11 @@ export const supabaseService = {
+       throw error;
+     }
+ 
+-    return (data || []).map((row: any) => ({
++    return (data || []).map((row: any) => {
++      const settings = row.settings && typeof row.settings === 'object' ? row.settings : {};
++      const payment_public = row.payment_public || settings.payment_public;
++
++      return {
+       id: row.id,
+       name: row.display_name,
+       complex_name: row.display_name,
+@@ -169,8 +173,14 @@ export const supabaseService = {
+         ranking: row.enable_ranking ?? true,
+         estadisticas: row.enable_statistics ?? true,
+       },
++      settings: {
++        ...settings,
++        ...(payment_public ? { payment_public } : {}),
++      },
++      payment_public,
+       created_at: '',
+-    })) as Client[];
++    };
++    }) as Client[];
+   },
+ 
+   getPublicClientConfig: async (clientId: string) => {
+@@ -178,7 +188,7 @@ export const supabaseService = {
+ 
+     const { data, error } = await supabase
+       .from('public_clients_catalog_v1')
+-      .select('id, slug, display_name, description, address, phone, enable_ranking, enable_sales, enable_reservations, enable_statistics')
++      .select('id, slug, display_name, description, address, phone, enable_ranking, enable_sales, enable_reservations, enable_statistics, payment_public')
+       .eq('id', clientId)
+       .maybeSingle();
+ 
+@@ -189,6 +199,10 @@ export const supabaseService = {
+ 
+     if (!data) return null;
+ 
++    const rawConfig = data as Record<string, any>;
++    const settings = rawConfig.settings && typeof rawConfig.settings === 'object' ? rawConfig.settings : {};
++    const payment_public = rawConfig.payment_public || settings.payment_public;
++
+     return {
+       id: data.id,
+       name: data.display_name,
+@@ -209,10 +223,53 @@ export const supabaseService = {
+         ranking: data.enable_ranking ?? true,
+         estadisticas: data.enable_statistics ?? true,
+       },
++      settings: {
++        ...settings,
++        ...(payment_public ? { payment_public } : {}),
++      },
++      payment_public,
+       created_at: '',
+     } as Client;
+   },
+ 
++  updateClientSettings: async (clientId: string, settings: Record<string, unknown>) => {
++    const requiredClientId = ensureClientId(clientId, 'Actualizar configuracion del cliente');
++    const { data: current, error: fetchError } = await supabase
++      .from('clients')
++      .select('settings')
++      .eq('id', requiredClientId)
++      .maybeSingle();
++
++    if (fetchError) {
++      logError('Error fetching client settings', fetchError);
++      throw fetchError;
++    }
++
++    const currentSettings =
++      current?.settings && typeof current.settings === 'object'
++        ? current.settings as Record<string, unknown>
++        : {};
++
++    const nextSettings = {
++      ...currentSettings,
++      ...settings,
++    };
++
++    const { data, error } = await supabase
++      .from('clients')
++      .update({ settings: nextSettings })
++      .eq('id', requiredClientId)
++      .select('id, name, complex_name, status, created_at, expires_at, ranking_reset_date, phone, address, enable_ranking, enable_sales, enable_reservations, enable_statistics, features, settings')
++      .maybeSingle();
++
++    if (error) {
++      logError('Error updating client settings', error);
++      throw error;
++    }
++
++    return data as Client;
++  },
++
+   getPublicPitches: async (clientId?: string) => {
+     log('Fetching public pitches...', { clientId });
+     // Early return if no clientId - prevents 401 errors
+diff --git a/src/types.ts b/src/types.ts
+index 413a8df..4aa061a 100644
+--- a/src/types.ts
++++ b/src/types.ts
+@@ -146,7 +146,25 @@ export interface Client {
+   ranking_reset_date?: string | null;
+   created_at: string;
+   features?: Record<string, boolean>;
++  settings?: ClientSettings;
++  payment_public?: PublicPaymentSettings;
+   description?: string;
+ }
+ 
++export interface PublicPaymentSettings {
++  enabled: boolean;
++  min_deposit: number;
++  bank_name: string;
++  account_holder: string;
++  account_number: string;
++  alias: string;
++  tax_id?: string;
++  instructions?: string;
++}
++
++export interface ClientSettings {
++  payment_public?: PublicPaymentSettings;
++  [key: string]: unknown;
++}
++
+ export type PitchStatus = 'available' | 'busy' | 'reserved';

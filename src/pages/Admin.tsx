@@ -31,7 +31,7 @@ import { Modal } from '../components/Modal';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { Badge } from '../components/Badge';
 import { dataService, api } from '../services/dataService';
-import { Pitch, Product, AuditLog, User } from '../types';
+import { Pitch, Product, AuditLog, User, Client, PublicPaymentSettings } from '../types';
 import { cn } from '../lib/utils';
 import { getEffectiveClientId } from '../lib/tenant';
 import { toast } from 'sonner';
@@ -53,6 +53,8 @@ export default function Admin({ onLogout }: AdminProps) {
   const [confirmDelete, setConfirmDelete] = useState<{ type: 'pitch' | 'product', id: string } | null>(null);
   const [isLogoutConfirmOpen, setIsLogoutConfirmOpen] = useState(false);
   const [customLogo, setCustomLogo] = useState<string | null>(localStorage.getItem('golazo_custom_logo'));
+  const [clientConfig, setClientConfig] = useState<Client | null>(null);
+  const [isSavingPaymentSettings, setIsSavingPaymentSettings] = useState(false);
   
   const [activeTab, setActiveTab] = useState<'general' | 'canchas' | 'productos' | 'sistema'>('general');
   const [supabaseStatus, setSupabaseStatus] = useState<'checking' | 'connected' | 'disconnected'>('checking');
@@ -91,6 +93,17 @@ export default function Admin({ onLogout }: AdminProps) {
   };
 
   const [productForm, setProductForm] = useState(defaultProductForm);
+  const defaultPaymentPublicForm: PublicPaymentSettings = {
+    enabled: false,
+    min_deposit: 500,
+    bank_name: '',
+    account_holder: '',
+    account_number: '',
+    alias: '',
+    tax_id: '',
+    instructions: '',
+  };
+  const [paymentPublicForm, setPaymentPublicForm] = useState<PublicPaymentSettings>(defaultPaymentPublicForm);
 
   const [user, setUser] = useState<User | null>(null);
   const effectiveClientId = getEffectiveClientId(user);
@@ -106,9 +119,15 @@ export default function Admin({ onLogout }: AdminProps) {
       const pi = await dataService.getPitches(clientId);
       const pr = await dataService.getProducts(clientId);
       const logs = await dataService.getAuditLogs(clientId);
+      const config = clientId ? await dataService.getClientConfig(clientId) : null;
       setPitches(pi);
       setProducts(pr);
       setAuditLogs(logs);
+      setClientConfig(config);
+      setPaymentPublicForm({
+        ...defaultPaymentPublicForm,
+        ...(config?.settings?.payment_public || {}),
+      });
     };
     fetchData();
   }, [user, effectiveClientId]);
@@ -119,9 +138,57 @@ export default function Admin({ onLogout }: AdminProps) {
     const pi = await dataService.getPitches(clientId);
     const pr = await dataService.getProducts(clientId);
     const logs = await dataService.getAuditLogs(clientId);
+    const config = clientId ? await dataService.getClientConfig(clientId) : null;
     setPitches(pi);
     setProducts(pr);
     setAuditLogs(logs);
+    setClientConfig(config);
+    setPaymentPublicForm({
+      ...defaultPaymentPublicForm,
+      ...(config?.settings?.payment_public || {}),
+    });
+  };
+
+  const handleSavePaymentPublicSettings = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!effectiveClientId) {
+      toast.error('No se pudo identificar el complejo.');
+      return;
+    }
+
+    setIsSavingPaymentSettings(true);
+    try {
+      const payment_public: PublicPaymentSettings = {
+        enabled: paymentPublicForm.enabled,
+        min_deposit: Number(paymentPublicForm.min_deposit) || 0,
+        bank_name: paymentPublicForm.bank_name.trim(),
+        account_holder: paymentPublicForm.account_holder.trim(),
+        account_number: paymentPublicForm.account_number.trim(),
+        alias: paymentPublicForm.alias.trim(),
+        tax_id: paymentPublicForm.tax_id?.trim() || '',
+        instructions: paymentPublicForm.instructions?.trim() || '',
+      };
+
+      const updatedClient = await dataService.updateClientSettings(effectiveClientId, { payment_public });
+      if (updatedClient) {
+        setClientConfig(updatedClient);
+      } else {
+        setClientConfig((prev) => prev ? ({
+          ...prev,
+          settings: {
+            ...(prev.settings || {}),
+            payment_public,
+          },
+        }) : prev);
+      }
+      setPaymentPublicForm(payment_public);
+      toast.success('Datos de pago publicos guardados');
+    } catch (error) {
+      console.error('Error saving public payment settings:', error);
+      toast.error('No se pudieron guardar los datos de pago');
+    } finally {
+      setIsSavingPaymentSettings(false);
+    }
   };
 
   const handleSavePitch = async (e: React.FormEvent) => {
@@ -447,6 +514,115 @@ export default function Admin({ onLogout }: AdminProps) {
                             </div>
                           </div>
                         </div>
+                      </CardContent>
+                    </Card>
+
+                    <Card className="border border-sky-100 shadow-xl shadow-zinc-200/30 rounded-[36px] overflow-hidden bg-white">
+                      <CardHeader className="p-8 pb-4">
+                        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                          <div className="space-y-1">
+                            <h3 className="text-xl font-black text-zinc-900 flex items-center gap-3 tracking-tight uppercase">
+                              <DollarSign className="w-6 h-6 text-sky-500" />
+                              Datos de pago para reservas publicas
+                            </h3>
+                            <p className="text-zinc-500 text-xs font-medium">
+                              Estos datos aparecen en el modal de reserva del jugador.
+                            </p>
+                          </div>
+                          <label className="flex cursor-pointer items-center gap-3 rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3">
+                            <input
+                              type="checkbox"
+                              className="h-4 w-4 accent-sky-600"
+                              checked={paymentPublicForm.enabled}
+                              onChange={(e) => setPaymentPublicForm((prev) => ({ ...prev, enabled: e.target.checked }))}
+                            />
+                            <span className="text-[10px] font-black uppercase tracking-widest text-zinc-700">Activo</span>
+                          </label>
+                        </div>
+                      </CardHeader>
+                      <CardContent className="p-8 pt-4">
+                        <form onSubmit={handleSavePaymentPublicSettings} className="space-y-5">
+                          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                            <div className="space-y-1.5">
+                              <label className="ml-1 text-xs font-bold text-zinc-700">Monto minimo de seña</label>
+                              <input
+                                type="number"
+                                min="0"
+                                className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm font-bold text-zinc-900 placeholder:text-zinc-400 outline-none focus:ring-2 focus:ring-sky-500/20"
+                                value={paymentPublicForm.min_deposit}
+                                onChange={(e) => setPaymentPublicForm((prev) => ({ ...prev, min_deposit: Number(e.target.value) }))}
+                              />
+                            </div>
+                            <div className="space-y-1.5">
+                              <label className="ml-1 text-xs font-bold text-zinc-700">Banco o billetera</label>
+                              <input
+                                type="text"
+                                placeholder="Ej: Mercado Pago, Banco..."
+                                className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm font-medium text-zinc-900 placeholder:text-zinc-400 outline-none focus:ring-2 focus:ring-sky-500/20"
+                                value={paymentPublicForm.bank_name}
+                                onChange={(e) => setPaymentPublicForm((prev) => ({ ...prev, bank_name: e.target.value }))}
+                              />
+                            </div>
+                            <div className="space-y-1.5">
+                              <label className="ml-1 text-xs font-bold text-zinc-700">Titular de la cuenta</label>
+                              <input
+                                type="text"
+                                className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm font-medium text-zinc-900 placeholder:text-zinc-400 outline-none focus:ring-2 focus:ring-sky-500/20"
+                                value={paymentPublicForm.account_holder}
+                                onChange={(e) => setPaymentPublicForm((prev) => ({ ...prev, account_holder: e.target.value }))}
+                              />
+                            </div>
+                            <div className="space-y-1.5">
+                              <label className="ml-1 text-xs font-bold text-zinc-700">CBU / CVU</label>
+                              <input
+                                type="text"
+                                className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm font-medium text-zinc-900 placeholder:text-zinc-400 outline-none focus:ring-2 focus:ring-sky-500/20"
+                                value={paymentPublicForm.account_number}
+                                onChange={(e) => setPaymentPublicForm((prev) => ({ ...prev, account_number: e.target.value }))}
+                              />
+                            </div>
+                            <div className="space-y-1.5">
+                              <label className="ml-1 text-xs font-bold text-zinc-700">Alias</label>
+                              <input
+                                type="text"
+                                className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm font-medium text-zinc-900 placeholder:text-zinc-400 outline-none focus:ring-2 focus:ring-sky-500/20"
+                                value={paymentPublicForm.alias}
+                                onChange={(e) => setPaymentPublicForm((prev) => ({ ...prev, alias: e.target.value }))}
+                              />
+                            </div>
+                            <div className="space-y-1.5">
+                              <label className="ml-1 text-xs font-bold text-zinc-700">CUIT / DNI opcional</label>
+                              <input
+                                type="text"
+                                className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm font-medium text-zinc-900 placeholder:text-zinc-400 outline-none focus:ring-2 focus:ring-sky-500/20"
+                                value={paymentPublicForm.tax_id || ''}
+                                onChange={(e) => setPaymentPublicForm((prev) => ({ ...prev, tax_id: e.target.value }))}
+                              />
+                            </div>
+                          </div>
+                          <div className="space-y-1.5">
+                            <label className="ml-1 text-xs font-bold text-zinc-700">Instrucciones para el jugador</label>
+                            <textarea
+                              rows={3}
+                              placeholder="Ej: Envia el comprobante y espera confirmacion del complejo."
+                              className="w-full resize-none rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm font-medium text-zinc-900 placeholder:text-zinc-400 outline-none focus:ring-2 focus:ring-sky-500/20"
+                              value={paymentPublicForm.instructions || ''}
+                              onChange={(e) => setPaymentPublicForm((prev) => ({ ...prev, instructions: e.target.value }))}
+                            />
+                          </div>
+                          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                            <p className="text-xs font-medium text-zinc-500">
+                              Se guarda dentro de settings.payment_public sin modificar otras configuraciones.
+                            </p>
+                            <Button
+                              type="submit"
+                              disabled={isSavingPaymentSettings}
+                              className="h-12 rounded-2xl px-6 text-xs font-black uppercase tracking-widest shadow-lg shadow-sky-500/20"
+                            >
+                              {isSavingPaymentSettings ? 'Guardando...' : 'Guardar datos de pago'}
+                            </Button>
+                          </div>
+                        </form>
                       </CardContent>
                     </Card>
 

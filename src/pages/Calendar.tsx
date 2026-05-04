@@ -37,19 +37,20 @@ import { Badge } from '../components/Badge';
 import { Modal } from '../components/Modal';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { dataService, api } from '../services/dataService';
-import { Pitch, Booking, User as UserType } from '../types';
+import { Pitch, Booking, Client, User as UserType } from '../types';
 import { cn } from '../lib/utils';
 import { getEffectiveClientId } from '../lib/tenant';
 
 interface CalendarProps {
   user: UserType;
+  clientConfig?: Client | null;
   initialBookingId?: string | null;
   onClearInitialBooking?: () => void;
 }
 
 import { ShareAvailabilityModal } from '../components/ShareAvailabilityModal';
 
-export default function CalendarPage({ user, initialBookingId, onClearInitialBooking }: CalendarProps) {
+export default function CalendarPage({ user, clientConfig, initialBookingId, onClearInitialBooking }: CalendarProps) {
   const effectiveClientId = getEffectiveClientId(user);
   const isPlayerUser = user.role === 'client';
   const [pitches, setPitches] = useState<Pitch[]>([]);
@@ -80,6 +81,70 @@ export default function CalendarPage({ user, initialBookingId, onClearInitialBoo
     paymentUrl: ''
   });
 
+  const getStringValue = (source: unknown, keys: string[]) => {
+    if (!source || typeof source !== 'object') return '';
+    const record = source as Record<string, unknown>;
+
+    for (const key of keys) {
+      const value = record[key];
+      if (typeof value === 'string' && value.trim()) return value.trim();
+    }
+
+    return '';
+  };
+
+  const getNumberValue = (source: unknown, keys: string[], fallback: number) => {
+    if (!source || typeof source !== 'object') return fallback;
+    const record = source as Record<string, unknown>;
+
+    for (const key of keys) {
+      const value = record[key];
+      if (typeof value === 'number' && Number.isFinite(value)) return value;
+      if (typeof value === 'string' && value.trim()) {
+        const parsed = Number(value);
+        if (Number.isFinite(parsed)) return parsed;
+      }
+    }
+
+    return fallback;
+  };
+
+  const getNestedRecord = (source: unknown, keys: string[]) => {
+    if (!source || typeof source !== 'object') return null;
+    const record = source as Record<string, unknown>;
+
+    for (const key of keys) {
+      const value = record[key];
+      if (value && typeof value === 'object') return value as Record<string, unknown>;
+    }
+
+    return null;
+  };
+
+  const paymentPublic = clientConfig?.settings?.payment_public || clientConfig?.payment_public;
+  const paymentSettings =
+    isPlayerUser
+      ? paymentPublic
+      : paymentPublic ||
+        getNestedRecord(user, ['payment_public', 'clientConfig', 'settings', 'client_settings', 'public_settings', 'payment_settings']) ||
+        getNestedRecord(bookingData.pitch, ['payment_public', 'settings', 'client_settings', 'public_settings', 'payment_settings']);
+
+  const bankDetails = {
+    bank: getStringValue(paymentSettings, ['bank_name', 'bankName', 'bank', 'banco']),
+    holder: getStringValue(paymentSettings, ['account_holder', 'accountHolder', 'holder', 'titular']),
+    cbu: getStringValue(paymentSettings, ['account_number', 'accountNumber', 'cbu', 'cvu', 'account_cbu']),
+    alias: getStringValue(paymentSettings, ['alias', 'account_alias']),
+    taxId: getStringValue(paymentSettings, ['tax_id', 'taxId', 'cuit', 'dni']),
+    instructions: getStringValue(paymentSettings, ['instructions', 'notes']),
+  };
+  const paymentPublicEnabled = Boolean(
+    paymentSettings &&
+    typeof paymentSettings === 'object' &&
+    ((paymentSettings as { enabled?: boolean | string }).enabled === true ||
+      (paymentSettings as { enabled?: boolean | string }).enabled === 'true')
+  );
+  const publicMinDeposit = getNumberValue(paymentSettings, ['min_deposit', 'minDeposit'], 500);
+
   useEffect(() => {
     const fetchData = async () => {
       setIsCalendarLoading(true);
@@ -101,20 +166,28 @@ export default function CalendarPage({ user, initialBookingId, onClearInitialBoo
         setPitches(fetchedPitches);
 
         let fetchedBookings: Booking[] = [];
-        try {
-          fetchedBookings = await dataService.getBookings(clientId);
-          setBookings(fetchedBookings);
-        } catch (bookingsError) {
-          console.error('Error loading bookings:', bookingsError);
+        if (!isPlayerUser) {
+          try {
+            fetchedBookings = await dataService.getBookings(clientId);
+            setBookings(fetchedBookings);
+          } catch (bookingsError) {
+            console.error('Error loading bookings:', bookingsError);
+            setBookings([]);
+          }
+        } else {
           setBookings([]);
         }
 
-        try {
-          const fetchedDeactivated = await dataService.getDeactivatedSlots(clientId);
-          setDeactivatedSlots(fetchedDeactivated);
-        } catch (slotsError) {
-          console.error('Error loading deactivated slots:', slotsError);
+        if (isPlayerUser) {
           setDeactivatedSlots(new Set());
+        } else {
+          try {
+            const fetchedDeactivated = await dataService.getDeactivatedSlots(clientId);
+            setDeactivatedSlots(fetchedDeactivated);
+          } catch (slotsError) {
+            console.error('Error loading deactivated slots:', slotsError);
+            setDeactivatedSlots(new Set());
+          }
         }
         
         if (initialBookingId) {
@@ -257,6 +330,83 @@ export default function CalendarPage({ user, initialBookingId, onClearInitialBoo
     e.preventDefault();
     if (!bookingData.pitch || !bookingData.time) return;
 
+    if (user.role === 'client') {
+      const clientId = effectiveClientId;
+      const [publicHour, publicMinute] = bookingData.time.split(':').map(Number);
+      const publicStartTime = new Date(bookingData.date);
+      publicStartTime.setHours(publicHour, publicMinute, 0, 0);
+
+      try {
+        if (!clientId) {
+          throw new Error('No se pudo identificar el complejo para esta reserva publica.');
+        }
+
+        if (!bookingData.pitch.client_slug) {
+          throw new Error('No se pudo identificar el complejo para esta reserva publica.');
+        }
+
+        const result = await dataService.createPublicBooking({
+          client_slug: bookingData.pitch.client_slug,
+          pitch_id: bookingData.pitch.id,
+          start_time: publicStartTime.toISOString(),
+          client_name: bookingData.clientName.trim(),
+          client_phone: bookingData.clientPhone.trim(),
+        });
+
+        const createdBooking = result.booking;
+        setBookings(prev => [
+          ...prev.filter(booking => booking.id !== createdBooking.id),
+          {
+            id: createdBooking.id,
+            pitchId: createdBooking.pitch_id,
+            userId: user.id,
+            clientName: createdBooking.client_name,
+            clientPhone: createdBooking.client_phone,
+            startTime: new Date(createdBooking.start_time),
+            endTime: new Date(createdBooking.end_time),
+            status: createdBooking.status as Booking['status'],
+            createdAt: new Date(createdBooking.created_at),
+            client_id: createdBooking.client_id,
+          },
+        ]);
+
+        const refreshedPitches = await dataService.getPublicPitches(clientId);
+        setPitches(refreshedPitches);
+        setIsBookingModalOpen(false);
+        setBookingData(prev => ({
+          ...prev,
+          receipt: null,
+          depositAmount: '',
+          paymentMethod: 'transferencia',
+          paymentUrl: ''
+        }));
+
+        if ((createdBooking.status || '').toLowerCase() === 'pending') {
+          toast.success('Reserva pendiente de confirmacion', {
+            description: result.message || 'Te avisaremos cuando el complejo la confirme.',
+          });
+        } else {
+          toast.success('Reserva confirmada', {
+            description: result.message || 'Tu reserva fue creada correctamente.',
+          });
+        }
+      } catch (error: any) {
+        const errorCode = typeof error?.code === 'string' ? error.code : '';
+        const publicMessages: Record<string, string> = {
+          validation_error: 'Revisa los datos ingresados e intenta nuevamente.',
+          past_booking_not_allowed: 'No podes reservar un horario pasado.',
+          client_not_found: 'No encontramos el complejo seleccionado.',
+          client_not_publicly_bookable: 'Este complejo no acepta reservas publicas en este momento.',
+          pitch_not_available: 'La cancha seleccionada no esta disponible para reservas publicas.',
+          slot_occupied: 'Ese horario ya no esta disponible. Elegi otro turno.',
+        };
+
+        toast.error(publicMessages[errorCode] || error?.message || 'No se pudo crear la reserva publica.');
+      }
+
+      return;
+    }
+
     const deposit = Number(bookingData.depositAmount) || 0;
     if (deposit < 500) {
       toast.error('La seña mínima es de $500.');
@@ -336,16 +486,361 @@ export default function CalendarPage({ user, initialBookingId, onClearInitialBoo
     );
   }
 
+  if (isPlayerUser) {
+    const playerSelectedPitch = filterPitch !== 'all'
+      ? pitches.find((pitch) => pitch.id === filterPitch) || pitches[0]
+      : pitches[0];
+    const playerPitchList = playerSelectedPitch ? [playerSelectedPitch] : [];
+
+    return (
+      <div className="mx-auto w-full max-w-[1280px] space-y-5 pb-6">
+        <section className="overflow-hidden rounded-[28px] border border-white/15 bg-slate-950 text-white shadow-2xl shadow-slate-950/25">
+          <div className="relative p-4 sm:p-6 lg:p-7">
+            <div className="absolute inset-0 opacity-20" style={{ background: 'var(--bg-flag-ar)' }} />
+            <div className="relative z-10 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex items-center gap-3">
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-sky-500 text-white shadow-lg shadow-sky-500/30 sm:h-14 sm:w-14">
+                  <CalendarIcon className="h-6 w-6" />
+                </div>
+                <div>
+                  <p className="text-[9px] font-black uppercase tracking-[0.24em] text-emerald-200">Reservas online</p>
+                  <h1 className="text-2xl font-black italic tracking-[-0.04em] sm:text-4xl">Reservar cancha</h1>
+                  <p className="mt-1 text-sm font-bold capitalize text-white/70">
+                    {format(selectedDate, "EEEE d 'de' MMMM", { locale: es })}
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <div className="grid grid-cols-[auto_1fr_auto] gap-2 sm:flex sm:items-center">
+                  <Button
+                    variant="secondary"
+                    className="h-11 rounded-2xl bg-white/10 px-3 text-white hover:bg-white/15"
+                    onClick={() => setSelectedDate(date => addDays(date, -1))}
+                  >
+                    <ChevronLeft className="h-5 w-5" />
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    className="h-11 rounded-2xl bg-white px-5 text-xs font-black uppercase tracking-widest text-slate-950 hover:bg-white/90"
+                    onClick={() => setSelectedDate(new Date())}
+                  >
+                    Hoy
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    className="h-11 rounded-2xl bg-white/10 px-3 text-white hover:bg-white/15"
+                    onClick={() => setSelectedDate(date => addDays(date, 1))}
+                  >
+                    <ChevronRight className="h-5 w-5" />
+                  </Button>
+                </div>
+                <div className="rounded-2xl border border-white/10 bg-white/10 px-4 py-2 text-center backdrop-blur-xl">
+                  <p className="text-[9px] font-black uppercase tracking-[0.22em] text-emerald-200">Fecha seleccionada</p>
+                  <p className="text-sm font-black capitalize text-white">
+                    {format(selectedDate, "EEEE d 'de' MMMM", { locale: es })}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <div className="grid gap-5 xl:grid-cols-[300px_minmax(0,1fr)]">
+          <aside className="space-y-4">
+            <div className="rounded-[24px] border border-white/40 bg-white/95 p-4 shadow-xl shadow-slate-950/15 backdrop-blur-xl">
+              <p className="text-[10px] font-black uppercase tracking-[0.24em] text-zinc-400">Elegir cancha</p>
+              {shouldShowEmptyPitches ? (
+                <div className="mt-4 rounded-2xl border border-amber-100 bg-amber-50 p-4 text-sm font-bold text-amber-800">
+                  {emptyPitchesMessage}
+                </div>
+              ) : (
+              <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
+                  {pitches.map((pitch) => {
+                    const isSelected = playerSelectedPitch?.id === pitch.id;
+                    return (
+                      <button
+                        key={pitch.id}
+                        type="button"
+                        onClick={() => setFilterPitch(pitch.id)}
+                        className={cn(
+                          "flex items-center justify-between rounded-2xl border px-4 py-3 text-left transition-all",
+                          isSelected
+                            ? "border-sky-300 bg-sky-50 text-sky-900 shadow-sm"
+                            : "border-zinc-100 bg-white text-zinc-700 hover:border-sky-200 hover:bg-sky-50/40"
+                        )}
+                      >
+                        <span>
+                          <span className="block text-sm font-black">{pitch.name}</span>
+                          <span className="text-[10px] font-black uppercase tracking-widest text-zinc-400">{pitch.type}</span>
+                        </span>
+                        <span className={cn(
+                          "h-3 w-3 rounded-full",
+                          isSelected ? "bg-sky-500" : "bg-zinc-200"
+                        )} />
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div className="rounded-[24px] border border-white/40 bg-white/90 p-4 shadow-xl shadow-slate-950/10 backdrop-blur-xl">
+              <p className="text-[10px] font-black uppercase tracking-[0.24em] text-zinc-400">Fecha</p>
+              <button
+                type="button"
+                onClick={() => setIsCalendarOpen(!isCalendarOpen)}
+                className="mt-3 flex h-12 w-full items-center justify-between rounded-2xl border border-zinc-100 bg-white px-4 text-left text-sm font-black text-zinc-900 shadow-sm"
+              >
+                <span>{format(selectedDate, "d 'de' MMMM", { locale: es })}</span>
+                <CalendarIcon className="h-4 w-4 text-sky-500" />
+              </button>
+              <AnimatePresence>
+                {isCalendarOpen && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 10 }}
+                    className="mt-3 rounded-3xl border border-zinc-100 bg-white p-4 shadow-xl"
+                  >
+                    <DayPicker
+                      mode="single"
+                      selected={selectedDate}
+                      onSelect={(date) => {
+                        if (date) setSelectedDate(date);
+                        setIsCalendarOpen(false);
+                      }}
+                      locale={es}
+                      className="rdp-custom"
+                    />
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          </aside>
+
+          <section className="rounded-[28px] border border-white/40 bg-white/95 p-4 shadow-2xl shadow-slate-950/15 backdrop-blur-xl sm:p-5">
+            <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.24em] text-zinc-400">Horarios disponibles</p>
+                <h2 className="mt-1 text-2xl font-black tracking-[-0.04em] text-zinc-900">
+                  {playerSelectedPitch?.name || 'Sin cancha seleccionada'}
+                </h2>
+              </div>
+              <Badge variant="neutral" className="w-fit border-none bg-emerald-100 text-emerald-700">
+                {hours.length} turnos
+              </Badge>
+            </div>
+
+            {shouldShowEmptyPitches || playerPitchList.length === 0 ? (
+              <div className="flex min-h-[220px] flex-col items-center justify-center rounded-[24px] border-2 border-dashed border-zinc-100 bg-zinc-50 p-6 text-center">
+                <AlertCircle className="mb-3 h-8 w-8 text-amber-500" />
+                <p className="text-sm font-black uppercase tracking-widest text-zinc-900">No hay canchas para mostrar</p>
+                <p className="mt-2 text-sm font-medium text-zinc-500">{emptyPitchesMessage}</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+                {hours.map((hour) => {
+                  const pitch = playerSelectedPitch;
+                  if (!pitch) return null;
+
+                  const status = getSlotStatus(selectedDate, hour, pitch.id);
+                  const isPast = status === 'past';
+                  const isAvailable = status === 'available';
+                  const isOccupied = status === 'occupied' || status === 'partial';
+                  const isBlocked = status === 'deactivated';
+                  const statusText = isPast
+                    ? 'Pasado'
+                    : isBlocked
+                      ? 'No disponible'
+                      : isOccupied
+                        ? 'Ocupado'
+                        : 'Disponible';
+
+                  return (
+                    <article
+                      key={`${pitch.id}-${format(selectedDate, 'yyyy-MM-dd')}-${hour}`}
+                      className={cn(
+                        "rounded-[22px] border p-4 transition-all",
+                        isAvailable
+                          ? "border-emerald-100 bg-emerald-50 shadow-sm"
+                          : isPast
+                            ? "border-zinc-100 bg-zinc-50 text-zinc-400"
+                            : "border-red-100 bg-red-50 text-red-700"
+                      )}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-3xl font-black tracking-[-0.04em] text-zinc-900">
+                            {formatSlotTime(hour)}
+                          </p>
+                          <p className="mt-1 text-xs font-black uppercase tracking-widest opacity-70">
+                            {pitch.name}
+                          </p>
+                        </div>
+                        <span className={cn(
+                          "rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-widest",
+                          isAvailable
+                            ? "bg-emerald-500 text-white"
+                            : isPast
+                              ? "bg-zinc-200 text-zinc-500"
+                              : "bg-red-500 text-white"
+                        )}>
+                          {statusText}
+                        </span>
+                      </div>
+
+                      <div className="mt-4 flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2 text-xs font-bold text-zinc-500">
+                          <Clock className="h-4 w-4" />
+                          60 min
+                        </div>
+                        <Button
+                          type="button"
+                          disabled={!isAvailable}
+                          className={cn(
+                            "h-11 rounded-2xl px-5 text-xs font-black uppercase tracking-widest",
+                            isAvailable
+                              ? "bg-sky-600 text-white hover:bg-sky-700"
+                              : "cursor-not-allowed bg-zinc-200 text-zinc-500 hover:bg-zinc-200"
+                          )}
+                          onClick={() => openBookingModal(pitch, selectedDate, formatSlotTime(hour))}
+                        >
+                          Reservar
+                        </Button>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+        </div>
+
+        <Modal
+          isOpen={isBookingModalOpen}
+          onClose={() => setIsBookingModalOpen(false)}
+          title="Reservar cancha"
+          className="max-h-[90vh] max-w-[calc(100vw-24px)] rounded-[24px] sm:max-w-lg sm:rounded-[28px]"
+        >
+          {bookingTimer !== null && (
+            <div className="mb-5 flex items-center justify-center gap-2 rounded-2xl border border-red-100 bg-red-50 py-3 text-red-600">
+              <Timer className="h-5 w-5" />
+              <span className="text-xs font-black uppercase tracking-widest">
+                Tiempo restante: {Math.floor(bookingTimer / 60)}:{(bookingTimer % 60).toString().padStart(2, '0')}
+              </span>
+            </div>
+          )}
+          <form onSubmit={handleBookingSubmit} className="space-y-5">
+            <section className="flex items-start gap-3 rounded-2xl border border-sky-100 bg-sky-50/70 p-4 sm:items-center">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-sky-100 bg-white shadow-sm sm:h-12 sm:w-12">
+                <CalendarIcon className="h-5 w-5 text-sky-600 sm:h-6 sm:w-6" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">Detalles del turno</p>
+                <h3 className="text-base font-black text-zinc-900">
+                  {bookingData.pitch?.name} - {bookingData.time} hs
+                </h3>
+                <p className="text-xs font-semibold capitalize text-zinc-600">{format(bookingData.date, "EEEE d 'de' MMMM", { locale: es })}</p>
+              </div>
+            </section>
+
+            <section className="space-y-3">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-zinc-400">Tus datos</p>
+                <h4 className="text-sm font-black text-zinc-900">Te contactamos por esta reserva</h4>
+              </div>
+              <div className="space-y-1.5">
+                <label className="ml-1 text-xs font-semibold text-zinc-700">Nombre</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Ej: Juan Perez"
+                  className="w-full rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm font-medium text-zinc-900 placeholder:text-zinc-400 outline-none focus:ring-2 focus:ring-sky-500/20"
+                  value={bookingData.clientName}
+                  onChange={e => setBookingData(prev => ({ ...prev, clientName: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="ml-1 text-xs font-semibold text-zinc-700">Telefono</label>
+                <input
+                  type="tel"
+                  required
+                  placeholder="Ej: 11 2345 6789"
+                  className="w-full rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm font-medium text-zinc-900 placeholder:text-zinc-400 outline-none focus:ring-2 focus:ring-sky-500/20"
+                  value={bookingData.clientPhone}
+                  onChange={e => setBookingData(prev => ({ ...prev, clientPhone: e.target.value }))}
+                />
+              </div>
+            </section>
+
+            <section className="space-y-3 rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-zinc-400">Seña / pago</p>
+                  <h4 className="text-sm font-black text-zinc-900">Datos para coordinar el pago</h4>
+                </div>
+                <span className="rounded-full bg-white px-3 py-1 text-sm font-black text-sky-700 shadow-sm">
+                  Seña desde ${publicMinDeposit}
+                </span>
+              </div>
+
+              <div className="rounded-2xl border border-sky-100 bg-white p-3">
+                <p className="mb-2 text-xs font-black text-sky-800">Datos de transferencia</p>
+                {paymentPublicEnabled ? (
+                  <div className="space-y-1 text-xs font-semibold text-zinc-700">
+                    {bankDetails.bank && <p><span className="text-zinc-500">Banco / billetera:</span> {bankDetails.bank}</p>}
+                    {bankDetails.holder && <p><span className="text-zinc-500">Titular:</span> {bankDetails.holder}</p>}
+                    {bankDetails.cbu && <p><span className="text-zinc-500">CBU / CVU:</span> {bankDetails.cbu}</p>}
+                    {bankDetails.alias && <p><span className="text-zinc-500">Alias:</span> {bankDetails.alias}</p>}
+                    {bankDetails.taxId && <p><span className="text-zinc-500">CUIT / DNI:</span> {bankDetails.taxId}</p>}
+                    {bankDetails.instructions && <p className="pt-1 leading-relaxed"><span className="text-zinc-500">Instrucciones:</span> {bankDetails.instructions}</p>}
+                  </div>
+                ) : (
+                  <p className="text-xs font-semibold leading-relaxed text-zinc-600">
+                    Este complejo todavia no cargo datos de transferencia. Coordina el pago con el complejo antes de transferir.
+                  </p>
+                )}
+              </div>
+
+              <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-3 text-xs font-bold leading-relaxed text-emerald-800">
+                Transferí la seña y enviá el comprobante al complejo para confirmar el turno.
+              </div>
+            </section>
+
+            <div className="flex flex-col-reverse gap-3 pt-2 sm:flex-row sm:items-center sm:justify-end">
+              <Button type="button" variant="ghost" className="h-12 rounded-2xl font-bold" onClick={() => setIsBookingModalOpen(false)}>
+                Cancelar
+              </Button>
+              <Button type="submit" className="h-12 rounded-2xl px-8 font-black uppercase tracking-widest shadow-lg shadow-sky-500/20">
+                Solicitar reserva
+              </Button>
+            </div>
+          </form>
+        </Modal>
+      </div>
+    );
+  }
+
   return (
-    <div className="space-y-6">
+    <div className={cn("w-full space-y-6", isPlayerUser && "pb-2")}>
       {/* Header: Editorial & Professional */}
-      <header className="flex flex-col lg:flex-row lg:items-center justify-between gap-8 pb-4">
-        <div className="flex items-center gap-6">
-          <div className="w-20 h-20 bg-sky-600 rounded-[32px] flex items-center justify-center shadow-2xl shadow-sky-200 rotate-3 hover:rotate-0 transition-transform duration-500">
-            <CalendarIcon className="w-10 h-10 text-white" />
+      <header className={cn(
+        "flex flex-col lg:flex-row lg:items-center justify-between gap-8 pb-4",
+        isPlayerUser && "rounded-[26px] border border-white/10 bg-white/95 p-3 text-zinc-900 shadow-2xl shadow-slate-950/20 backdrop-blur-xl sm:p-4 lg:p-5"
+      )}>
+        <div className={cn("flex items-center", isPlayerUser ? "gap-3" : "gap-6")}>
+          <div className={cn(
+            "bg-sky-600 flex items-center justify-center shadow-2xl shadow-sky-200 rotate-3 hover:rotate-0 transition-transform duration-500",
+            isPlayerUser ? "w-12 h-12 rounded-2xl sm:h-14 sm:w-14" : "w-20 h-20 rounded-[32px]"
+          )}>
+            <CalendarIcon className={cn("text-white", isPlayerUser ? "h-6 w-6 sm:h-7 sm:w-7" : "w-10 h-10")} />
           </div>
           <div>
-            <h1 className="text-5xl font-black tracking-tighter text-zinc-900 mb-1 italic">
+            <h1 className={cn(
+              "font-black tracking-tighter text-zinc-900 mb-1 italic",
+              isPlayerUser ? "text-2xl sm:text-4xl" : "text-5xl"
+            )}>
               {isPlayerUser ? 'Reservá tu cancha' : 'Calendario'}
             </h1>
             <div className="flex items-center gap-3">
@@ -357,12 +852,15 @@ export default function CalendarPage({ user, initialBookingId, onClearInitialBoo
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-4">
-          <div className="flex items-center bg-zinc-100 p-2 rounded-[24px] border border-zinc-200 shadow-inner">
+        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-4">
+          <div className={cn(
+            "flex items-center bg-zinc-100 border border-zinc-200 shadow-inner",
+            isPlayerUser ? "rounded-2xl p-1.5" : "p-2 rounded-[24px]"
+          )}>
             <button
               onClick={() => setView('day')}
               className={cn(
-                "px-8 py-3.5 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all duration-300",
+                cn("rounded-xl text-[11px] font-black uppercase tracking-widest transition-all duration-300", isPlayerUser ? "px-5 py-2.5" : "px-8 py-3.5"),
                 view === 'day' ? "bg-white text-zinc-900 shadow-xl" : "text-zinc-500 hover:text-zinc-700"
               )}
             >
@@ -371,7 +869,7 @@ export default function CalendarPage({ user, initialBookingId, onClearInitialBoo
             <button
               onClick={() => setView('week')}
               className={cn(
-                "px-8 py-3.5 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all duration-300",
+                cn("rounded-xl text-[11px] font-black uppercase tracking-widest transition-all duration-300", isPlayerUser ? "px-5 py-2.5" : "px-8 py-3.5"),
                 view === 'week' ? "bg-white text-zinc-900 shadow-xl" : "text-zinc-500 hover:text-zinc-700"
               )}
             >
@@ -395,7 +893,10 @@ export default function CalendarPage({ user, initialBookingId, onClearInitialBoo
           )}
 
           <Button 
-            className="h-16 px-10 rounded-[24px] bg-sky-600 text-white hover:bg-sky-700 shadow-2xl shadow-sky-200 gap-4 font-black text-[11px] uppercase tracking-widest transition-all hover:-translate-y-1 active:translate-y-0"
+            className={cn(
+              "rounded-[24px] bg-sky-600 text-white hover:bg-sky-700 shadow-2xl shadow-sky-200 gap-4 font-black text-[11px] uppercase tracking-widest transition-all hover:-translate-y-1 active:translate-y-0",
+              isPlayerUser ? "h-12 w-full px-5 sm:w-auto" : "h-16 px-10"
+            )}
             onClick={() => {
               if (!hasVisiblePitches) {
                 toast.error(emptyPitchesMessage);
@@ -412,25 +913,33 @@ export default function CalendarPage({ user, initialBookingId, onClearInitialBoo
             }}
           >
             <Plus className="w-5 h-5" />
-            {isPlayerUser ? 'Reservar cancha' : 'Nueva Reserva'}
+            {isPlayerUser ? 'Reservar cancha' : 'Nueva reserva'}
           </Button>
         </div>
       </header>
 
       {/* Navigation & Filters Bar: Clean Utility */}
-      <div className="flex flex-col xl:flex-row items-stretch xl:items-center gap-6 bg-white p-6 rounded-[40px] border border-zinc-100 shadow-2xl shadow-zinc-200/20">
+      <div className={cn(
+        "flex flex-col xl:flex-row items-stretch xl:items-center gap-6",
+        isPlayerUser
+          ? "bg-white/95 p-3 rounded-[24px] border border-white/40 shadow-2xl shadow-slate-950/15 backdrop-blur-xl sm:p-4"
+          : "bg-white p-6 rounded-[40px] border border-zinc-100 shadow-2xl shadow-zinc-200/20"
+      )}>
         <div className="flex flex-col sm:flex-row items-center gap-4 flex-1">
           <div className="flex items-center bg-zinc-50 rounded-[24px] border border-zinc-200 p-2 w-full sm:w-auto">
             <Button 
               variant="ghost" 
-              className="h-12 w-12 p-0 rounded-xl hover:bg-white hover:shadow-md transition-all" 
+              className={cn("p-0 rounded-xl hover:bg-white hover:shadow-md transition-all", isPlayerUser ? "h-10 w-10" : "h-12 w-12")} 
               onClick={() => setSelectedDate(d => addDays(d, view === 'day' ? -1 : -7))}
             >
               <ChevronLeft className="w-6 h-6" />
             </Button>
             <button 
               onClick={() => setIsCalendarOpen(!isCalendarOpen)}
-              className="flex-1 sm:flex-none px-8 text-sm font-black text-zinc-900 min-w-[200px] text-center hover:bg-white hover:shadow-md h-12 rounded-xl transition-all flex items-center justify-center gap-3 relative"
+              className={cn(
+                "flex-1 sm:flex-none text-sm font-black text-zinc-900 text-center hover:bg-white hover:shadow-md rounded-xl transition-all flex items-center justify-center gap-3 relative",
+                isPlayerUser ? "h-10 min-w-[170px] px-4" : "h-12 min-w-[200px] px-8"
+              )}
             >
               <CalendarIcon className="w-4 h-4 text-sky-500" />
               {view === 'day' 
@@ -462,7 +971,7 @@ export default function CalendarPage({ user, initialBookingId, onClearInitialBoo
             </button>
             <Button 
               variant="ghost" 
-              className="h-12 w-12 p-0 rounded-xl hover:bg-white hover:shadow-md transition-all" 
+              className={cn("p-0 rounded-xl hover:bg-white hover:shadow-md transition-all", isPlayerUser ? "h-10 w-10" : "h-12 w-12")} 
               onClick={() => setSelectedDate(d => addDays(d, view === 'day' ? 1 : 7))}
             >
               <ChevronRight className="w-6 h-6" />
@@ -471,7 +980,10 @@ export default function CalendarPage({ user, initialBookingId, onClearInitialBoo
 
           <Button 
             variant="outline" 
-            className="h-16 px-10 rounded-[24px] border-zinc-200 font-black text-[11px] uppercase tracking-widest hover:bg-zinc-50 w-full sm:w-auto"
+            className={cn(
+              "rounded-[20px] border-zinc-200 font-black text-[11px] uppercase tracking-widest hover:bg-zinc-50 w-full sm:w-auto",
+              isPlayerUser ? "h-11 px-6" : "h-16 px-10"
+            )}
             onClick={() => setSelectedDate(new Date())}
           >
             HOY
@@ -482,7 +994,10 @@ export default function CalendarPage({ user, initialBookingId, onClearInitialBoo
           <div className="relative w-full sm:w-80">
             <Filter className="absolute left-6 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
             <select
-              className="w-full bg-zinc-50 pl-14 pr-8 h-16 rounded-[24px] border border-zinc-200 font-black text-[11px] uppercase tracking-widest outline-none focus:ring-4 focus:ring-sky-500/10 appearance-none cursor-pointer hover:bg-white transition-all"
+              className={cn(
+                "w-full bg-zinc-50 pl-14 pr-8 rounded-[20px] border border-zinc-200 font-black text-[11px] uppercase tracking-widest outline-none focus:ring-4 focus:ring-sky-500/10 appearance-none cursor-pointer hover:bg-white transition-all",
+                isPlayerUser ? "h-11" : "h-16"
+              )}
               value={filterPitch}
               onChange={e => setFilterPitch(e.target.value)}
             >
@@ -513,12 +1028,20 @@ export default function CalendarPage({ user, initialBookingId, onClearInitialBoo
       </div>
 
       {/* Calendar Grid & Mobile List View */}
-      <div className="space-y-6">
+      <div className={cn(isPlayerUser ? "space-y-4" : "space-y-6")}>
         {/* Desktop Grid View */}
         <div className="hidden md:block">
-          <Card className="border-none shadow-2xl rounded-[32px] bg-white overflow-hidden border border-zinc-100">
+          <Card className={cn(
+            "border-none shadow-2xl overflow-hidden border",
+            isPlayerUser
+              ? "rounded-[24px] bg-white/95 border-white/40 backdrop-blur-xl"
+              : "rounded-[32px] bg-white border-zinc-100"
+          )}>
             {shouldShowEmptyPitches ? (
-              <div className="flex min-h-[360px] flex-col items-center justify-center gap-4 p-10 text-center">
+              <div className={cn(
+                "flex flex-col items-center justify-center gap-4 text-center",
+                isPlayerUser ? "min-h-[220px] p-6" : "min-h-[360px] p-10"
+              )}>
                 <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-amber-50 text-amber-600">
                   <AlertCircle className="h-8 w-8" />
                 </div>
@@ -533,7 +1056,7 @@ export default function CalendarPage({ user, initialBookingId, onClearInitialBoo
               </div>
             ) : (
             <div className="w-full overflow-x-auto custom-scrollbar">
-              <div className="min-w-[1000px] lg:min-w-full relative">
+              <div className={cn(isPlayerUser ? "min-w-[860px]" : "min-w-[1000px]", "lg:min-w-full relative")}>
                 {/* Header Row */}
                 <div 
                   className="grid border-b border-zinc-100 bg-zinc-50/80 backdrop-blur-md sticky top-0 z-40"
@@ -543,13 +1066,13 @@ export default function CalendarPage({ user, initialBookingId, onClearInitialBoo
                       : `120px repeat(7, 1fr)` 
                   }}
                 >
-                  <div className="p-6 flex flex-col items-center justify-center border-r border-zinc-100 bg-white">
+                  <div className={cn("flex flex-col items-center justify-center border-r border-zinc-100 bg-white", isPlayerUser ? "p-3" : "p-6")}>
                     <Clock className="w-5 h-5 text-zinc-400 mb-1" />
                     <span className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Hora</span>
                   </div>
                   {view === 'day' ? (
                     filteredPitches.map(pitch => (
-                      <div key={pitch.id} className="p-6 text-center border-r border-zinc-100 last:border-r-0 transition-all relative group">
+                      <div key={pitch.id} className={cn("text-center border-r border-zinc-100 last:border-r-0 transition-all relative group", isPlayerUser ? "p-3" : "p-6")}>
                         <p className="text-[10px] uppercase tracking-[0.3em] font-black text-sky-600 mb-1">{pitch.type}</p>
                         <p className="text-xl font-black tracking-tight text-zinc-900">{pitch.name}</p>
                         {user.role === 'admin' && (
@@ -565,7 +1088,7 @@ export default function CalendarPage({ user, initialBookingId, onClearInitialBoo
                     ))
                   ) : (
                     days.map(day => (
-                      <div key={day.toISOString()} className="p-6 text-center border-r border-zinc-100 last:border-r-0 transition-all">
+                      <div key={day.toISOString()} className={cn("text-center border-r border-zinc-100 last:border-r-0 transition-all", isPlayerUser ? "p-3" : "p-6")}>
                         <p className="text-[10px] uppercase tracking-[0.3em] font-black text-sky-600 mb-1">{format(day, 'EEE', { locale: es })}</p>
                         <p className="text-xl font-black tracking-tight text-zinc-900">{format(day, 'd MMM')}</p>
                       </div>
@@ -578,7 +1101,7 @@ export default function CalendarPage({ user, initialBookingId, onClearInitialBoo
                   {hours.map(hour => (
                     <div 
                       key={hour} 
-                      className="grid group/row min-h-[80px]"
+                      className={cn("grid group/row", isPlayerUser ? "min-h-[62px]" : "min-h-[80px]")}
                       style={{ 
                         gridTemplateColumns: view === 'day' 
                           ? `120px repeat(${filteredPitches.length}, 1fr)` 
@@ -586,7 +1109,7 @@ export default function CalendarPage({ user, initialBookingId, onClearInitialBoo
                       }}
                     >
                       <div className={cn(
-                        "p-6 border-r border-zinc-100 bg-white flex items-center justify-center sticky left-0 z-20 transition-colors duration-500",
+                        cn("border-r border-zinc-100 bg-white flex items-center justify-center sticky left-0 z-20 transition-colors duration-500", isPlayerUser ? "p-3" : "p-6"),
                         isSameDay(selectedDate, currentTime) && currentTime.getHours() === hour && "bg-sky-50/50"
                       )}>
                         <div className="flex flex-col items-center">
@@ -647,7 +1170,7 @@ export default function CalendarPage({ user, initialBookingId, onClearInitialBoo
                                   }
                                 }}
                                 className={cn(
-                                  "w-full h-full min-h-[60px] p-3 rounded-2xl text-left transition-all relative overflow-hidden flex flex-col justify-center border-2",
+                                  cn("w-full h-full rounded-2xl text-left transition-all relative overflow-hidden flex flex-col justify-center border-2", isPlayerUser ? "min-h-[46px] p-2" : "min-h-[60px] p-3"),
                                   isPast && "bg-zinc-100 border-zinc-200 text-zinc-400 cursor-not-allowed grayscale",
                                   status === 'deactivated' && "bg-zinc-200 border-zinc-300 text-zinc-500 opacity-50",
                                   isOccupied && !isPartial && "bg-red-50 border-red-100 text-red-700 hover:bg-red-100/50",
@@ -726,7 +1249,7 @@ export default function CalendarPage({ user, initialBookingId, onClearInitialBoo
                                   }
                                 }}
                                 className={cn(
-                                  "w-full h-full min-h-[60px] p-3 rounded-2xl text-left transition-all relative overflow-hidden flex flex-col justify-center border-2",
+                                  cn("w-full h-full rounded-2xl text-left transition-all relative overflow-hidden flex flex-col justify-center border-2", isPlayerUser ? "min-h-[46px] p-2" : "min-h-[60px] p-3"),
                                   isPast && "bg-zinc-100 border-zinc-200 text-zinc-400 cursor-not-allowed grayscale",
                                   status === 'deactivated' && "bg-zinc-200 border-zinc-300 text-zinc-500 opacity-50",
                                   isOccupied && !isPartial && "bg-red-50 border-red-100 text-red-700 hover:bg-red-100/50",
@@ -761,7 +1284,10 @@ export default function CalendarPage({ user, initialBookingId, onClearInitialBoo
         </div>
 
         {/* Mobile List View: Vertical Agenda */}
-        <div className="md:hidden space-y-4">
+        <div className={cn(
+          "md:hidden space-y-4",
+          isPlayerUser && "rounded-[28px] border border-white/40 bg-white/95 py-4 shadow-2xl shadow-slate-950/15 backdrop-blur-xl"
+        )}>
           <div className="flex items-center justify-between px-4">
             <h3 className="text-xl font-black text-zinc-900 uppercase tracking-tight">
               {view === 'day' ? 'Agenda del Día' : 'Agenda Semanal'}
@@ -781,10 +1307,13 @@ export default function CalendarPage({ user, initialBookingId, onClearInitialBoo
               </p>
             </div>
           ) : (
-          <div className="space-y-6">
+          <div className={cn(isPlayerUser ? "space-y-4" : "space-y-6")}>
             {hours.map(hour => (
               <div key={hour} className="space-y-3">
-                <div className="flex items-center gap-3 px-4 sticky top-0 bg-zinc-50/90 backdrop-blur-sm py-2 z-10">
+                <div className={cn(
+                  "flex items-center gap-3 px-4 sticky top-0 backdrop-blur-sm py-2 z-10",
+                  isPlayerUser ? "bg-white/90" : "bg-zinc-50/90"
+                )}>
                   <span className={cn(
                     "text-sm font-black uppercase tracking-widest",
                     isSameDay(selectedDate, currentTime) && currentTime.getHours() === hour ? "text-sky-600" : "text-zinc-900"
@@ -799,7 +1328,7 @@ export default function CalendarPage({ user, initialBookingId, onClearInitialBoo
                   <div className="h-px flex-1 bg-zinc-200" />
                 </div>
                 
-                <div className="grid grid-cols-1 gap-3 px-4">
+                <div className={cn("grid grid-cols-1 px-4", isPlayerUser ? "gap-2" : "gap-3")}>
                   {view === 'day' ? (
                     filteredPitches.map(pitch => {
                       const status = getSlotStatus(selectedDate, hour, pitch.id);
@@ -838,7 +1367,7 @@ export default function CalendarPage({ user, initialBookingId, onClearInitialBoo
                             }
                           }}
                           className={cn(
-                            "w-full p-4 rounded-2xl text-left transition-all flex items-center justify-between border-2",
+                            cn("w-full rounded-2xl text-left transition-all flex items-center justify-between border-2", isPlayerUser ? "p-3" : "p-4"),
                             isPast && "bg-zinc-100 border-zinc-200 text-zinc-400 grayscale opacity-60",
                             status === 'deactivated' && "bg-zinc-200 border-zinc-300 text-zinc-500 opacity-50",
                             isOccupied && !isPartial && "bg-red-50 border-red-100 text-red-700",
@@ -915,7 +1444,7 @@ export default function CalendarPage({ user, initialBookingId, onClearInitialBoo
                             }
                           }}
                           className={cn(
-                            "w-full p-4 rounded-2xl text-left transition-all flex items-center justify-between border-2",
+                            cn("w-full rounded-2xl text-left transition-all flex items-center justify-between border-2", isPlayerUser ? "p-3" : "p-4"),
                             isPast && "bg-zinc-100 border-zinc-200 text-zinc-400 grayscale opacity-60",
                             status === 'deactivated' && "bg-zinc-200 border-zinc-300 text-zinc-500 opacity-50",
                             isOccupied && !isPartial && "bg-red-50 border-red-100 text-red-700",
@@ -963,7 +1492,8 @@ export default function CalendarPage({ user, initialBookingId, onClearInitialBoo
       <Modal
         isOpen={isBookingModalOpen}
         onClose={() => setIsBookingModalOpen(false)}
-        title="Nueva Reserva"
+        title={isPlayerUser ? 'Reservar cancha' : 'Nueva reserva'}
+        className="max-h-[90vh]"
       >
         {bookingTimer !== null && (
           <div className="flex items-center justify-center gap-2 bg-red-50 text-red-600 py-3 rounded-2xl border border-red-100 mb-6 animate-pulse">
@@ -994,7 +1524,7 @@ export default function CalendarPage({ user, initialBookingId, onClearInitialBoo
                 type="text" 
                 required
                 placeholder="Ej: Juan Pérez"
-                className="w-full px-4 py-2.5 bg-white border border-zinc-200 rounded-xl focus:ring-2 focus:ring-primary/20 outline-none text-sm font-medium"
+                className="w-full rounded-xl border border-zinc-200 bg-white px-4 py-2.5 text-sm font-medium text-zinc-900 placeholder:text-zinc-400 outline-none focus:ring-2 focus:ring-sky-500/20"
                 value={bookingData.clientName}
                 onChange={e => setBookingData(prev => ({ ...prev, clientName: e.target.value }))}
               />
@@ -1005,7 +1535,7 @@ export default function CalendarPage({ user, initialBookingId, onClearInitialBoo
                 type="tel" 
                 required
                 placeholder="Ej: 11 2345 6789"
-                className="w-full px-4 py-2.5 bg-white border border-zinc-200 rounded-xl focus:ring-2 focus:ring-primary/20 outline-none text-sm font-medium"
+                className="w-full rounded-xl border border-zinc-200 bg-white px-4 py-2.5 text-sm font-medium text-zinc-900 placeholder:text-zinc-400 outline-none focus:ring-2 focus:ring-sky-500/20"
                 value={bookingData.clientPhone}
                 onChange={e => setBookingData(prev => ({ ...prev, clientPhone: e.target.value }))}
               />
@@ -1046,12 +1576,20 @@ export default function CalendarPage({ user, initialBookingId, onClearInitialBoo
             <div className="space-y-3">
               <div className="bg-sky-50/50 p-3 rounded-2xl border border-sky-100 space-y-2">
                 <p className="text-xs font-bold text-sky-800">Datos Bancarios</p>
-                <div className="text-[11px] text-sky-700 space-y-1">
-                  <p><span className="font-semibold">Banco:</span> Banco Nación</p>
-                  <p><span className="font-semibold">Titular:</span> Complejo Golazo</p>
-                  <p><span className="font-semibold">CBU:</span> 1234567890123456789012</p>
-                  <p><span className="font-semibold">Alias:</span> GOLAZO.CANCHA</p>
-                </div>
+                {paymentPublicEnabled ? (
+                  <div className="space-y-1 text-[11px] text-sky-700">
+                    {bankDetails.bank && <p><span className="font-semibold">Banco / billetera:</span> {bankDetails.bank}</p>}
+                    {bankDetails.holder && <p><span className="font-semibold">Titular:</span> {bankDetails.holder}</p>}
+                    {bankDetails.cbu && <p><span className="font-semibold">CBU / CVU:</span> {bankDetails.cbu}</p>}
+                    {bankDetails.alias && <p><span className="font-semibold">Alias:</span> {bankDetails.alias}</p>}
+                    {bankDetails.taxId && <p><span className="font-semibold">CUIT / DNI:</span> {bankDetails.taxId}</p>}
+                    {bankDetails.instructions && <p><span className="font-semibold">Instrucciones:</span> {bankDetails.instructions}</p>}
+                  </div>
+                ) : (
+                  <p className="text-[11px] font-medium leading-relaxed text-sky-700">
+                    Este complejo todavia no cargo datos de transferencia. Coordina el pago con el complejo antes de transferir.
+                  </p>
+                )}
               </div>
               
               <div className="space-y-1.5">
@@ -1107,7 +1645,7 @@ export default function CalendarPage({ user, initialBookingId, onClearInitialBoo
               <input 
                 type="number" 
                 placeholder="0.00"
-                className="w-full pl-10 pr-4 py-2.5 bg-white border border-zinc-200 rounded-xl focus:ring-2 focus:ring-primary/20 outline-none text-sm font-medium"
+                className="w-full rounded-xl border border-zinc-200 bg-white py-2.5 pl-10 pr-4 text-sm font-medium text-zinc-900 placeholder:text-zinc-400 outline-none focus:ring-2 focus:ring-sky-500/20"
                 value={bookingData.depositAmount}
                 onChange={e => setBookingData(prev => ({ ...prev, depositAmount: e.target.value }))}
               />

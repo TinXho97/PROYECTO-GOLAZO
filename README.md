@@ -1,73 +1,197 @@
+# Golazo
 
+Golazo es una plataforma web para la gestion de complejos de futbol. Permite administrar canchas, reservas, ventas, productos, ranking, configuracion del complejo y un portal publico para que jugadores consulten canchas disponibles y soliciten reservas.
 
-# Run and deploy your AI Studio app
+El proyecto esta construido como una aplicacion React + TypeScript con Supabase como backend principal y Edge Functions para operaciones sensibles.
 
-This contains everything you need to run your app locally.
+## Caracteristicas principales
 
-View your app in AI Studio: https://ai.studio/apps/9f5e08e0-f1a5-4c36-badd-e4024d628af2
+- Portal publico para jugadores con seleccion de complejo, canchas publicas y solicitud de reservas.
+- Panel administrativo para duenos o administradores de complejos.
+- Calendario de reservas con vista por dia y semana.
+- Gestion de canchas, productos, stock, ventas y reservas.
+- Ranking de jugadores basado en reservas completadas y ausencias.
+- Configuracion de datos publicos de pago para reservas.
+- Panel superadmin SaaS para gestionar clientes, usuarios, metricas y auditoria.
+- Integracion con Supabase Auth, base de datos, Storage y Edge Functions.
+- Soporte PWA basico mediante manifest y service worker.
+- Configuracion preparada para deploy como SPA en Vercel.
 
-## Run Locally
+## Tecnologias utilizadas
 
-**Prerequisites:**  Node.js
+- React 19
+- TypeScript
+- Vite
+- Tailwind CSS 4
+- Supabase JS
+- Supabase Edge Functions
+- date-fns
+- lucide-react
+- motion
+- sonner
+- Recharts
+- Vercel rewrites para SPA
 
+## Requisitos previos
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+- Node.js instalado.
+- npm instalado.
+- Proyecto Supabase configurado si se quiere usar backend real.
+- Supabase CLI si se van a desplegar Edge Functions.
 
-## PWA
+## Instalacion
 
-This project now includes a basic Progressive Web App setup:
+Clonar el repositorio e instalar dependencias:
 
-1. Installable app via `manifest.webmanifest`
-2. Offline shell fallback through `public/sw.js`
-3. App icons in `public/icons`
+```bash
+npm install
+```
 
-To verify it:
+## Configuracion de variables de entorno
 
-1. Run `npm run build`
-2. Run `npm run preview`
-3. Open DevTools -> Application
-4. Check `Manifest` and `Service Workers`
-5. Test install flow and offline reload
+Crear un archivo `.env` tomando como referencia `.env.example`.
 
+Variables usadas por el frontend:
 
-## Supabase + Super Admin setup (required in this project)
+```env
+VITE_SUPABASE_URL=""
+VITE_SUPABASE_ANON_KEY=""
+GEMINI_API_KEY=""
+APP_URL=""
+```
 
-If Supabase is not configured, this app falls back to localStorage mode.
+Notas:
 
-1. Create `.env` from `.env.example` and set:
-   - `VITE_SUPABASE_URL=https://<your-project-ref>.supabase.co`
-   - `VITE_SUPABASE_ANON_KEY=<your-anon-key>`
-   - `VITE_SUPERADMIN_PASSWORD=<shared-superadmin-password>`
-2. Restart dev server after changing env vars.
-3. Deploy Edge Function:
-   - `supabase functions deploy admin-ops`
-4. Set Edge Function secrets in Supabase:
-   - `SUPERADMIN_PASSWORD` (must match `VITE_SUPERADMIN_PASSWORD`)
-   - `SUPABASE_URL`
-   - `SUPABASE_SERVICE_ROLE_KEY`
-5. Ensure the super admin user has metadata:
-   - `role: "superadmin"`
-6. Open super admin panel route:
-   - `/panel-interno-golazo-...` (secret internal route)
+- `VITE_SUPABASE_URL` debe contener la URL publica del proyecto Supabase.
+- `VITE_SUPABASE_ANON_KEY` debe contener la anon/public key del proyecto Supabase.
+- `GEMINI_API_KEY` aparece configurada para integraciones heredadas del entorno AI Studio/Vite. No es necesaria para las pantallas principales de gestion.
+- `APP_URL` aparece en `.env.example` como variable del entorno original de AI Studio. No es requerida por el flujo principal de la aplicacion.
 
-## Troubleshooting data to share (safe)
+Variables necesarias en Supabase Edge Functions:
 
-If you see localStorage fallback warnings, share these (mask secrets):
+```env
+SUPABASE_URL=""
+SUPABASE_ANON_KEY=""
+SUPABASE_SERVICE_ROLE_KEY=""
+PUBLIC_BOOKING_DURATION_MINUTES=""
+PUBLIC_BOOKING_DEFAULT_STATUS=""
+```
 
-1. Browser console output for:
-   - `[Supabase] ...` and `[DataService] ...` warnings.
-2. Value format checks (masked):
-   - `VITE_SUPABASE_URL` (full URL is OK to share),
-   - `VITE_SUPABASE_ANON_KEY` first 10 chars only (`eyJ...` legacy or `sb_publishable_...` new format).
-3. Network result of:
-   - `GET https://<project-ref>.supabase.co/rest/v1/clients?select=id&limit=1` (status code + response body).
-4. Supabase Auth user metadata for your super admin user:
-   - must include `role: "superadmin"`.
-5. Edge Function `admin-ops` status:
-   - deployed yes/no,
-   - secrets configured (`SUPERADMIN_PASSWORD`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`),
-   - whether `SUPERADMIN_PASSWORD` matches `VITE_SUPERADMIN_PASSWORD`.
+Notas:
+
+- `SUPABASE_SERVICE_ROLE_KEY` nunca debe exponerse en el frontend ni subirse al repositorio.
+- `PUBLIC_BOOKING_DURATION_MINUTES` es opcional; la funcion publica usa `60` minutos por defecto.
+- `PUBLIC_BOOKING_DEFAULT_STATUS` es opcional; la funcion publica usa `pending` por defecto.
+
+## Ejecucion en desarrollo
+
+Iniciar el servidor local:
+
+```bash
+npm run dev
+```
+
+Por defecto, Vite corre en:
+
+```text
+http://localhost:3000
+```
+
+El script usa `--host=0.0.0.0`, por lo que tambien puede abrirse desde otros dispositivos de la red local usando la IP de la maquina.
+
+## Build para produccion
+
+Generar build de produccion:
+
+```bash
+npm run build
+```
+
+Previsualizar el build:
+
+```bash
+npm run preview
+```
+
+Validar TypeScript sin emitir archivos:
+
+```bash
+npm run lint
+```
+
+## Estructura del proyecto
+
+```text
+.
+|-- public/                  # Manifest, service worker e iconos PWA
+|-- src/
+|   |-- bot/                 # Servicios auxiliares de bot/asistente
+|   |-- components/          # Componentes reutilizables de UI
+|   |-- lib/                 # Clientes y utilidades compartidas
+|   |-- pages/               # Pantallas principales de la aplicacion
+|   |-- pwa/                 # Registro del service worker
+|   |-- services/            # Acceso a datos y servicios Supabase
+|   |-- App.tsx              # Entrada principal de rutas y layout
+|   |-- main.tsx             # Bootstrap React
+|   `-- types.ts             # Tipos principales del dominio
+|-- supabase/
+|   |-- functions/           # Edge Functions
+|   |   |-- admin-ops/
+|   |   `-- public-create-booking/
+|   `-- migrations/          # Migraciones SQL del proyecto
+|-- vercel.json              # Rewrite para servir la app como SPA
+|-- vite.config.ts           # Configuracion Vite
+`-- package.json             # Scripts y dependencias
+```
+
+## Supabase
+
+El frontend usa la anon key de Supabase para autenticacion y consultas permitidas por RLS.
+
+Edge Functions incluidas:
+
+- `admin-ops`: operaciones administrativas del panel superadmin.
+- `public-create-booking`: creacion segura de reservas publicas.
+
+Despliegue de funciones:
+
+```bash
+npx supabase functions deploy admin-ops --project-ref <project-ref>
+npx supabase functions deploy public-create-booking --project-ref <project-ref> --no-verify-jwt
+```
+
+Configurar secretos en Supabase:
+
+```bash
+npx supabase secrets set SUPABASE_URL="https://<project-ref>.supabase.co"
+npx supabase secrets set SUPABASE_ANON_KEY="<anon-key>"
+npx supabase secrets set SUPABASE_SERVICE_ROLE_KEY="<service-role-key>"
+```
+
+## Deploy
+
+El proyecto incluye `vercel.json` con rewrite a `/`, necesario para que las rutas del frontend funcionen como SPA en Vercel.
+
+Flujo recomendado:
+
+1. Configurar variables `VITE_SUPABASE_URL` y `VITE_SUPABASE_ANON_KEY` en el proveedor de hosting.
+2. Ejecutar `npm run build`.
+3. Publicar el directorio `dist`.
+4. Desplegar Edge Functions en Supabase y configurar sus secretos.
+
+## Notas importantes de seguridad
+
+- No subir archivos `.env` con valores reales.
+- No exponer `SUPABASE_SERVICE_ROLE_KEY` en el frontend.
+- Mantener RLS activo y revisar las politicas antes de usar datos reales de clientes.
+- Las operaciones de superadmin deben pasar por `admin-ops`.
+- Las reservas publicas deben pasar por `public-create-booking`.
+- Las claves publicables de Supabase pueden existir en el frontend, pero no reemplazan las reglas de seguridad del backend.
+
+## Estado del proyecto
+
+Proyecto en desarrollo activo. La base funcional incluye portal publico, panel admin, panel superadmin, integracion Supabase y build de produccion. Antes de usarlo comercialmente, conviene validar reglas RLS, flujo completo de reservas publicas, configuracion de pagos, datos reales y despliegue de Edge Functions.
+
+## Autor
+
+Proyecto desarrollado por Martin.

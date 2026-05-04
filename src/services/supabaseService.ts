@@ -141,7 +141,7 @@ export const supabaseService = {
     log('Fetching public clients catalog...');
     const { data, error } = await supabase
       .from('public_clients_catalog_v1')
-      .select('id, slug, display_name, description, address, phone, enable_ranking, enable_sales, enable_reservations, enable_statistics')
+      .select('id, slug, display_name, description, address, phone, enable_ranking, enable_sales, enable_reservations, enable_statistics, payment_public')
       .order('display_name', { ascending: true });
 
     if (error) {
@@ -149,7 +149,11 @@ export const supabaseService = {
       throw error;
     }
 
-    return (data || []).map((row: any) => ({
+    return (data || []).map((row: any) => {
+      const settings = row.settings && typeof row.settings === 'object' ? row.settings : {};
+      const payment_public = row.payment_public || settings.payment_public;
+
+      return {
       id: row.id,
       name: row.display_name,
       complex_name: row.display_name,
@@ -169,8 +173,14 @@ export const supabaseService = {
         ranking: row.enable_ranking ?? true,
         estadisticas: row.enable_statistics ?? true,
       },
+      settings: {
+        ...settings,
+        ...(payment_public ? { payment_public } : {}),
+      },
+      payment_public,
       created_at: '',
-    })) as Client[];
+    };
+    }) as Client[];
   },
 
   getPublicClientConfig: async (clientId: string) => {
@@ -178,7 +188,7 @@ export const supabaseService = {
 
     const { data, error } = await supabase
       .from('public_clients_catalog_v1')
-      .select('id, slug, display_name, description, address, phone, enable_ranking, enable_sales, enable_reservations, enable_statistics')
+      .select('id, slug, display_name, description, address, phone, enable_ranking, enable_sales, enable_reservations, enable_statistics, payment_public')
       .eq('id', clientId)
       .maybeSingle();
 
@@ -188,6 +198,10 @@ export const supabaseService = {
     }
 
     if (!data) return null;
+
+    const rawConfig = data as Record<string, any>;
+    const settings = rawConfig.settings && typeof rawConfig.settings === 'object' ? rawConfig.settings : {};
+    const payment_public = rawConfig.payment_public || settings.payment_public;
 
     return {
       id: data.id,
@@ -209,8 +223,51 @@ export const supabaseService = {
         ranking: data.enable_ranking ?? true,
         estadisticas: data.enable_statistics ?? true,
       },
+      settings: {
+        ...settings,
+        ...(payment_public ? { payment_public } : {}),
+      },
+      payment_public,
       created_at: '',
     } as Client;
+  },
+
+  updateClientSettings: async (clientId: string, settings: Record<string, unknown>) => {
+    const requiredClientId = ensureClientId(clientId, 'Actualizar configuracion del cliente');
+    const { data: current, error: fetchError } = await supabase
+      .from('clients')
+      .select('settings')
+      .eq('id', requiredClientId)
+      .maybeSingle();
+
+    if (fetchError) {
+      logError('Error fetching client settings', fetchError);
+      throw fetchError;
+    }
+
+    const currentSettings =
+      current?.settings && typeof current.settings === 'object'
+        ? current.settings as Record<string, unknown>
+        : {};
+
+    const nextSettings = {
+      ...currentSettings,
+      ...settings,
+    };
+
+    const { data, error } = await supabase
+      .from('clients')
+      .update({ settings: nextSettings })
+      .eq('id', requiredClientId)
+      .select('id, name, complex_name, status, created_at, expires_at, ranking_reset_date, phone, address, enable_ranking, enable_sales, enable_reservations, enable_statistics, features, settings')
+      .maybeSingle();
+
+    if (error) {
+      logError('Error updating client settings', error);
+      throw error;
+    }
+
+    return data as Client;
   },
 
   getPublicPitches: async (clientId?: string) => {
@@ -1191,9 +1248,8 @@ export const supabaseService = {
       description,
       metadata,
       created_at,
-      timestamp,
       client_id,
-      clients (
+      clients!audit_logs_client_id_fkey (
         id,
         name,
         complex_name

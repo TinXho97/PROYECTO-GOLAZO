@@ -253,13 +253,21 @@ export default function App() {
     setCurrentPage('dashboard');
   };
 
-  const handleSelectPublicClient = (client: Client) => {
+  const handleSelectPublicClient = async (client: Client) => {
     dataService.setPublicClientSelection(client.id);
     setSelectedPublicClientId(client.id);
     setClientConfig(client);
     setUser(null);
     setLoginError(null);
     setCurrentPage('dashboard');
+
+    try {
+      const publicConfig = await dataService.getPublicClientConfig(client.id);
+      setClientConfig(publicConfig || client);
+    } catch (error) {
+      console.error('Error loading selected public client config:', error);
+      setClientConfig(client);
+    }
   };
 
   const handleBackToClientSelector = () => {
@@ -437,7 +445,7 @@ export default function App() {
   if (!user) {
     if (isPublicRoute && !selectedPublicClientId) {
       return (
-        <div className="min-h-screen bg-zinc-950 text-white relative overflow-hidden">
+        <div className="min-h-screen bg-zinc-950 text-white relative overflow-x-hidden">
           <div
             className="absolute inset-0"
             style={{
@@ -449,117 +457,117 @@ export default function App() {
           />
           <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(2,6,23,0.58)_0%,rgba(2,6,23,0.74)_34%,rgba(2,6,23,0.9)_100%)]" />
 
-          <div className="relative z-10 mx-auto flex min-h-screen w-full max-w-7xl flex-col px-5 py-6 sm:px-6 md:px-10 md:py-10">
-            <div className="mb-8 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-              <div className="max-w-4xl space-y-5">
-                <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-4 py-2 text-[11px] font-black uppercase tracking-[0.28em] text-emerald-200 backdrop-blur-xl">
+          <div className="relative z-10 mx-auto flex min-h-screen w-full max-w-[1280px] flex-col px-4 py-4 sm:px-6 md:px-8 md:py-6">
+            <div className="mb-5 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+              <div className="max-w-3xl space-y-4">
+                <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3.5 py-1.5 text-[10px] font-black uppercase tracking-[0.24em] text-emerald-200 backdrop-blur-xl">
                   <Target className="w-4 h-4 text-emerald-300" />
                   Acceso Público
                 </div>
-                <div className="space-y-4">
-                  <h1 className="max-w-4xl text-4xl font-black leading-[0.92] tracking-[-0.04em] text-white md:text-6xl xl:text-7xl">
-                    Elegí tu complejo y entrá a reservar con una experiencia más pro.
+                <div className="space-y-2.5">
+                  <h1 className="max-w-3xl text-3xl font-black leading-[0.96] tracking-[-0.04em] text-white sm:text-4xl lg:text-5xl xl:text-6xl">
+                    Reservá tu cancha en minutos
                   </h1>
-                  <p className="max-w-2xl text-sm leading-6 text-zinc-200 md:text-lg md:leading-8">
-                    Seleccioná el complejo donde querés reservar y seguí al panel público.
+                  <p className="max-w-xl text-sm leading-6 text-zinc-200 md:text-base">
+                    Elegí complejo, horario y jugá.
                   </p>
                 </div>
               </div>
             </div>
 
-            <div className="mb-8 grid gap-4 lg:grid-cols-[minmax(0,1fr)_220px] lg:items-center">
-              <div className="relative">
-                <Search className="absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-300/80" />
+            <div className="mb-5 grid max-w-4xl gap-3 lg:grid-cols-[minmax(0,1fr)_180px] lg:items-center">
+              <div className="relative max-w-2xl">
+                <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-300/80" />
                 <input
                   type="text"
                   value={publicSearchTerm}
                   onChange={(e) => setPublicSearchTerm(e.target.value)}
-                  placeholder="Buscar complejo o dirección"
-                  className="h-14 w-full rounded-[24px] border border-white/15 bg-black/25 pl-14 pr-5 text-sm text-white placeholder:text-zinc-300/60 backdrop-blur-xl outline-none transition-all focus:border-emerald-300/60 focus:bg-black/35 md:h-16 md:text-base"
+                  placeholder="Buscar complejo"
+                  className="h-12 w-full rounded-2xl border border-white/15 bg-black/25 pl-11 pr-4 text-sm text-white placeholder:text-zinc-300/60 backdrop-blur-xl outline-none transition-all focus:border-emerald-300/60 focus:bg-black/35"
                 />
               </div>
-              <div className="rounded-[24px] border border-white/12 bg-white/10 px-5 py-4 backdrop-blur-xl">
-                <p className="text-[10px] font-black uppercase tracking-[0.28em] text-zinc-300">Complejos activos</p>
-                <p className="mt-2 text-3xl font-black tracking-tight text-white">{filteredPublicClients.length}</p>
+              <div className="rounded-2xl border border-white/12 bg-white/10 px-4 py-3 backdrop-blur-xl">
+                <p className="text-[9px] font-black uppercase tracking-[0.24em] text-zinc-300">Complejos activos</p>
+                <p className="mt-1 text-2xl font-black tracking-tight text-white">{filteredPublicClients.length}</p>
               </div>
             </div>
 
             {isPublicClientsLoading ? (
-              <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
                 {Array.from({ length: 6 }).map((_, index) => (
-                  <div key={index} className="h-[360px] rounded-[36px] border border-white/10 bg-white/10 animate-pulse backdrop-blur-xl" />
+                  <div key={index} className="h-[220px] rounded-[28px] border border-white/10 bg-white/10 animate-pulse backdrop-blur-xl" />
                 ))}
               </div>
             ) : filteredPublicClients.length === 0 ? (
-              <div className="rounded-[36px] border border-white/10 bg-black/30 p-10 text-center text-zinc-200 backdrop-blur-xl">
+              <div className="rounded-[28px] border border-white/10 bg-black/30 p-8 text-center text-zinc-200 backdrop-blur-xl">
                 No hay complejos activos disponibles para mostrar.
               </div>
             ) : (
-              <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
                 {filteredPublicClients.map((client) => (
                   <button
                     key={client.id}
                     type="button"
                     onClick={() => handleSelectPublicClient(client)}
-                    className="group relative overflow-hidden rounded-[36px] border border-white/12 bg-white/10 p-6 text-left shadow-[0_24px_80px_rgba(0,0,0,0.35)] backdrop-blur-2xl transition-all duration-300 hover:-translate-y-1.5 hover:border-emerald-300/45 hover:bg-white/14"
+                    className="group relative overflow-hidden rounded-[28px] border border-white/12 bg-white/10 p-4 text-left shadow-[0_18px_60px_rgba(0,0,0,0.28)] backdrop-blur-2xl transition-all duration-300 hover:-translate-y-1 hover:border-emerald-300/45 hover:bg-white/14 sm:p-5"
                   >
                     <div className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
                       <div className="absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-emerald-300/14 to-transparent" />
                       <div className="absolute -right-10 bottom-0 h-40 w-40 rounded-full bg-sky-400/12 blur-3xl" />
                     </div>
 
-                    <div className="relative z-10 mb-8 flex items-start justify-between gap-4">
-                      <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-[28px] border border-white/15 bg-white/95 text-zinc-900 shadow-[0_18px_40px_rgba(255,255,255,0.12)] sm:h-28 sm:w-28">
+                    <div className="relative z-10 mb-4 flex items-start justify-between gap-3">
+                      <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-2xl border border-white/15 bg-white/95 text-zinc-900 shadow-[0_14px_30px_rgba(255,255,255,0.1)] sm:h-18 sm:w-18">
                         {client.logo_url ? (
                           <img
                             src={client.logo_url}
                             alt={getClientDisplayName(client)}
-                            className="h-full w-full object-contain p-3"
+                            className="h-full w-full object-contain p-2"
                             loading="lazy"
                           />
                         ) : (
                           <div className="flex h-full w-full flex-col items-center justify-center bg-[linear-gradient(135deg,#f8fafc_0%,#dbeafe_45%,#dcfce7_100%)] p-3 text-center">
-                            <span className="text-2xl font-black tracking-[-0.06em] text-slate-900">
+                            <span className="text-xl font-black tracking-[-0.06em] text-slate-900">
                               {getClientInitials(client)}
                             </span>
-                            <span className="mt-1 text-[9px] font-black uppercase tracking-[0.24em] text-slate-500">
+                            <span className="mt-0.5 text-[8px] font-black uppercase tracking-[0.2em] text-slate-500">
                               Sin logo
                             </span>
                           </div>
                         )}
                       </div>
-                      <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-black/20 px-3 py-2 text-[10px] font-black uppercase tracking-[0.24em] text-emerald-200 backdrop-blur-md">
-                        Entrar ahora
+                      <div className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-black/20 px-3 py-2 text-[10px] font-black uppercase tracking-[0.2em] text-emerald-200 backdrop-blur-md">
+                        Reservar
                         <ChevronRight className="w-4 h-4 transition-transform duration-300 group-hover:translate-x-1.5" />
                       </div>
                     </div>
 
-                    <div className="relative z-10 flex min-h-[170px] flex-col">
-                      <div className="mb-4">
-                        <p className="mb-2 text-[10px] font-black uppercase tracking-[0.3em] text-zinc-300/80">
+                    <div className="relative z-10 flex min-h-[120px] flex-col">
+                      <div className="mb-3">
+                        <p className="mb-1.5 text-[9px] font-black uppercase tracking-[0.26em] text-zinc-300/80">
                           Complejo deportivo
                         </p>
-                        <h2 className="text-2xl font-black tracking-[-0.04em] text-white md:text-[2rem]">
+                        <h2 className="line-clamp-2 text-xl font-black tracking-[-0.04em] text-white sm:text-2xl">
                           {getClientDisplayName(client)}
                         </h2>
                       </div>
-                      <div className="mt-auto space-y-4">
-                        <div className="flex min-h-[72px] items-start gap-3 rounded-[24px] border border-white/10 bg-black/20 px-4 py-4 backdrop-blur-md">
+                      <div className="mt-auto space-y-3">
+                        <div className="flex min-h-[54px] items-start gap-2.5 rounded-2xl border border-white/10 bg-black/20 px-3 py-3 backdrop-blur-md">
                           <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-emerald-300" />
                           <div>
-                            <p className="text-[10px] font-black uppercase tracking-[0.24em] text-zinc-400">Dirección</p>
-                            <p className="mt-1 text-sm leading-6 text-zinc-100">
+                            <p className="text-[9px] font-black uppercase tracking-[0.2em] text-zinc-400">Dirección</p>
+                            <p className="mt-0.5 line-clamp-2 text-xs leading-5 text-zinc-100">
                         {client.address || 'Complejo habilitado para reservas y acceso público.'}
                       </p>
                           </div>
                         </div>
 
-                        <div className="flex items-center justify-between border-t border-white/10 pt-4">
-                          <span className="text-[11px] font-black uppercase tracking-[0.28em] text-zinc-300">
+                        <div className="flex items-center justify-between border-t border-white/10 pt-3">
+                          <span className="text-[10px] font-black uppercase tracking-[0.24em] text-zinc-300">
                             Reservas online
                           </span>
-                          <span className="inline-flex h-11 items-center gap-2 rounded-full bg-white px-4 text-xs font-black uppercase tracking-[0.18em] text-slate-900 shadow-lg transition-transform duration-300 group-hover:translate-x-1">
-                            Entrar
+                          <span className="inline-flex h-9 items-center gap-2 rounded-full bg-white px-3.5 text-[11px] font-black uppercase tracking-[0.16em] text-slate-900 shadow-lg transition-transform duration-300 group-hover:translate-x-1">
+                            Reservar
                             <ChevronRight className="h-4 w-4" />
                           </span>
                         </div>
@@ -699,7 +707,7 @@ export default function App() {
         return <BookingsList user={activeUser} />;
       case 'calendar': 
         if (clientConfig && clientConfig.features?.reservas === false) return renderDashboard();
-        return <CalendarPage user={activeUser} initialBookingId={selectedBookingId} onClearInitialBooking={() => setSelectedBookingId(null)} />;
+        return <CalendarPage user={activeUser} clientConfig={clientConfig} initialBookingId={selectedBookingId} onClearInitialBooking={() => setSelectedBookingId(null)} />;
       case 'ranking': 
         if (clientConfig && clientConfig.features?.ranking === false) return renderDashboard();
         return <RankingPage user={activeUser} />;
@@ -733,10 +741,10 @@ export default function App() {
         <div className="fixed inset-0 bg-[linear-gradient(180deg,rgba(2,6,23,0.62)_0%,rgba(2,6,23,0.78)_42%,rgba(2,6,23,0.94)_100%)]" />
 
         <div className="relative z-10 flex min-h-screen flex-col">
-          <header className="sticky top-0 z-40 border-b border-white/10 bg-slate-950/55 px-4 py-3 backdrop-blur-2xl sm:px-6 lg:px-10">
-            <div className="mx-auto flex w-full max-w-7xl items-center justify-between gap-4">
+          <header className="sticky top-0 z-40 border-b border-white/10 bg-slate-950/62 px-4 py-2 backdrop-blur-2xl sm:px-6 lg:px-10">
+            <div className="mx-auto flex w-full max-w-[1440px] items-center justify-between gap-4">
               <div className="flex min-w-0 items-center gap-3">
-                <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-white/15 bg-white shadow-xl sm:h-16 sm:w-16">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/15 bg-white shadow-xl sm:h-12 sm:w-12">
                   {publicPortalLogo ? (
                     <img src={publicPortalLogo} alt={publicPortalClientName} className="h-full w-full object-contain p-2" />
                   ) : selectedPublicClient ? (
@@ -748,21 +756,21 @@ export default function App() {
                   )}
                 </div>
                 <div className="min-w-0">
-                  <p className="text-[9px] font-black uppercase tracking-[0.28em] text-emerald-200">Reservas Golazo</p>
-                  <h1 className="truncate text-xl font-black tracking-[-0.04em] text-white sm:text-2xl">
+                  <p className="text-[8px] font-black uppercase tracking-[0.24em] text-emerald-200">Reservas Golazo</p>
+                  <h1 className="truncate text-base font-black tracking-[-0.04em] text-white sm:text-xl">
                     {publicPortalClientName}
                   </h1>
                 </div>
               </div>
 
-              <div className="hidden items-center gap-2 lg:flex">
+              <nav className="hidden items-center gap-2 lg:flex">
                 {filteredNavItems.map((item) => (
                   <button
                     key={item.id}
                     type="button"
                     onClick={() => setCurrentPage(item.id as Page)}
                     className={cn(
-                      "inline-flex h-12 items-center gap-2 rounded-2xl px-4 text-xs font-black uppercase tracking-[0.18em] transition-all",
+                      "inline-flex h-10 items-center gap-2 rounded-xl px-3 text-[10px] font-black uppercase tracking-[0.16em] transition-all",
                       currentPage === item.id
                         ? "bg-white text-slate-950 shadow-xl"
                         : "border border-white/10 bg-white/10 text-white/75 hover:bg-white/15 hover:text-white",
@@ -772,12 +780,12 @@ export default function App() {
                     {getPublicNavLabel(item)}
                   </button>
                 ))}
-              </div>
+              </nav>
 
               <button
                 type="button"
                 onClick={handleBackToClientSelector}
-                className="inline-flex h-11 shrink-0 items-center gap-2 rounded-2xl border border-white/15 bg-white/10 px-3 text-[10px] font-black uppercase tracking-[0.18em] text-white backdrop-blur-xl transition-all hover:bg-white/15 sm:px-4"
+                className="inline-flex h-10 shrink-0 items-center gap-2 rounded-xl border border-white/15 bg-white/10 px-3 text-[9px] font-black uppercase tracking-[0.16em] text-white backdrop-blur-xl transition-all hover:bg-white/15 sm:px-4"
               >
                 <ArrowLeft className="h-4 w-4" />
                 <span className="hidden sm:inline">Cambiar complejo</span>
@@ -785,20 +793,20 @@ export default function App() {
             </div>
           </header>
 
-          <main className="relative z-10 mx-auto w-full max-w-7xl flex-1 px-4 pb-28 pt-5 sm:px-6 sm:pt-8 lg:px-10 lg:pb-10">
+          <main className="relative z-10 mx-auto w-full max-w-[1440px] flex-1 px-4 pb-28 pt-4 sm:px-6 sm:pt-6 lg:px-8 lg:pb-10">
             <motion.div
               key={currentPage}
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.2 }}
-              className="rounded-[32px] border border-white/10 bg-white/95 p-3 text-zinc-900 shadow-[0_32px_120px_rgba(0,0,0,0.35)] backdrop-blur-2xl sm:p-5 lg:p-7"
+              className="min-w-0 w-full"
             >
               {renderPage()}
             </motion.div>
           </main>
 
           <nav
-            className="fixed inset-x-3 bottom-3 z-50 grid gap-2 rounded-[28px] border border-white/15 bg-slate-950/82 p-2 shadow-2xl backdrop-blur-2xl lg:hidden"
+            className="fixed inset-x-3 bottom-3 z-50 grid gap-2 rounded-[24px] border border-white/15 bg-slate-950/86 p-1.5 shadow-2xl backdrop-blur-2xl lg:hidden"
             style={{ gridTemplateColumns: `repeat(${filteredNavItems.length}, minmax(0, 1fr))` }}
           >
             {filteredNavItems.map((item) => (
@@ -807,7 +815,7 @@ export default function App() {
                 type="button"
                 onClick={() => setCurrentPage(item.id as Page)}
                 className={cn(
-                  "flex min-h-16 flex-col items-center justify-center gap-1 rounded-2xl px-1 text-[9px] font-black uppercase tracking-tight transition-all",
+                  "flex min-h-14 flex-col items-center justify-center gap-1 rounded-2xl px-1 text-[9px] font-black uppercase tracking-tight transition-all",
                   currentPage === item.id
                     ? "bg-white text-slate-950"
                     : "text-white/65 hover:bg-white/10 hover:text-white",

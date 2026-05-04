@@ -57,7 +57,7 @@ interface DashboardProps {
 }
 
 export default function Dashboard({ user, onNavigate, onLogout, onNotificationClick, clientConfig }: DashboardProps) {
-  const isPublicPortalUser = user.role === 'client' && user.id.startsWith('public-player:');
+  const isPublicPortalUser = user.role === 'client';
   const effectiveClientId = getEffectiveClientId(user);
   const [pitches, setPitches] = useState<Pitch[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -468,14 +468,14 @@ export default function Dashboard({ user, onNavigate, onLogout, onNotificationCl
     const todayLabel = format(new Date(), "EEEE d 'de' MMMM", { locale: es });
 
     return (
-      <div className="mx-auto max-w-6xl space-y-6 pb-6">
-        <header className="relative overflow-hidden rounded-[32px] bg-slate-950 p-5 text-white shadow-2xl sm:p-8 lg:p-10">
+      <div className="mx-auto w-full max-w-[1280px] space-y-5 pb-8">
+        <header className="relative overflow-hidden rounded-[28px] bg-slate-950 p-4 text-white shadow-2xl sm:p-6 lg:p-8">
           <div className="absolute inset-0 opacity-25" style={{ background: 'var(--bg-flag-ar)' }} />
           <div className="absolute -right-20 -top-24 h-72 w-72 rounded-full bg-sky-400/20 blur-3xl" />
-          <div className="relative z-10 grid gap-8 lg:grid-cols-[1fr_320px] lg:items-end">
-            <div className="space-y-6">
+          <div className="relative z-10 grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-end">
+            <div className="space-y-4">
               <div className="flex items-center gap-4">
-                <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-3xl bg-white shadow-xl sm:h-20 sm:w-20">
+                <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-white shadow-xl sm:h-16 sm:w-16">
                   {clientConfig?.logo_url ? (
                     <img src={clientConfig.logo_url} alt={complexName} className="h-full w-full object-contain p-2" />
                   ) : (
@@ -483,24 +483,24 @@ export default function Dashboard({ user, onNavigate, onLogout, onNotificationCl
                   )}
                 </div>
                 <div className="min-w-0">
-                  <p className="text-[10px] font-black uppercase tracking-[0.28em] text-emerald-200">Portal de reservas</p>
-                  <h1 className="truncate text-3xl font-black italic tracking-[-0.05em] text-white sm:text-5xl">
+                  <p className="text-[9px] font-black uppercase tracking-[0.24em] text-emerald-200">Portal de reservas</p>
+                  <h1 className="truncate text-2xl font-black italic tracking-[-0.05em] text-white sm:text-4xl">
                     {complexName}
                   </h1>
                 </div>
               </div>
 
-              <div className="max-w-2xl space-y-3">
-                <p className="text-lg font-black text-sky-100 sm:text-2xl">
+              <div className="max-w-3xl space-y-2.5">
+                <p className="text-base font-black text-sky-100 sm:text-xl">
                   Hola, {user.name}. Elegí cancha, día y horario en segundos.
                 </p>
-                <div className="flex flex-wrap gap-3 text-sm font-bold text-white/75">
-                  <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/10 px-4 py-2">
+                <div className="flex flex-wrap gap-2 text-xs font-bold text-white/75 sm:text-sm">
+                  <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/10 px-3 py-1.5">
                     <CalendarIcon className="h-4 w-4 text-sky-200" />
                     {todayLabel}
                   </span>
                   {clientConfig?.address && (
-                    <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/10 px-4 py-2">
+                    <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/10 px-3 py-1.5">
                       <MapPin className="h-4 w-4 text-emerald-200" />
                       {clientConfig.address}
                     </span>
@@ -514,21 +514,21 @@ export default function Dashboard({ user, onNavigate, onLogout, onNotificationCl
               onClick={() => onNavigate && onNavigate('calendar')}
               disabled={activePitches.length === 0}
               className={cn(
-                "group rounded-[28px] bg-white p-5 text-left text-slate-950 shadow-2xl transition-all sm:p-6",
+                "group rounded-[24px] bg-white p-5 text-left text-slate-950 shadow-2xl transition-all sm:p-6",
                 activePitches.length > 0 ? "hover:-translate-y-1 hover:shadow-sky-950/30" : "cursor-not-allowed opacity-70",
               )}
             >
-              <div className="mb-8 flex items-start justify-between gap-4">
-                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-sky-500 text-white shadow-lg shadow-sky-500/30">
-                  <CalendarIcon className="h-7 w-7" />
+              <div className="mb-4 flex items-start justify-between gap-3">
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-sky-500 text-white shadow-lg shadow-sky-500/30">
+                  <CalendarIcon className="h-6 w-6" />
                 </div>
                 <span className="rounded-full bg-emerald-50 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-emerald-700">
                   {isPitchesLoading ? 'Cargando' : activePitches.length > 0 ? 'Disponible' : 'Sin turnos'}
                 </span>
               </div>
               <p className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-400">Acción principal</p>
-              <h2 className="mt-2 text-3xl font-black italic tracking-[-0.05em]">Reservar cancha</h2>
-              <p className="mt-3 text-sm font-bold leading-6 text-slate-500">
+              <h2 className="mt-1 text-2xl font-black italic tracking-[-0.05em]">Reservar cancha</h2>
+              <p className="mt-2 text-sm font-bold leading-5 text-slate-500">
                 {primaryPitch
                   ? activePitches.length > 1
                     ? `${primaryPitch.name} y ${activePitches.length - 1} canchas más para elegir.`
@@ -545,11 +545,11 @@ export default function Dashboard({ user, onNavigate, onLogout, onNotificationCl
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
             <button
               onClick={() => onNavigate && onNavigate('calendar')}
-              className="group relative min-h-44 w-full overflow-hidden rounded-[28px] bg-gradient-to-br from-sky-500 to-blue-700 p-6 text-left shadow-lg shadow-sky-500/20 transition-all hover:-translate-y-1"
+              className="group relative min-h-32 w-full overflow-hidden rounded-[24px] bg-gradient-to-br from-sky-500 to-blue-700 p-5 text-left shadow-lg shadow-sky-950/20 transition-all hover:-translate-y-1 lg:min-h-36"
             >
               <div className="absolute inset-0 bg-white/10 opacity-0 transition-opacity group-hover:opacity-100" />
-              <CalendarIcon className="mb-4 h-8 w-8 text-white" />
-              <h3 className="text-2xl font-black uppercase italic tracking-tighter text-white">Reservar Cancha</h3>
+              <CalendarIcon className="mb-3 h-7 w-7 text-white" />
+              <h3 className="text-xl font-black uppercase italic tracking-tighter text-white">Reservar Cancha</h3>
               <p className="mt-1 text-xs font-bold text-sky-100">Ver horarios disponibles</p>
             </button>
           </motion.div>
@@ -557,10 +557,10 @@ export default function Dashboard({ user, onNavigate, onLogout, onNotificationCl
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
             <button
               onClick={() => onNavigate && onNavigate('bookings')}
-              className="group relative min-h-44 w-full overflow-hidden rounded-[28px] border border-zinc-100 bg-white p-6 text-left shadow-sm transition-all hover:-translate-y-1 hover:border-sky-200 hover:shadow-md"
+              className="group relative min-h-32 w-full overflow-hidden rounded-[24px] border border-zinc-100 bg-white p-5 text-left shadow-sm transition-all hover:-translate-y-1 hover:border-sky-200 hover:shadow-md lg:min-h-36"
             >
-              <List className="mb-4 h-8 w-8 text-sky-500" />
-              <h3 className="text-2xl font-black uppercase italic tracking-tighter text-zinc-900">Mis Reservas</h3>
+              <List className="mb-3 h-7 w-7 text-sky-500" />
+              <h3 className="text-xl font-black uppercase italic tracking-tighter text-zinc-900">Mis Reservas</h3>
               <p className="mt-1 text-xs font-bold text-zinc-500">Ver próximas y anteriores</p>
             </button>
           </motion.div>
@@ -569,10 +569,10 @@ export default function Dashboard({ user, onNavigate, onLogout, onNotificationCl
             <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
               <button
                 onClick={() => onNavigate && onNavigate('ranking')}
-                className="group relative min-h-44 w-full overflow-hidden rounded-[28px] border border-zinc-100 bg-white p-6 text-left shadow-sm transition-all hover:-translate-y-1 hover:border-yellow-200 hover:shadow-md"
+                className="group relative min-h-32 w-full overflow-hidden rounded-[24px] border border-zinc-100 bg-white p-5 text-left shadow-sm transition-all hover:-translate-y-1 hover:border-yellow-200 hover:shadow-md lg:min-h-36"
               >
-                <Trophy className="mb-4 h-8 w-8 text-yellow-500" />
-                <h3 className="text-2xl font-black uppercase italic tracking-tighter text-zinc-900">Ranking</h3>
+                <Trophy className="mb-3 h-7 w-7 text-yellow-500" />
+                <h3 className="text-xl font-black uppercase italic tracking-tighter text-zinc-900">Ranking</h3>
                 <p className="mt-1 text-xs font-bold text-zinc-500">Mis puntos: {userPoints}</p>
               </button>
             </motion.div>
@@ -581,17 +581,17 @@ export default function Dashboard({ user, onNavigate, onLogout, onNotificationCl
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}>
             <button
               onClick={() => onLogout && onLogout()}
-              className="group relative min-h-44 w-full overflow-hidden rounded-[28px] border border-emerald-100 bg-emerald-50 p-6 text-left shadow-sm transition-all hover:-translate-y-1 hover:bg-emerald-100"
+              className="group relative min-h-32 w-full overflow-hidden rounded-[24px] border border-emerald-100 bg-emerald-50 p-5 text-left shadow-sm transition-all hover:-translate-y-1 hover:bg-emerald-100 lg:min-h-36"
             >
-              <User className="mb-4 h-8 w-8 text-emerald-600" />
-              <h3 className="text-2xl font-black uppercase italic tracking-tighter text-emerald-900">Cambiar Complejo</h3>
+              <User className="mb-3 h-7 w-7 text-emerald-600" />
+              <h3 className="text-xl font-black uppercase italic tracking-tighter text-emerald-900">Cambiar Complejo</h3>
               <p className="mt-1 text-xs font-bold text-emerald-700/80">Volver al selector público</p>
             </button>
           </motion.div>
         </section>
 
         <section className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-          <div className="rounded-[28px] border border-zinc-100 bg-white p-6 shadow-sm lg:col-span-2">
+          <div className="rounded-[24px] border border-zinc-100 bg-white p-5 shadow-sm lg:col-span-2">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <p className="text-[10px] font-black uppercase tracking-[0.24em] text-zinc-400">Canchas disponibles</p>
@@ -602,13 +602,13 @@ export default function Dashboard({ user, onNavigate, onLogout, onNotificationCl
               {primaryPitch && (
                 <div className="rounded-2xl bg-sky-50 px-5 py-4 text-sky-800">
                   <p className="text-[10px] font-black uppercase tracking-[0.22em] text-sky-500">Primera opción</p>
-                  <p className="mt-1 text-lg font-black">{primaryPitch.name}</p>
+                  <p className="mt-1 text-base font-black">{primaryPitch.name}</p>
                 </div>
               )}
             </div>
           </div>
 
-          <div className="rounded-[28px] border border-zinc-100 bg-white p-6 shadow-sm">
+          <div className="rounded-[24px] border border-zinc-100 bg-white p-5 shadow-sm">
             <p className="text-[10px] font-black uppercase tracking-[0.24em] text-zinc-400">Tus puntos</p>
             <p className="mt-2 text-3xl font-black tracking-[-0.04em] text-zinc-900">{userPoints}</p>
             <p className="mt-2 text-sm font-bold text-zinc-500">Sumá jugando y seguí tu ranking.</p>

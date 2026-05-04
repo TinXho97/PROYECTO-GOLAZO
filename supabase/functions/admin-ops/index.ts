@@ -1143,7 +1143,7 @@ serve(async (req) => {
               metadata,
               created_at,
               client_id,
-              clients (
+              clients!audit_logs_client_id_fkey (
                 id,
                 name,
                 complex_name

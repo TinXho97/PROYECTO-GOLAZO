@@ -146,7 +146,25 @@ export interface Client {
   ranking_reset_date?: string | null;
   created_at: string;
   features?: Record<string, boolean>;
+  settings?: ClientSettings;
+  payment_public?: PublicPaymentSettings;
   description?: string;
+}
+
+export interface PublicPaymentSettings {
+  enabled: boolean;
+  min_deposit: number;
+  bank_name: string;
+  account_holder: string;
+  account_number: string;
+  alias: string;
+  tax_id?: string;
+  instructions?: string;
+}
+
+export interface ClientSettings {
+  payment_public?: PublicPaymentSettings;
+  [key: string]: unknown;
 }
 
 export type PitchStatus = 'available' | 'busy' | 'reserved';
