@@ -263,7 +263,7 @@ export default function SuperAdminSaaS() {
     } = await supabase.auth.getSession();
 
     if (!session?.access_token) {
-      throw new Error('Sesion expirada. Inicia sesion nuevamente.');
+      throw new Error('Sesión expirada. Iniciá sesión nuevamente.');
     }
 
     const response = await fetch(`${getSupabaseUrl()}/functions/v1/admin-ops`, {
@@ -284,7 +284,7 @@ export default function SuperAdminSaaS() {
       const message = responseBody?.error?.message || responseBody?.error;
 
       if (code === 'invalid_jwt' || code === 'profile_missing') {
-        throw new Error(message || `Sesion invalida (${code}).`);
+        throw new Error(message || `Sesión inválida (${code}).`);
       }
 
       if (code === 'forbidden') {
@@ -292,7 +292,7 @@ export default function SuperAdminSaaS() {
       }
 
       if (response.status === 404) {
-        throw new Error('La funcion admin-ops no esta disponible en Supabase.');
+        throw new Error('La función admin-ops no está disponible en Supabase.');
       }
 
       throw new Error(message || 'Error inesperado en admin-ops');
@@ -452,7 +452,7 @@ export default function SuperAdminSaaS() {
     } catch (error: any) {
       console.error('Error fetching audit logs:', error);
       setAuditLogs([]);
-      toast.error(error?.message || 'No se pudo cargar el historial de auditoria');
+      toast.error(error?.message || 'No se pudo cargar el historial de auditoría');
     } finally {
       setIsAuditLoading(false);
     }
@@ -481,7 +481,7 @@ export default function SuperAdminSaaS() {
       } catch (sessionError: any) {
         console.error('Error loading superadmin session:', sessionError);
         setIsAuthenticated(false);
-        setError(sessionError?.message || 'No se pudo validar la sesion de superadmin');
+        setError(sessionError?.message || 'No se pudo validar la sesión de superadmin');
       }
     };
 
@@ -700,14 +700,14 @@ export default function SuperAdminSaaS() {
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'clients', label: 'Clientes', icon: Building2 },
     { id: 'users', label: 'Administradores', icon: Users },
-    { id: 'audit', label: 'Auditoria', icon: History },
+    { id: 'audit', label: 'Auditoría', icon: History },
     { id: 'metrics', label: 'Métricas', icon: BarChart2 },
     { id: 'settings', label: 'Configuración', icon: Settings },
   ] as const;
 
   const panelNavItems = navItems.map((item) => {
-    if (item.id === 'metrics') return { ...item, label: 'Metricas' };
-    if (item.id === 'settings') return { ...item, label: 'Configuracion' };
+    if (item.id === 'metrics') return { ...item, label: 'Métricas' };
+    if (item.id === 'settings') return { ...item, label: 'Configuración' };
     return item;
   });
 
@@ -863,7 +863,7 @@ export default function SuperAdminSaaS() {
                 <div className="text-center py-20 bg-[#111827] rounded-[32px] border border-white/5">
                   <Building2 className="w-16 h-16 text-slate-600 mx-auto mb-4" />
                   <h3 className="text-xl font-bold text-white mb-2">No se encontraron clientes</h3>
-                  <p className="text-slate-400">Intenta con otra búsqueda o crea un nuevo cliente.</p>
+                  <p className="text-slate-400">Intentá con otra búsqueda o creá un nuevo cliente.</p>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 xl:grid-cols-2 2xl:grid-cols-3 gap-6">
@@ -1077,9 +1077,9 @@ export default function SuperAdminSaaS() {
             <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
               <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                 <div>
-                  <h2 className="text-2xl font-black text-white tracking-tight">Metricas de negocio y operacion</h2>
+                  <h2 className="text-2xl font-black text-white tracking-tight">Métricas de negocio y operación</h2>
                   <p className="text-slate-400 text-sm mt-1">
-                    Vista consolidada de uso, ingresos y salud del SaaS en los ultimos {metricsAnalytics?.window_days ?? 30} dias.
+                    Vista consolidada de uso, ingresos y salud del SaaS en los últimos {metricsAnalytics?.window_days ?? 30} días.
                   </p>
                 </div>
                 <div className="flex items-center gap-3">
@@ -1090,7 +1090,7 @@ export default function SuperAdminSaaS() {
                     onClick={fetchMetrics}
                     disabled={isMetricsLoading}
                     className="p-2 bg-[#1F2937] text-slate-400 hover:text-white hover:bg-[#374151] rounded-lg transition-colors disabled:opacity-50"
-                    title="Actualizar metricas"
+                    title="Actualizar métricas"
                   >
                     <RefreshCw className={`w-5 h-5 ${isMetricsLoading ? 'animate-spin' : ''}`} />
                   </button>
@@ -1171,7 +1171,7 @@ export default function SuperAdminSaaS() {
                     <div className="text-xs text-slate-500">30d</div>
                   </div>
                   {topClientMetrics.length === 0 ? (
-                    <div className="text-sm text-slate-500">Todavia no hay datos suficientes para mostrar comparativas por cliente.</div>
+                    <div className="text-sm text-slate-500">Todavía no hay datos suficientes para mostrar comparativas por cliente.</div>
                   ) : (
                     <div className="space-y-3">
                       {topClientMetrics.map((clientMetric) => (
@@ -1377,15 +1377,15 @@ export default function SuperAdminSaaS() {
           {activeTab === 'settings' && (
             <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
               <div>
-                <h2 className="text-2xl font-black text-white tracking-tight">Configuracion de supervision</h2>
+                <h2 className="text-2xl font-black text-white tracking-tight">Configuración de supervisión</h2>
                 <p className="text-slate-400 text-sm mt-1">
-                  Esta vista concentra las reglas que si corresponden al Super Admin: servicio, vencimientos, modulos y consistencia del cliente.
+                  Esta vista concentra las reglas que sí corresponden al Super Admin: servicio, vencimientos, módulos y consistencia del cliente.
                 </p>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
                 {[
-                  { label: 'Vencen en 7 dias', value: String(expiringSoonClients.length), icon: Calendar },
+                  { label: 'Vencen en 7 días', value: String(expiringSoonClients.length), icon: Calendar },
                   { label: 'Sin admins', value: String(clientsWithoutAdmins.length), icon: Users },
                   { label: 'Features legacy', value: String(clientsWithLegacyFeatures.length), icon: AlertTriangle },
                   { label: 'Suspendidos', value: String(suspendedClients), icon: Power },
@@ -1429,8 +1429,8 @@ export default function SuperAdminSaaS() {
                 <section className="bg-[#111827] border border-white/5 rounded-[28px] p-6">
                   <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between mb-6">
                     <div>
-                      <h3 className="text-xl font-black text-white">Configuracion por cliente</h3>
-                      <p className="text-sm text-slate-400 mt-1">Edicion segura sobre el esquema ya soportado hoy.</p>
+                      <h3 className="text-xl font-black text-white">Configuración por cliente</h3>
+                      <p className="text-sm text-slate-400 mt-1">Edición segura sobre el esquema ya soportado hoy.</p>
                     </div>
                     <select
                       value={selectedSettingsClientId}
@@ -1465,7 +1465,7 @@ export default function SuperAdminSaaS() {
                           />
                         </div>
                         <div>
-                          <label className="block text-xs font-bold text-slate-400 mb-2 uppercase tracking-wider">Telefono</label>
+                          <label className="block text-xs font-bold text-slate-400 mb-2 uppercase tracking-wider">Teléfono</label>
                           <input
                             value={settingsDraft.phone}
                             onChange={(e) => setSettingsDraft((current) => current ? { ...current, phone: e.target.value } : current)}
@@ -1503,7 +1503,7 @@ export default function SuperAdminSaaS() {
                       </div>
 
                       <div>
-                        <label className="block text-xs font-bold text-slate-400 mb-3 uppercase tracking-wider">Modulos / features habilitados</label>
+                        <label className="block text-xs font-bold text-slate-400 mb-3 uppercase tracking-wider">Módulos / features habilitados</label>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                           {(Object.keys(settingsDraft.features) as ClientFeatureKey[]).map((featureKey) => (
                             <label key={featureKey} className="flex items-center justify-between gap-3 bg-[#0B0F19] border border-white/5 rounded-2xl px-4 py-3 cursor-pointer">
@@ -1540,7 +1540,7 @@ export default function SuperAdminSaaS() {
                           onClick={() => extendExpiration(selectedSettingsClient, 30)}
                           className="bg-[#1F2937] hover:bg-[#374151] text-white font-bold py-3 rounded-xl transition-colors"
                         >
-                          Extender 30 dias
+                          Extender 30 días
                         </button>
                         <button
                           type="button"
@@ -1554,7 +1554,7 @@ export default function SuperAdminSaaS() {
                           disabled={isSavingSettings}
                           className="bg-gradient-to-r from-[#FF6B00] to-[#FF8F00] disabled:opacity-50 text-white font-bold py-3 rounded-xl transition-all"
                         >
-                          {isSavingSettings ? 'Guardando...' : 'Guardar configuracion'}
+                          {isSavingSettings ? 'Guardando...' : 'Guardar configuración'}
                         </button>
                       </div>
                     </form>
@@ -1698,7 +1698,7 @@ export default function SuperAdminSaaS() {
       <Modal
         isOpen={isAuditModalOpen}
         onClose={() => setIsAuditModalOpen(false)}
-        title="Historial de Auditoria"
+        title="Historial de Auditoría"
         className="max-w-5xl"
       >
         <div className="space-y-6">

@@ -373,7 +373,7 @@ export default function Dashboard({ user, onNavigate, onLogout, onNotificationCl
   const [weather, setWeather] = useState<{ temp: number; condition: string; icon: string; locationName: string }>({
     temp: 22,
     condition: 'Cargando...',
-    icon: 'â³',
+    icon: '⏳',
     locationName: 'Tu ubicación'
   });
 

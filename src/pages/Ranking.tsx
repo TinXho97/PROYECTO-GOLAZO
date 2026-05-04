@@ -222,7 +222,7 @@ export default function RankingPage({ user }: RankingPageProps) {
                 {ranking.length === 0 ? (
                   <div className="p-12 text-center text-zinc-400">
                     <p className="font-bold">
-                      {isPlayerUser ? 'El ranking publico estara disponible cuando el complejo habilite estadisticas publicas.' : 'Aun no hay jugadores en el ranking'}
+                      {isPlayerUser ? 'El ranking público estará disponible cuando el complejo habilite estadísticas públicas.' : 'Aún no hay jugadores en el ranking'}
                     </p>
                   </div>
                 ) : (

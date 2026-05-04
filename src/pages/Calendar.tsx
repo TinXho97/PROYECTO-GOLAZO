@@ -338,11 +338,11 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
 
       try {
         if (!clientId) {
-          throw new Error('No se pudo identificar el complejo para esta reserva publica.');
+          throw new Error('No se pudo identificar el complejo para esta reserva pública.');
         }
 
         if (!bookingData.pitch.client_slug) {
-          throw new Error('No se pudo identificar el complejo para esta reserva publica.');
+          throw new Error('No se pudo identificar el complejo para esta reserva pública.');
         }
 
         const result = await dataService.createPublicBooking({
@@ -382,7 +382,7 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
         }));
 
         if ((createdBooking.status || '').toLowerCase() === 'pending') {
-          toast.success('Reserva pendiente de confirmacion', {
+          toast.success('Reserva pendiente de confirmación', {
             description: result.message || 'Te avisaremos cuando el complejo la confirme.',
           });
         } else {
@@ -393,15 +393,15 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
       } catch (error: any) {
         const errorCode = typeof error?.code === 'string' ? error.code : '';
         const publicMessages: Record<string, string> = {
-          validation_error: 'Revisa los datos ingresados e intenta nuevamente.',
-          past_booking_not_allowed: 'No podes reservar un horario pasado.',
+          validation_error: 'Revisá los datos ingresados e intentá nuevamente.',
+          past_booking_not_allowed: 'No podés reservar un horario pasado.',
           client_not_found: 'No encontramos el complejo seleccionado.',
-          client_not_publicly_bookable: 'Este complejo no acepta reservas publicas en este momento.',
-          pitch_not_available: 'La cancha seleccionada no esta disponible para reservas publicas.',
-          slot_occupied: 'Ese horario ya no esta disponible. Elegi otro turno.',
+          client_not_publicly_bookable: 'Este complejo no acepta reservas públicas en este momento.',
+          pitch_not_available: 'La cancha seleccionada no está disponible para reservas públicas.',
+          slot_occupied: 'Ese horario ya no está disponible. Elegí otro turno.',
         };
 
-        toast.error(publicMessages[errorCode] || error?.message || 'No se pudo crear la reserva publica.');
+        toast.error(publicMessages[errorCode] || error?.message || 'No se pudo crear la reserva pública.');
       }
 
       return;
@@ -762,7 +762,7 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
                 />
               </div>
               <div className="space-y-1.5">
-                <label className="ml-1 text-xs font-semibold text-zinc-700">Telefono</label>
+                <label className="ml-1 text-xs font-semibold text-zinc-700">Teléfono</label>
                 <input
                   type="tel"
                   required
@@ -798,7 +798,7 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
                   </div>
                 ) : (
                   <p className="text-xs font-semibold leading-relaxed text-zinc-600">
-                    Este complejo todavia no cargo datos de transferencia. Coordina el pago con el complejo antes de transferir.
+                    Este complejo todavía no cargó datos de transferencia. Coordiná el pago con el complejo antes de transferir.
                   </p>
                 )}
               </div>
@@ -1587,7 +1587,7 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
                   </div>
                 ) : (
                   <p className="text-[11px] font-medium leading-relaxed text-sky-700">
-                    Este complejo todavia no cargo datos de transferencia. Coordina el pago con el complejo antes de transferir.
+                    Este complejo todavía no cargó datos de transferencia. Coordiná el pago con el complejo antes de transferir.
                   </p>
                 )}
               </div>

@@ -520,9 +520,9 @@ export default function BookingsList({ user }: BookingsListProps) {
             <div className={cn("bg-zinc-50 rounded-3xl flex items-center justify-center mx-auto", isPlayerUser ? "mb-4 h-14 w-14" : "w-20 h-20 mb-6")}>
               <AlertCircle className={cn("text-zinc-200", isPlayerUser ? "h-7 w-7" : "w-10 h-10")} />
             </div>
-            <h3 className="text-xl font-black text-zinc-900 mb-2">{isPlayerUser ? 'Consulta publica pendiente' : 'No se encontraron reservas'}</h3>
+            <h3 className="text-xl font-black text-zinc-900 mb-2">{isPlayerUser ? 'Consulta pública pendiente' : 'No se encontraron reservas'}</h3>
             <p className="text-zinc-400 font-medium">
-              {isPlayerUser ? 'Tus reservas apareceran aca cuando el complejo habilite la consulta publica por telefono.' : 'Intenta cambiar los filtros o realiza una nueva reserva.'}
+              {isPlayerUser ? 'Tus reservas aparecerán acá cuando el complejo habilite la consulta pública por teléfono.' : 'Intentá cambiar los filtros o realizá una nueva reserva.'}
             </p>
           </motion.div>
         )}

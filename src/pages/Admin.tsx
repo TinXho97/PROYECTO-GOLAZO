@@ -182,7 +182,7 @@ export default function Admin({ onLogout }: AdminProps) {
         }) : prev);
       }
       setPaymentPublicForm(payment_public);
-      toast.success('Datos de pago publicos guardados');
+      toast.success('Datos de pago públicos guardados');
     } catch (error) {
       console.error('Error saving public payment settings:', error);
       toast.error('No se pudieron guardar los datos de pago');
@@ -523,7 +523,7 @@ export default function Admin({ onLogout }: AdminProps) {
                           <div className="space-y-1">
                             <h3 className="text-xl font-black text-zinc-900 flex items-center gap-3 tracking-tight uppercase">
                               <DollarSign className="w-6 h-6 text-sky-500" />
-                              Datos de pago para reservas publicas
+                              Datos de pago para reservas públicas
                             </h3>
                             <p className="text-zinc-500 text-xs font-medium">
                               Estos datos aparecen en el modal de reserva del jugador.
@@ -544,7 +544,7 @@ export default function Admin({ onLogout }: AdminProps) {
                         <form onSubmit={handleSavePaymentPublicSettings} className="space-y-5">
                           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                             <div className="space-y-1.5">
-                              <label className="ml-1 text-xs font-bold text-zinc-700">Monto minimo de seña</label>
+                              <label className="ml-1 text-xs font-bold text-zinc-700">Monto mínimo de seña</label>
                               <input
                                 type="number"
                                 min="0"
@@ -604,7 +604,7 @@ export default function Admin({ onLogout }: AdminProps) {
                             <label className="ml-1 text-xs font-bold text-zinc-700">Instrucciones para el jugador</label>
                             <textarea
                               rows={3}
-                              placeholder="Ej: Envia el comprobante y espera confirmacion del complejo."
+                              placeholder="Ej: Enviá el comprobante y esperá la confirmación del complejo."
                               className="w-full resize-none rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm font-medium text-zinc-900 placeholder:text-zinc-400 outline-none focus:ring-2 focus:ring-sky-500/20"
                               value={paymentPublicForm.instructions || ''}
                               onChange={(e) => setPaymentPublicForm((prev) => ({ ...prev, instructions: e.target.value }))}

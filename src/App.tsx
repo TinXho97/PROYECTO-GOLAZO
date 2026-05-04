@@ -347,7 +347,7 @@ export default function App() {
       setSelectedPublicClientId(null);
       setClientConfig(null);
       setUser(null);
-      toast.error('El complejo seleccionado ya no esta disponible.');
+      toast.error('El complejo seleccionado ya no está disponible.');
     }
   }, [isPublicRoute, isPublicClientsLoading, selectedPublicClientId, publicClients]);
 
