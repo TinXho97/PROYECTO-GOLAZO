@@ -52,7 +52,7 @@ import { ShareAvailabilityModal } from '../components/ShareAvailabilityModal';
 
 export default function CalendarPage({ user, clientConfig, initialBookingId, onClearInitialBooking }: CalendarProps) {
   const effectiveClientId = getEffectiveClientId(user);
-  const isPlayerUser = user.role === 'client';
+  const isPublicPortalUser = user.role === 'client' && user.id.startsWith('public-player:');
   const [pitches, setPitches] = useState<Pitch[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [selectedDate, setSelectedDate] = useState(new Date());
@@ -66,6 +66,8 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
   const [sharePitchId, setSharePitchId] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isCalendarLoading, setIsCalendarLoading] = useState(true);
+  const [bookingError, setBookingError] = useState<string | null>(null);
+  const [isSubmittingBooking, setIsSubmittingBooking] = useState(false);
   
   const [isBookingModalOpen, setIsBookingModalOpen] = useState(false);
   const [bookingTimer, setBookingTimer] = useState<number | null>(null);
@@ -75,6 +77,7 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
     time: '',
     clientName: user.role === 'client' ? user.name : '',
     clientPhone: '',
+    notes: '',
     receipt: null as string | null,
     depositAmount: '',
     paymentMethod: 'transferencia' as 'transferencia' | 'mercadopago',
@@ -123,7 +126,7 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
 
   const paymentPublic = clientConfig?.settings?.payment_public || clientConfig?.payment_public;
   const paymentSettings =
-    isPlayerUser
+    isPublicPortalUser
       ? paymentPublic
       : paymentPublic ||
         getNestedRecord(user, ['payment_public', 'clientConfig', 'settings', 'client_settings', 'public_settings', 'payment_settings']) ||
@@ -160,13 +163,13 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
 
       try {
         setLoadError(null);
-        const fetchedPitches = isPlayerUser
+        const fetchedPitches = isPublicPortalUser
           ? await dataService.getPublicPitches(clientId)
           : await dataService.getPitches(clientId);
         setPitches(fetchedPitches);
 
         let fetchedBookings: Booking[] = [];
-        if (!isPlayerUser) {
+        if (!isPublicPortalUser) {
           try {
             fetchedBookings = await dataService.getBookings(clientId);
             setBookings(fetchedBookings);
@@ -178,7 +181,7 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
           setBookings([]);
         }
 
-        if (isPlayerUser) {
+        if (isPublicPortalUser) {
           setDeactivatedSlots(new Set());
         } else {
           try {
@@ -208,7 +211,7 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
       }
     };
     fetchData();
-  }, [effectiveClientId, initialBookingId, isPlayerUser]);
+  }, [effectiveClientId, initialBookingId, isPublicPortalUser, onClearInitialBooking]);
 
   const [currentTime, setCurrentTime] = useState(new Date());
   
@@ -296,6 +299,7 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
   };
 
   const openBookingModal = (pitch: Pitch, date: Date, time: string) => {
+    setBookingError(null);
     setBookingData(prev => ({
       ...prev,
       pitch,
@@ -328,15 +332,17 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
 
   const handleBookingSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!bookingData.pitch || !bookingData.time) return;
+    if (!bookingData.pitch || !bookingData.time || isSubmittingBooking) return;
 
-    if (user.role === 'client') {
+    if (isPublicPortalUser) {
       const clientId = effectiveClientId;
       const [publicHour, publicMinute] = bookingData.time.split(':').map(Number);
       const publicStartTime = new Date(bookingData.date);
       publicStartTime.setHours(publicHour, publicMinute, 0, 0);
 
       try {
+        setIsSubmittingBooking(true);
+        setBookingError(null);
         if (!clientId) {
           throw new Error('No se pudo identificar el complejo para esta reserva pública.');
         }
@@ -351,6 +357,7 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
           start_time: publicStartTime.toISOString(),
           client_name: bookingData.clientName.trim(),
           client_phone: bookingData.clientPhone.trim(),
+          notes: bookingData.notes.trim() || undefined,
         });
 
         const createdBooking = result.booking;
@@ -372,9 +379,11 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
 
         const refreshedPitches = await dataService.getPublicPitches(clientId);
         setPitches(refreshedPitches);
+        setIsSubmittingBooking(false);
         setIsBookingModalOpen(false);
         setBookingData(prev => ({
           ...prev,
+          notes: '',
           receipt: null,
           depositAmount: '',
           paymentMethod: 'transferencia',
@@ -391,6 +400,8 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
           });
         }
       } catch (error: any) {
+        setBookingError('No se pudo crear la reserva. RevisÃ¡ los datos o probÃ¡ de nuevo.');
+        setIsSubmittingBooking(false);
         const errorCode = typeof error?.code === 'string' ? error.code : '';
         const publicMessages: Record<string, string> = {
           validation_error: 'Revisá los datos ingresados e intentá nuevamente.',
@@ -424,6 +435,8 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
     const endTime = addHours(startTime, 1);
 
     try {
+      setIsSubmittingBooking(true);
+      setBookingError(null);
       const isPromo = h >= 10 && h <= 16;
       const points = isPromo ? 1.5 : 1;
       const clientId = effectiveClientId;
@@ -443,9 +456,11 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
       
       const updatedBookings = await dataService.getBookings(clientId);
       setBookings(updatedBookings);
+      setIsSubmittingBooking(false);
       setIsBookingModalOpen(false);
       setBookingData(prev => ({ 
         ...prev, 
+        notes: '',
         receipt: null, 
         depositAmount: '',
         paymentMethod: 'transferencia',
@@ -458,7 +473,10 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
           : `¡Sumaste +${points} puntos!`,
       });
     } catch (error: any) {
-      toast.error(error.message);
+      const nextError = error?.message || 'No se pudo crear la reserva.';
+      setBookingError(nextError);
+      setIsSubmittingBooking(false);
+      toast.error(nextError);
     }
   };
 
@@ -477,6 +495,16 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
     }
   };
 
+  if (isCalendarLoading) {
+    return (
+      <div className="mx-auto max-w-3xl rounded-3xl border border-zinc-200 bg-white p-8 text-center shadow-sm">
+        <div className="mx-auto h-12 w-12 animate-spin rounded-full border-4 border-zinc-200 border-t-sky-500" />
+        <p className="mt-4 text-xs font-black uppercase tracking-[0.22em] text-zinc-500">Cargando calendario</p>
+        <p className="mt-2 text-sm font-bold text-zinc-700">Estamos preparando la disponibilidad del complejo.</p>
+      </div>
+    );
+  }
+
   if (loadError) {
     return (
       <div className="mx-auto max-w-3xl rounded-3xl border border-red-200 bg-red-50 p-6 text-red-800 shadow-sm">
@@ -486,7 +514,7 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
     );
   }
 
-  if (isPlayerUser) {
+  if (isPublicPortalUser) {
     const playerSelectedPitch = filterPitch !== 'all'
       ? pitches.find((pitch) => pitch.id === filterPitch) || pitches[0]
       : pitches[0];
@@ -743,6 +771,16 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
                 </h3>
                 <p className="text-xs font-semibold capitalize text-zinc-600">{format(bookingData.date, "EEEE d 'de' MMMM", { locale: es })}</p>
               </div>
+              <div className="space-y-1.5">
+                <label className="ml-1 text-xs font-semibold text-zinc-700">Notas para el complejo</label>
+                <textarea
+                  rows={3}
+                  placeholder="Opcional: aclaraciones sobre el turno"
+                  className="w-full rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm font-medium text-zinc-900 placeholder:text-zinc-400 outline-none focus:ring-2 focus:ring-sky-500/20"
+                  value={bookingData.notes}
+                  onChange={e => setBookingData(prev => ({ ...prev, notes: e.target.value }))}
+                />
+              </div>
             </section>
 
             <section className="space-y-3">
@@ -808,12 +846,28 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
               </div>
             </section>
 
+            {bookingError && (
+              <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+                {bookingError}
+              </div>
+            )}
+
             <div className="flex flex-col-reverse gap-3 pt-2 sm:flex-row sm:items-center sm:justify-end">
-              <Button type="button" variant="ghost" className="h-12 rounded-2xl font-bold" onClick={() => setIsBookingModalOpen(false)}>
+              <Button
+                type="button"
+                variant="ghost"
+                className="h-12 rounded-2xl font-bold"
+                disabled={isSubmittingBooking}
+                onClick={() => setIsBookingModalOpen(false)}
+              >
                 Cancelar
               </Button>
-              <Button type="submit" className="h-12 rounded-2xl px-8 font-black uppercase tracking-widest shadow-lg shadow-sky-500/20">
-                Solicitar reserva
+              <Button
+                type="submit"
+                disabled={isSubmittingBooking}
+                className="h-12 rounded-2xl px-8 font-black uppercase tracking-widest shadow-lg shadow-sky-500/20"
+              >
+                {isSubmittingBooking ? 'Solicitando...' : 'Solicitar reserva'}
               </Button>
             </div>
           </form>
@@ -823,30 +877,30 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
   }
 
   return (
-    <div className={cn("w-full space-y-6", isPlayerUser && "pb-2")}>
+    <div className={cn("w-full space-y-6", isPublicPortalUser && "pb-2")}>
       {/* Header: Editorial & Professional */}
       <header className={cn(
         "flex flex-col lg:flex-row lg:items-center justify-between gap-8 pb-4",
-        isPlayerUser && "rounded-[26px] border border-white/10 bg-white/95 p-3 text-zinc-900 shadow-2xl shadow-slate-950/20 backdrop-blur-xl sm:p-4 lg:p-5"
+        isPublicPortalUser && "rounded-[26px] border border-white/10 bg-white/95 p-3 text-zinc-900 shadow-2xl shadow-slate-950/20 backdrop-blur-xl sm:p-4 lg:p-5"
       )}>
-        <div className={cn("flex items-center", isPlayerUser ? "gap-3" : "gap-6")}>
+        <div className={cn("flex items-center", isPublicPortalUser ? "gap-3" : "gap-6")}>
           <div className={cn(
             "bg-sky-600 flex items-center justify-center shadow-2xl shadow-sky-200 rotate-3 hover:rotate-0 transition-transform duration-500",
-            isPlayerUser ? "w-12 h-12 rounded-2xl sm:h-14 sm:w-14" : "w-20 h-20 rounded-[32px]"
+            isPublicPortalUser ? "w-12 h-12 rounded-2xl sm:h-14 sm:w-14" : "w-20 h-20 rounded-[32px]"
           )}>
-            <CalendarIcon className={cn("text-white", isPlayerUser ? "h-6 w-6 sm:h-7 sm:w-7" : "w-10 h-10")} />
+            <CalendarIcon className={cn("text-white", isPublicPortalUser ? "h-6 w-6 sm:h-7 sm:w-7" : "w-10 h-10")} />
           </div>
           <div>
             <h1 className={cn(
               "font-black tracking-tighter text-zinc-900 mb-1 italic",
-              isPlayerUser ? "text-2xl sm:text-4xl" : "text-5xl"
+              isPublicPortalUser ? "text-2xl sm:text-4xl" : "text-5xl"
             )}>
-              {isPlayerUser ? 'Reservá tu cancha' : 'Calendario'}
+              {isPublicPortalUser ? 'Reservá tu cancha' : 'Calendario'}
             </h1>
             <div className="flex items-center gap-3">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
               <p className="text-zinc-500 font-bold uppercase tracking-[0.2em] text-[10px]">
-                {isPlayerUser ? 'Elegí día y horario disponible' : 'Actualizado en tiempo real'}
+                {isPublicPortalUser ? 'Elegí día y horario disponible' : 'Actualizado en tiempo real'}
               </p>
             </div>
           </div>
@@ -855,12 +909,12 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
         <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-4">
           <div className={cn(
             "flex items-center bg-zinc-100 border border-zinc-200 shadow-inner",
-            isPlayerUser ? "rounded-2xl p-1.5" : "p-2 rounded-[24px]"
+            isPublicPortalUser ? "rounded-2xl p-1.5" : "p-2 rounded-[24px]"
           )}>
             <button
               onClick={() => setView('day')}
               className={cn(
-                cn("rounded-xl text-[11px] font-black uppercase tracking-widest transition-all duration-300", isPlayerUser ? "px-5 py-2.5" : "px-8 py-3.5"),
+                cn("rounded-xl text-[11px] font-black uppercase tracking-widest transition-all duration-300", isPublicPortalUser ? "px-5 py-2.5" : "px-8 py-3.5"),
                 view === 'day' ? "bg-white text-zinc-900 shadow-xl" : "text-zinc-500 hover:text-zinc-700"
               )}
             >
@@ -869,7 +923,7 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
             <button
               onClick={() => setView('week')}
               className={cn(
-                cn("rounded-xl text-[11px] font-black uppercase tracking-widest transition-all duration-300", isPlayerUser ? "px-5 py-2.5" : "px-8 py-3.5"),
+                cn("rounded-xl text-[11px] font-black uppercase tracking-widest transition-all duration-300", isPublicPortalUser ? "px-5 py-2.5" : "px-8 py-3.5"),
                 view === 'week' ? "bg-white text-zinc-900 shadow-xl" : "text-zinc-500 hover:text-zinc-700"
               )}
             >
@@ -895,7 +949,7 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
           <Button 
             className={cn(
               "rounded-[24px] bg-sky-600 text-white hover:bg-sky-700 shadow-2xl shadow-sky-200 gap-4 font-black text-[11px] uppercase tracking-widest transition-all hover:-translate-y-1 active:translate-y-0",
-              isPlayerUser ? "h-12 w-full px-5 sm:w-auto" : "h-16 px-10"
+              isPublicPortalUser ? "h-12 w-full px-5 sm:w-auto" : "h-16 px-10"
             )}
             onClick={() => {
               if (!hasVisiblePitches) {
@@ -913,7 +967,7 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
             }}
           >
             <Plus className="w-5 h-5" />
-            {isPlayerUser ? 'Reservar cancha' : 'Nueva reserva'}
+            {isPublicPortalUser ? 'Reservar cancha' : 'Nueva reserva'}
           </Button>
         </div>
       </header>
@@ -921,7 +975,7 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
       {/* Navigation & Filters Bar: Clean Utility */}
       <div className={cn(
         "flex flex-col xl:flex-row items-stretch xl:items-center gap-6",
-        isPlayerUser
+        isPublicPortalUser
           ? "bg-white/95 p-3 rounded-[24px] border border-white/40 shadow-2xl shadow-slate-950/15 backdrop-blur-xl sm:p-4"
           : "bg-white p-6 rounded-[40px] border border-zinc-100 shadow-2xl shadow-zinc-200/20"
       )}>
@@ -929,7 +983,7 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
           <div className="flex items-center bg-zinc-50 rounded-[24px] border border-zinc-200 p-2 w-full sm:w-auto">
             <Button 
               variant="ghost" 
-              className={cn("p-0 rounded-xl hover:bg-white hover:shadow-md transition-all", isPlayerUser ? "h-10 w-10" : "h-12 w-12")} 
+              className={cn("p-0 rounded-xl hover:bg-white hover:shadow-md transition-all", isPublicPortalUser ? "h-10 w-10" : "h-12 w-12")} 
               onClick={() => setSelectedDate(d => addDays(d, view === 'day' ? -1 : -7))}
             >
               <ChevronLeft className="w-6 h-6" />
@@ -938,7 +992,7 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
               onClick={() => setIsCalendarOpen(!isCalendarOpen)}
               className={cn(
                 "flex-1 sm:flex-none text-sm font-black text-zinc-900 text-center hover:bg-white hover:shadow-md rounded-xl transition-all flex items-center justify-center gap-3 relative",
-                isPlayerUser ? "h-10 min-w-[170px] px-4" : "h-12 min-w-[200px] px-8"
+                isPublicPortalUser ? "h-10 min-w-[170px] px-4" : "h-12 min-w-[200px] px-8"
               )}
             >
               <CalendarIcon className="w-4 h-4 text-sky-500" />
@@ -971,7 +1025,7 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
             </button>
             <Button 
               variant="ghost" 
-              className={cn("p-0 rounded-xl hover:bg-white hover:shadow-md transition-all", isPlayerUser ? "h-10 w-10" : "h-12 w-12")} 
+              className={cn("p-0 rounded-xl hover:bg-white hover:shadow-md transition-all", isPublicPortalUser ? "h-10 w-10" : "h-12 w-12")} 
               onClick={() => setSelectedDate(d => addDays(d, view === 'day' ? 1 : 7))}
             >
               <ChevronRight className="w-6 h-6" />
@@ -982,7 +1036,7 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
             variant="outline" 
             className={cn(
               "rounded-[20px] border-zinc-200 font-black text-[11px] uppercase tracking-widest hover:bg-zinc-50 w-full sm:w-auto",
-              isPlayerUser ? "h-11 px-6" : "h-16 px-10"
+              isPublicPortalUser ? "h-11 px-6" : "h-16 px-10"
             )}
             onClick={() => setSelectedDate(new Date())}
           >
@@ -996,7 +1050,7 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
             <select
               className={cn(
                 "w-full bg-zinc-50 pl-14 pr-8 rounded-[20px] border border-zinc-200 font-black text-[11px] uppercase tracking-widest outline-none focus:ring-4 focus:ring-sky-500/10 appearance-none cursor-pointer hover:bg-white transition-all",
-                isPlayerUser ? "h-11" : "h-16"
+                isPublicPortalUser ? "h-11" : "h-16"
               )}
               value={filterPitch}
               onChange={e => setFilterPitch(e.target.value)}
@@ -1028,19 +1082,19 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
       </div>
 
       {/* Calendar Grid & Mobile List View */}
-      <div className={cn(isPlayerUser ? "space-y-4" : "space-y-6")}>
+      <div className={cn(isPublicPortalUser ? "space-y-4" : "space-y-6")}>
         {/* Desktop Grid View */}
         <div className="hidden md:block">
           <Card className={cn(
             "border-none shadow-2xl overflow-hidden border",
-            isPlayerUser
+            isPublicPortalUser
               ? "rounded-[24px] bg-white/95 border-white/40 backdrop-blur-xl"
               : "rounded-[32px] bg-white border-zinc-100"
           )}>
             {shouldShowEmptyPitches ? (
               <div className={cn(
                 "flex flex-col items-center justify-center gap-4 text-center",
-                isPlayerUser ? "min-h-[220px] p-6" : "min-h-[360px] p-10"
+                isPublicPortalUser ? "min-h-[220px] p-6" : "min-h-[360px] p-10"
               )}>
                 <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-amber-50 text-amber-600">
                   <AlertCircle className="h-8 w-8" />
@@ -1056,7 +1110,7 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
               </div>
             ) : (
             <div className="w-full overflow-x-auto custom-scrollbar">
-              <div className={cn(isPlayerUser ? "min-w-[860px]" : "min-w-[1000px]", "lg:min-w-full relative")}>
+              <div className={cn(isPublicPortalUser ? "min-w-[860px]" : "min-w-[1000px]", "lg:min-w-full relative")}>
                 {/* Header Row */}
                 <div 
                   className="grid border-b border-zinc-100 bg-zinc-50/80 backdrop-blur-md sticky top-0 z-40"
@@ -1066,13 +1120,13 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
                       : `120px repeat(7, 1fr)` 
                   }}
                 >
-                  <div className={cn("flex flex-col items-center justify-center border-r border-zinc-100 bg-white", isPlayerUser ? "p-3" : "p-6")}>
+                  <div className={cn("flex flex-col items-center justify-center border-r border-zinc-100 bg-white", isPublicPortalUser ? "p-3" : "p-6")}>
                     <Clock className="w-5 h-5 text-zinc-400 mb-1" />
                     <span className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Hora</span>
                   </div>
                   {view === 'day' ? (
                     filteredPitches.map(pitch => (
-                      <div key={pitch.id} className={cn("text-center border-r border-zinc-100 last:border-r-0 transition-all relative group", isPlayerUser ? "p-3" : "p-6")}>
+                      <div key={pitch.id} className={cn("text-center border-r border-zinc-100 last:border-r-0 transition-all relative group", isPublicPortalUser ? "p-3" : "p-6")}>
                         <p className="text-[10px] uppercase tracking-[0.3em] font-black text-sky-600 mb-1">{pitch.type}</p>
                         <p className="text-xl font-black tracking-tight text-zinc-900">{pitch.name}</p>
                         {user.role === 'admin' && (
@@ -1088,7 +1142,7 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
                     ))
                   ) : (
                     days.map(day => (
-                      <div key={day.toISOString()} className={cn("text-center border-r border-zinc-100 last:border-r-0 transition-all", isPlayerUser ? "p-3" : "p-6")}>
+                      <div key={day.toISOString()} className={cn("text-center border-r border-zinc-100 last:border-r-0 transition-all", isPublicPortalUser ? "p-3" : "p-6")}>
                         <p className="text-[10px] uppercase tracking-[0.3em] font-black text-sky-600 mb-1">{format(day, 'EEE', { locale: es })}</p>
                         <p className="text-xl font-black tracking-tight text-zinc-900">{format(day, 'd MMM')}</p>
                       </div>
@@ -1101,7 +1155,7 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
                   {hours.map(hour => (
                     <div 
                       key={hour} 
-                      className={cn("grid group/row", isPlayerUser ? "min-h-[62px]" : "min-h-[80px]")}
+                      className={cn("grid group/row", isPublicPortalUser ? "min-h-[62px]" : "min-h-[80px]")}
                       style={{ 
                         gridTemplateColumns: view === 'day' 
                           ? `120px repeat(${filteredPitches.length}, 1fr)` 
@@ -1109,7 +1163,7 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
                       }}
                     >
                       <div className={cn(
-                        cn("border-r border-zinc-100 bg-white flex items-center justify-center sticky left-0 z-20 transition-colors duration-500", isPlayerUser ? "p-3" : "p-6"),
+                        cn("border-r border-zinc-100 bg-white flex items-center justify-center sticky left-0 z-20 transition-colors duration-500", isPublicPortalUser ? "p-3" : "p-6"),
                         isSameDay(selectedDate, currentTime) && currentTime.getHours() === hour && "bg-sky-50/50"
                       )}>
                         <div className="flex flex-col items-center">
@@ -1170,7 +1224,7 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
                                   }
                                 }}
                                 className={cn(
-                                  cn("w-full h-full rounded-2xl text-left transition-all relative overflow-hidden flex flex-col justify-center border-2", isPlayerUser ? "min-h-[46px] p-2" : "min-h-[60px] p-3"),
+                                  cn("w-full h-full rounded-2xl text-left transition-all relative overflow-hidden flex flex-col justify-center border-2", isPublicPortalUser ? "min-h-[46px] p-2" : "min-h-[60px] p-3"),
                                   isPast && "bg-zinc-100 border-zinc-200 text-zinc-400 cursor-not-allowed grayscale",
                                   status === 'deactivated' && "bg-zinc-200 border-zinc-300 text-zinc-500 opacity-50",
                                   isOccupied && !isPartial && "bg-red-50 border-red-100 text-red-700 hover:bg-red-100/50",
@@ -1249,7 +1303,7 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
                                   }
                                 }}
                                 className={cn(
-                                  cn("w-full h-full rounded-2xl text-left transition-all relative overflow-hidden flex flex-col justify-center border-2", isPlayerUser ? "min-h-[46px] p-2" : "min-h-[60px] p-3"),
+                                  cn("w-full h-full rounded-2xl text-left transition-all relative overflow-hidden flex flex-col justify-center border-2", isPublicPortalUser ? "min-h-[46px] p-2" : "min-h-[60px] p-3"),
                                   isPast && "bg-zinc-100 border-zinc-200 text-zinc-400 cursor-not-allowed grayscale",
                                   status === 'deactivated' && "bg-zinc-200 border-zinc-300 text-zinc-500 opacity-50",
                                   isOccupied && !isPartial && "bg-red-50 border-red-100 text-red-700 hover:bg-red-100/50",
@@ -1286,7 +1340,7 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
         {/* Mobile List View: Vertical Agenda */}
         <div className={cn(
           "md:hidden space-y-4",
-          isPlayerUser && "rounded-[28px] border border-white/40 bg-white/95 py-4 shadow-2xl shadow-slate-950/15 backdrop-blur-xl"
+          isPublicPortalUser && "rounded-[28px] border border-white/40 bg-white/95 py-4 shadow-2xl shadow-slate-950/15 backdrop-blur-xl"
         )}>
           <div className="flex items-center justify-between px-4">
             <h3 className="text-xl font-black text-zinc-900 uppercase tracking-tight">
@@ -1307,12 +1361,12 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
               </p>
             </div>
           ) : (
-          <div className={cn(isPlayerUser ? "space-y-4" : "space-y-6")}>
+          <div className={cn(isPublicPortalUser ? "space-y-4" : "space-y-6")}>
             {hours.map(hour => (
               <div key={hour} className="space-y-3">
                 <div className={cn(
                   "flex items-center gap-3 px-4 sticky top-0 backdrop-blur-sm py-2 z-10",
-                  isPlayerUser ? "bg-white/90" : "bg-zinc-50/90"
+                  isPublicPortalUser ? "bg-white/90" : "bg-zinc-50/90"
                 )}>
                   <span className={cn(
                     "text-sm font-black uppercase tracking-widest",
@@ -1328,7 +1382,7 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
                   <div className="h-px flex-1 bg-zinc-200" />
                 </div>
                 
-                <div className={cn("grid grid-cols-1 px-4", isPlayerUser ? "gap-2" : "gap-3")}>
+                <div className={cn("grid grid-cols-1 px-4", isPublicPortalUser ? "gap-2" : "gap-3")}>
                   {view === 'day' ? (
                     filteredPitches.map(pitch => {
                       const status = getSlotStatus(selectedDate, hour, pitch.id);
@@ -1367,7 +1421,7 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
                             }
                           }}
                           className={cn(
-                            cn("w-full rounded-2xl text-left transition-all flex items-center justify-between border-2", isPlayerUser ? "p-3" : "p-4"),
+                            cn("w-full rounded-2xl text-left transition-all flex items-center justify-between border-2", isPublicPortalUser ? "p-3" : "p-4"),
                             isPast && "bg-zinc-100 border-zinc-200 text-zinc-400 grayscale opacity-60",
                             status === 'deactivated' && "bg-zinc-200 border-zinc-300 text-zinc-500 opacity-50",
                             isOccupied && !isPartial && "bg-red-50 border-red-100 text-red-700",
@@ -1444,7 +1498,7 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
                             }
                           }}
                           className={cn(
-                            cn("w-full rounded-2xl text-left transition-all flex items-center justify-between border-2", isPlayerUser ? "p-3" : "p-4"),
+                            cn("w-full rounded-2xl text-left transition-all flex items-center justify-between border-2", isPublicPortalUser ? "p-3" : "p-4"),
                             isPast && "bg-zinc-100 border-zinc-200 text-zinc-400 grayscale opacity-60",
                             status === 'deactivated' && "bg-zinc-200 border-zinc-300 text-zinc-500 opacity-50",
                             isOccupied && !isPartial && "bg-red-50 border-red-100 text-red-700",
@@ -1492,7 +1546,7 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
       <Modal
         isOpen={isBookingModalOpen}
         onClose={() => setIsBookingModalOpen(false)}
-        title={isPlayerUser ? 'Reservar cancha' : 'Nueva reserva'}
+        title={isPublicPortalUser ? 'Reservar cancha' : 'Nueva reserva'}
         className="max-h-[90vh]"
       >
         {bookingTimer !== null && (
@@ -1652,17 +1706,23 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
             </div>
           </div>
 
+          {bookingError && (
+            <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+              {bookingError}
+            </div>
+          )}
+
           <div className="flex items-center justify-between pt-2">
             <div className="flex items-center gap-2 text-primary">
               <Zap className="w-4 h-4 fill-primary" />
               <span className="text-xs font-bold">+{isPromoHour(parseInt(bookingData.time)) ? '1.5' : '1'} Puntos</span>
             </div>
             <div className="flex gap-3">
-              <Button type="button" variant="ghost" onClick={() => setIsBookingModalOpen(false)}>
+              <Button type="button" variant="ghost" disabled={isSubmittingBooking} onClick={() => setIsBookingModalOpen(false)}>
                 Cancelar
               </Button>
-              <Button type="submit" className="px-8 shadow-lg shadow-primary/20">
-                Confirmar Reserva
+              <Button type="submit" disabled={isSubmittingBooking} className="px-8 shadow-lg shadow-primary/20">
+                {isSubmittingBooking ? 'Guardando...' : 'Confirmar Reserva'}
               </Button>
             </div>
           </div>

@@ -1,0 +1,26 @@
+{
+  "name": "Golazo SuperAdmin",
+  "short_name": "SuperAdmin",
+  "description": "Panel interno SaaS de Golazo para gestion operativa y supervision.",
+  "id": "/panel-interno-golazo-saas",
+  "start_url": "/panel-interno-golazo-saas",
+  "scope": "/panel-interno-golazo-saas",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#0f172a",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/maskable-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}
