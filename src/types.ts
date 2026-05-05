@@ -8,7 +8,6 @@ export interface User {
   phone?: string;
   name: string;
   role: UserRole;
-  password?: string;
   client_id?: string;
 }
 
