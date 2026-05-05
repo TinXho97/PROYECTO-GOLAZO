@@ -924,6 +924,13 @@ export default function Dashboard({ user, onNavigate, onLogout, onNotificationCl
                         setIsBookingDetailModalOpen(true);
                       }
                     } else {
+                      if (user.role === 'client') {
+                        setIsPitchScheduleModalOpen(false);
+                        if (onNavigate) {
+                          onNavigate('calendar');
+                        }
+                        return;
+                      }
                       setSelectedTime(timeStr);
                       setIsPitchScheduleModalOpen(false);
                       setBookingTimer(300); // 5 minutes

@@ -51,6 +51,50 @@ import { supabase, checkSupabaseConnection } from './lib/supabase';
 type Page = 'dashboard' | 'bookings' | 'calendar' | 'sales' | 'admin' | 'ranking' | 'stats';
 
 const PUBLIC_SELECTION_BACKGROUND = 'https://iili.io/q6oJgJ2.jpg';
+const PUBLIC_INTRO_SESSION_KEY = 'golazo_public_intro_seen';
+const PUBLIC_INTRO_VIDEO_SRC = '/videos/golazo-intro.mp4';
+const WORLD_CUP_2026_START = new Date('2026-06-11T00:00:00');
+const PUBLIC_CAROUSEL_ITEMS = [
+  {
+    title: 'Elegí complejo',
+    description: 'Encontrá canchas disponibles cerca de tu zona.',
+    icon: Building2,
+    accent: 'from-sky-300 via-white to-sky-500',
+  },
+  {
+    title: 'Reservá horario',
+    description: 'Elegí día, cancha y turno en segundos.',
+    icon: CalendarIcon,
+    accent: 'from-white via-sky-200 to-emerald-300',
+  },
+  {
+    title: 'Coordiná la seña',
+    description: 'Consultá los datos de pago del complejo.',
+    icon: ShieldCheck,
+    accent: 'from-emerald-300 via-white to-amber-300',
+  },
+  {
+    title: 'Jugá',
+    description: 'Llegá al turno y disfrutá el partido.',
+    icon: Trophy,
+    accent: 'from-yellow-300 via-amber-200 to-sky-300',
+  },
+];
+
+const getWorldCupCountdown = () => {
+  const diff = WORLD_CUP_2026_START.getTime() - Date.now();
+
+  if (diff <= 0) {
+    return { hasStarted: true, days: 0, hours: 0, minutes: 0 };
+  }
+
+  const totalMinutes = Math.floor(diff / (1000 * 60));
+  const days = Math.floor(totalMinutes / (60 * 24));
+  const hours = Math.floor((totalMinutes % (60 * 24)) / 60);
+  const minutes = totalMinutes % 60;
+
+  return { hasStarted: false, days, hours, minutes };
+};
 
 export default function App() {
   const pathname = window.location.pathname;
@@ -77,6 +121,15 @@ export default function App() {
   const [publicSearchTerm, setPublicSearchTerm] = useState('');
   const [publicGuestName, setPublicGuestName] = useState(localStorage.getItem('golazo_guest_name') || 'Jugador');
   const [publicGuestPhone, setPublicGuestPhone] = useState(localStorage.getItem('golazo_guest_phone') || '');
+  const [showPublicIntro, setShowPublicIntro] = useState(() => {
+    try {
+      return sessionStorage.getItem(PUBLIC_INTRO_SESSION_KEY) !== 'true';
+    } catch {
+      return false;
+    }
+  });
+  const [publicCountdown, setPublicCountdown] = useState(getWorldCupCountdown);
+  const [publicCarouselIndex, setPublicCarouselIndex] = useState(0);
 
   const loadPublicClients = async () => {
     if (isSuperAdminRoute) return;
@@ -334,6 +387,59 @@ export default function App() {
     const label = `${client.complex_name || ''} ${client.name || ''} ${client.address || ''}`.toLowerCase();
     return label.includes(publicSearchTerm.toLowerCase());
   });
+  const activeCarouselItem = PUBLIC_CAROUSEL_ITEMS[publicCarouselIndex] || PUBLIC_CAROUSEL_ITEMS[0];
+  const ActiveCarouselIcon = activeCarouselItem.icon;
+  const dismissPublicIntro = () => {
+    try {
+      sessionStorage.setItem(PUBLIC_INTRO_SESSION_KEY, 'true');
+    } catch {
+      // If storage is unavailable, keep the app usable and only hide the intro in memory.
+    }
+    setShowPublicIntro(false);
+  };
+
+  useEffect(() => {
+    if (!isPublicRoute || selectedPublicClientId || user || isAdminRoute || isSuperAdminRoute) {
+      setShowPublicIntro(false);
+      return;
+    }
+
+    try {
+      if (sessionStorage.getItem(PUBLIC_INTRO_SESSION_KEY) === 'true') {
+        setShowPublicIntro(false);
+        return;
+      }
+    } catch {
+      setShowPublicIntro(false);
+      return;
+    }
+
+    setShowPublicIntro(true);
+    const timer = window.setTimeout(dismissPublicIntro, 3500);
+    return () => window.clearTimeout(timer);
+  }, [isPublicRoute, selectedPublicClientId, user, isAdminRoute, isSuperAdminRoute]);
+
+  useEffect(() => {
+    if (!isPublicRoute || selectedPublicClientId || user) return;
+
+    setPublicCountdown(getWorldCupCountdown());
+    const interval = window.setInterval(() => {
+      setPublicCountdown(getWorldCupCountdown());
+    }, 60000);
+
+    return () => window.clearInterval(interval);
+  }, [isPublicRoute, selectedPublicClientId, user]);
+
+  useEffect(() => {
+    if (!isPublicRoute || selectedPublicClientId || user) return;
+
+    const interval = window.setInterval(() => {
+      setPublicCarouselIndex((current) => (current + 1) % PUBLIC_CAROUSEL_ITEMS.length);
+    }, 3000);
+
+    return () => window.clearInterval(interval);
+  }, [isPublicRoute, selectedPublicClientId, user]);
+
   useEffect(() => {
     // No rotation needed
   }, []);
@@ -445,9 +551,9 @@ export default function App() {
   if (!user) {
     if (isPublicRoute && !selectedPublicClientId) {
       return (
-        <div className="min-h-screen bg-zinc-950 text-white relative overflow-x-hidden">
+        <div className="relative h-screen overflow-y-auto overflow-x-hidden bg-zinc-950 text-white">
           <div
-            className="absolute inset-0"
+            className="fixed inset-0"
             style={{
               backgroundImage: `url(${PUBLIC_SELECTION_BACKGROUND})`,
               backgroundSize: 'cover',
@@ -455,69 +561,225 @@ export default function App() {
               backgroundRepeat: 'no-repeat',
             }}
           />
-          <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(2,6,23,0.58)_0%,rgba(2,6,23,0.74)_34%,rgba(2,6,23,0.9)_100%)]" />
+          <div className="fixed inset-0 bg-[linear-gradient(180deg,rgba(2,6,23,0.58)_0%,rgba(2,6,23,0.74)_34%,rgba(2,6,23,0.9)_100%)]" />
 
-          <div className="relative z-10 mx-auto flex min-h-screen w-full max-w-[1280px] flex-col px-4 py-4 sm:px-6 md:px-8 md:py-6">
-            <div className="mb-5 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-              <div className="max-w-3xl space-y-4">
-                <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3.5 py-1.5 text-[10px] font-black uppercase tracking-[0.24em] text-emerald-200 backdrop-blur-xl">
-                  <Target className="w-4 h-4 text-emerald-300" />
+          <AnimatePresence>
+            {showPublicIntro && (
+              <motion.div
+                key="public-intro"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.22, ease: 'easeOut' }}
+                className="fixed inset-0 z-[80] flex items-center justify-center overflow-hidden bg-slate-950 px-5 text-white"
+              >
+                <video
+                  className="absolute inset-0 h-full w-full object-cover"
+                  src={PUBLIC_INTRO_VIDEO_SRC}
+                  autoPlay
+                  muted
+                  playsInline
+                  preload="auto"
+                  onEnded={dismissPublicIntro}
+                  onError={dismissPublicIntro}
+                />
+                <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(2,6,23,0.38)_0%,rgba(2,6,23,0.56)_44%,rgba(2,6,23,0.84)_100%)]" />
+                <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_34%,rgba(56,189,248,0.2),transparent_34%),radial-gradient(circle_at_50%_70%,rgba(245,158,11,0.16),transparent_28%)]" />
+                <button
+                  type="button"
+                  onClick={dismissPublicIntro}
+                  className="absolute right-4 top-4 z-10 rounded-full border border-white/15 bg-white/10 px-4 py-2 text-[10px] font-black uppercase tracking-[0.2em] text-white/85 backdrop-blur-xl transition-colors hover:bg-white/18"
+                >
+                  Saltar
+                </button>
+                <motion.div
+                  initial={{ opacity: 0, y: 18, scale: 0.94 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -10, scale: 0.98 }}
+                  transition={{ duration: 0.36, ease: 'easeOut' }}
+                  className="relative z-10 flex w-full max-w-md flex-col items-center rounded-[32px] border border-white/15 bg-slate-950/34 px-6 py-8 text-center shadow-[0_28px_90px_rgba(2,6,23,0.44)] backdrop-blur-xl sm:px-8"
+                >
+                  <div className="mb-3 flex items-center gap-1.5 text-amber-300 drop-shadow-[0_0_14px_rgba(251,191,36,0.55)]">
+                    <span className="text-lg leading-none">★</span>
+                    <span className="text-lg leading-none">★</span>
+                    <span className="text-lg leading-none">★</span>
+                  </div>
+                  <motion.div
+                    animate={{ y: [0, -4, 0], scale: [1, 1.03, 1] }}
+                    transition={{ duration: 1.3, repeat: Infinity, ease: 'easeInOut' }}
+                    className="mb-5 flex h-20 w-20 items-center justify-center rounded-[28px] border border-white/20 bg-white/14 shadow-[0_22px_70px_rgba(14,165,233,0.25)] backdrop-blur-xl"
+                  >
+                    <Trophy className="h-11 w-11 text-amber-300" />
+                  </motion.div>
+                  <motion.p
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.08, duration: 0.28 }}
+                    className="text-5xl font-black leading-none tracking-[-0.05em] text-white sm:text-6xl"
+                  >
+                    GOLAZO
+                  </motion.p>
+                  <motion.p
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.16, duration: 0.28 }}
+                    className="mt-3 text-base font-black tracking-[-0.02em] text-sky-100 sm:text-lg"
+                  >
+                    Reservá tu cancha en minutos
+                  </motion.p>
+                  <motion.p
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.24, duration: 0.28 }}
+                    className="mt-2 max-w-xs text-sm leading-6 text-zinc-300"
+                  >
+                    Complejos, horarios y turnos en un solo lugar
+                  </motion.p>
+                  <motion.div
+                    initial={{ width: 0, opacity: 0 }}
+                    animate={{ width: 220, opacity: 1 }}
+                    transition={{ delay: 0.28, duration: 0.45, ease: 'easeOut' }}
+                    className="mt-7 h-1 rounded-full bg-gradient-to-r from-sky-300 via-white to-amber-300"
+                  />
+                </motion.div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.28, ease: 'easeOut' }}
+            className="relative z-10 mx-auto flex min-h-full w-full max-w-[1180px] flex-col px-4 py-3 sm:px-6 md:px-8 md:py-4"
+          >
+            <div className="mb-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_330px] lg:items-end">
+              <div className="space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <div className="inline-flex items-center gap-2 rounded-2xl border border-white/15 bg-white/10 px-3 py-2 backdrop-blur-xl">
+                  <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-white text-slate-950 shadow-lg">
+                    <Trophy className="h-5 w-5 text-sky-600" />
+                  </span>
+                    <div>
+                      <p className="text-base font-black leading-none tracking-[-0.04em] text-white">GOLAZO</p>
+                      <div className="mt-1 flex items-center gap-1 text-amber-300">
+                        <span className="text-[9px] leading-none">★</span>
+                        <span className="text-[9px] leading-none">★</span>
+                        <span className="text-[9px] leading-none">★</span>
+                      </div>
+                      <p className="mt-0.5 text-[8px] font-black uppercase tracking-[0.22em] text-emerald-200">Reservas online</p>
+                    </div>
+                  </div>
+                <div className="hidden items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-[9px] font-black uppercase tracking-[0.22em] text-emerald-200 backdrop-blur-xl sm:inline-flex">
+                  <Target className="h-4 w-4 text-emerald-300" />
                   Acceso Público
                 </div>
-                <div className="space-y-2.5">
-                  <h1 className="max-w-3xl text-3xl font-black leading-[0.96] tracking-[-0.04em] text-white sm:text-4xl lg:text-5xl xl:text-6xl">
-                    Reservá tu cancha en minutos
-                  </h1>
-                  <p className="max-w-xl text-sm leading-6 text-zinc-200 md:text-base">
-                    Elegí complejo, horario y jugá.
-                  </p>
+              </div>
+
+              <div className="max-w-3xl space-y-2">
+                <h1 className="text-3xl font-black leading-[0.98] tracking-[-0.04em] text-white sm:text-4xl lg:text-5xl">
+                  Reservá tu cancha en minutos
+                </h1>
+                <p className="max-w-xl text-sm leading-6 text-zinc-200 md:text-base">
+                  Elegí complejo, horario y jugá.
+                </p>
+              </div>
+              </div>
+
+              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
+                <div className="rounded-2xl border border-sky-300/25 bg-slate-950/35 p-3 shadow-[0_16px_45px_rgba(2,6,23,0.22)] backdrop-blur-xl">
+                  <div className="mb-2 flex items-center justify-between gap-3">
+                    <p className="text-[9px] font-black uppercase tracking-[0.18em] text-sky-100">Rumbo al Mundial 2026</p>
+                    <div className="flex items-center gap-1 text-amber-300">
+                      <span className="text-[9px] leading-none">★</span>
+                      <span className="text-[9px] leading-none">★</span>
+                      <span className="text-[9px] leading-none">★</span>
+                    </div>
+                  </div>
+                  {publicCountdown.hasStarted ? (
+                    <p className="text-sm font-black tracking-[-0.02em] text-white">Viví cada partido en tu complejo</p>
+                  ) : (
+                    <div className="grid grid-cols-3 gap-2">
+                      {[
+                        { label: 'Días', value: publicCountdown.days },
+                        { label: 'Horas', value: publicCountdown.hours },
+                        { label: 'Min', value: publicCountdown.minutes },
+                      ].map((item) => (
+                        <div key={item.label} className="rounded-xl border border-white/10 bg-white/10 px-2 py-2 text-center">
+                          <p className="text-lg font-black leading-none tracking-[-0.04em] text-white">{item.value}</p>
+                          <p className="mt-1 text-[7px] font-black uppercase tracking-[0.18em] text-zinc-300">{item.label}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="relative min-h-[96px] overflow-hidden rounded-2xl border border-amber-200/25 bg-black/25 p-3 shadow-[0_16px_45px_rgba(2,6,23,0.18)] backdrop-blur-xl">
+                  <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-sky-300 via-white to-amber-300" />
+                  <AnimatePresence mode="wait">
+                    <motion.div
+                      key={activeCarouselItem.title}
+                      initial={{ opacity: 0, x: 18 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: -18 }}
+                      transition={{ duration: 0.28, ease: 'easeOut' }}
+                      className="flex items-center gap-3"
+                    >
+                      <div className={cn('flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br shadow-lg', activeCarouselItem.accent)}>
+                        <ActiveCarouselIcon className="h-5 w-5 text-slate-950" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-black tracking-[-0.03em] text-white">{activeCarouselItem.title}</p>
+                        <p className="mt-1 text-xs leading-5 text-zinc-300">{activeCarouselItem.description}</p>
+                      </div>
+                    </motion.div>
+                  </AnimatePresence>
                 </div>
               </div>
             </div>
 
-            <div className="mb-5 grid max-w-4xl gap-3 lg:grid-cols-[minmax(0,1fr)_180px] lg:items-center">
-              <div className="relative max-w-2xl">
+            <div className="mb-3 grid max-w-3xl gap-3 sm:grid-cols-[minmax(0,1fr)_150px] sm:items-center">
+              <div className="relative">
                 <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-300/80" />
                 <input
                   type="text"
                   value={publicSearchTerm}
                   onChange={(e) => setPublicSearchTerm(e.target.value)}
                   placeholder="Buscar complejo"
-                  className="h-12 w-full rounded-2xl border border-white/15 bg-black/25 pl-11 pr-4 text-sm text-white placeholder:text-zinc-300/60 backdrop-blur-xl outline-none transition-all focus:border-emerald-300/60 focus:bg-black/35"
+                  className="h-11 w-full rounded-2xl border border-white/15 bg-black/25 pl-11 pr-4 text-sm text-white placeholder:text-zinc-300/60 backdrop-blur-xl outline-none transition-all focus:border-emerald-300/60 focus:bg-black/35"
                 />
               </div>
-              <div className="rounded-2xl border border-white/12 bg-white/10 px-4 py-3 backdrop-blur-xl">
-                <p className="text-[9px] font-black uppercase tracking-[0.24em] text-zinc-300">Complejos activos</p>
-                <p className="mt-1 text-2xl font-black tracking-tight text-white">{filteredPublicClients.length}</p>
+              <div className="rounded-2xl border border-white/12 bg-white/10 px-3 py-2.5 backdrop-blur-xl">
+                <p className="text-[8px] font-black uppercase tracking-[0.22em] text-zinc-300">Complejos activos</p>
+                <p className="mt-0.5 text-xl font-black tracking-tight text-white">{filteredPublicClients.length}</p>
               </div>
             </div>
 
             {isPublicClientsLoading ? (
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
                 {Array.from({ length: 6 }).map((_, index) => (
-                  <div key={index} className="h-[220px] rounded-[28px] border border-white/10 bg-white/10 animate-pulse backdrop-blur-xl" />
+                  <div key={index} className="h-[180px] rounded-[24px] border border-white/10 bg-white/10 animate-pulse backdrop-blur-xl" />
                 ))}
               </div>
             ) : filteredPublicClients.length === 0 ? (
-              <div className="rounded-[28px] border border-white/10 bg-black/30 p-8 text-center text-zinc-200 backdrop-blur-xl">
+              <div className="rounded-[24px] border border-white/10 bg-black/30 p-6 text-center text-zinc-200 backdrop-blur-xl">
                 No hay complejos activos disponibles para mostrar.
               </div>
             ) : (
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
                 {filteredPublicClients.map((client) => (
                   <button
                     key={client.id}
                     type="button"
                     onClick={() => handleSelectPublicClient(client)}
-                    className="group relative overflow-hidden rounded-[28px] border border-white/12 bg-white/10 p-4 text-left shadow-[0_18px_60px_rgba(0,0,0,0.28)] backdrop-blur-2xl transition-all duration-300 hover:-translate-y-1 hover:border-emerald-300/45 hover:bg-white/14 sm:p-5"
+                    className="group relative overflow-hidden rounded-[24px] border border-white/12 bg-white/10 p-3 text-left shadow-[0_14px_42px_rgba(0,0,0,0.24)] backdrop-blur-2xl transition-all duration-300 hover:-translate-y-0.5 hover:border-emerald-300/45 hover:bg-white/14 sm:p-4"
                   >
                     <div className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
-                      <div className="absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-emerald-300/14 to-transparent" />
-                      <div className="absolute -right-10 bottom-0 h-40 w-40 rounded-full bg-sky-400/12 blur-3xl" />
+                      <div className="absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-emerald-300/14 to-transparent" />
+                      <div className="absolute -right-10 bottom-0 h-32 w-32 rounded-full bg-sky-400/12 blur-3xl" />
                     </div>
 
-                    <div className="relative z-10 mb-4 flex items-start justify-between gap-3">
-                      <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-2xl border border-white/15 bg-white/95 text-zinc-900 shadow-[0_14px_30px_rgba(255,255,255,0.1)] sm:h-18 sm:w-18">
+                    <div className="relative z-10 mb-3 flex items-start justify-between gap-3">
+                      <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-2xl border border-white/15 bg-white/95 text-zinc-900 shadow-[0_10px_24px_rgba(255,255,255,0.1)] sm:h-14 sm:w-14">
                         {client.logo_url ? (
                           <img
                             src={client.logo_url}
@@ -526,58 +788,58 @@ export default function App() {
                             loading="lazy"
                           />
                         ) : (
-                          <div className="flex h-full w-full flex-col items-center justify-center bg-[linear-gradient(135deg,#f8fafc_0%,#dbeafe_45%,#dcfce7_100%)] p-3 text-center">
-                            <span className="text-xl font-black tracking-[-0.06em] text-slate-900">
+                          <div className="flex h-full w-full flex-col items-center justify-center bg-[linear-gradient(135deg,#f8fafc_0%,#dbeafe_45%,#dcfce7_100%)] p-2 text-center">
+                            <span className="text-lg font-black tracking-[-0.06em] text-slate-900">
                               {getClientInitials(client)}
                             </span>
-                            <span className="mt-0.5 text-[8px] font-black uppercase tracking-[0.2em] text-slate-500">
+                            <span className="mt-0.5 text-[7px] font-black uppercase tracking-[0.16em] text-slate-500">
                               Sin logo
                             </span>
                           </div>
                         )}
                       </div>
-                      <div className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-black/20 px-3 py-2 text-[10px] font-black uppercase tracking-[0.2em] text-emerald-200 backdrop-blur-md">
+                      <div className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-black/20 px-3 py-1.5 text-[9px] font-black uppercase tracking-[0.18em] text-emerald-200 backdrop-blur-md">
                         Reservar
                         <ChevronRight className="w-4 h-4 transition-transform duration-300 group-hover:translate-x-1.5" />
                       </div>
                     </div>
 
-                    <div className="relative z-10 flex min-h-[120px] flex-col">
-                      <div className="mb-3">
-                        <p className="mb-1.5 text-[9px] font-black uppercase tracking-[0.26em] text-zinc-300/80">
+                    <div className="relative z-10 flex flex-col">
+                      <div className="mb-2.5">
+                        <p className="mb-1 text-[8px] font-black uppercase tracking-[0.24em] text-zinc-300/80">
                           Complejo deportivo
                         </p>
-                        <h2 className="line-clamp-2 text-xl font-black tracking-[-0.04em] text-white sm:text-2xl">
+                        <h2 className="line-clamp-2 text-lg font-black tracking-[-0.04em] text-white sm:text-xl">
                           {getClientDisplayName(client)}
                         </h2>
                       </div>
-                      <div className="mt-auto space-y-3">
-                        <div className="flex min-h-[54px] items-start gap-2.5 rounded-2xl border border-white/10 bg-black/20 px-3 py-3 backdrop-blur-md">
+                      <div className="mt-auto space-y-2.5">
+                        <div className="flex items-start gap-2.5 rounded-2xl border border-white/10 bg-black/20 px-3 py-2.5 backdrop-blur-md">
                           <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-emerald-300" />
                           <div>
-                            <p className="text-[9px] font-black uppercase tracking-[0.2em] text-zinc-400">Dirección</p>
-                            <p className="mt-0.5 line-clamp-2 text-xs leading-5 text-zinc-100">
-                        {client.address || 'Complejo habilitado para reservas y acceso público.'}
-                      </p>
+                            <p className="text-[8px] font-black uppercase tracking-[0.18em] text-zinc-400">Dirección</p>
+                            <p className="mt-0.5 line-clamp-1 text-xs leading-5 text-zinc-100">
+                              {client.address || 'Complejo habilitado para reservas y acceso público.'}
+                            </p>
                           </div>
                         </div>
 
-                        <div className="flex items-center justify-between border-t border-white/10 pt-3">
-                          <span className="text-[10px] font-black uppercase tracking-[0.24em] text-zinc-300">
+                        <div className="flex items-center justify-between border-t border-white/10 pt-2.5">
+                          <span className="text-[9px] font-black uppercase tracking-[0.2em] text-zinc-300">
                             Reservas online
                           </span>
-                          <span className="inline-flex h-9 items-center gap-2 rounded-full bg-white px-3.5 text-[11px] font-black uppercase tracking-[0.16em] text-slate-900 shadow-lg transition-transform duration-300 group-hover:translate-x-1">
+                          <span className="inline-flex h-8 items-center gap-2 rounded-full bg-white px-3 text-[10px] font-black uppercase tracking-[0.14em] text-slate-900 shadow-lg transition-transform duration-300 group-hover:translate-x-1">
                             Reservar
                             <ChevronRight className="h-4 w-4" />
                           </span>
                         </div>
-                    </div>
+                      </div>
                     </div>
                   </button>
                 ))}
               </div>
             )}
-          </div>
+          </motion.div>
         </div>
       );
     }
@@ -728,7 +990,7 @@ export default function App() {
 
   if (isPublicPortalActive) {
     return (
-      <div className="min-h-screen bg-slate-950 text-white relative overflow-x-hidden">
+      <div className="relative h-screen overflow-hidden overflow-x-hidden bg-slate-950 text-white">
         <div
           className="fixed inset-0"
           style={{
@@ -740,7 +1002,7 @@ export default function App() {
         />
         <div className="fixed inset-0 bg-[linear-gradient(180deg,rgba(2,6,23,0.62)_0%,rgba(2,6,23,0.78)_42%,rgba(2,6,23,0.94)_100%)]" />
 
-        <div className="relative z-10 flex min-h-screen flex-col">
+        <div className="relative z-10 flex h-full min-h-0 flex-col">
           <header className="sticky top-0 z-40 border-b border-white/10 bg-slate-950/62 px-4 py-2 backdrop-blur-2xl sm:px-6 lg:px-10">
             <div className="mx-auto flex w-full max-w-[1440px] items-center justify-between gap-4">
               <div className="flex min-w-0 items-center gap-3">
@@ -793,7 +1055,7 @@ export default function App() {
             </div>
           </header>
 
-          <main className="relative z-10 mx-auto w-full max-w-[1440px] flex-1 px-4 pb-28 pt-4 sm:px-6 sm:pt-6 lg:px-8 lg:pb-10">
+          <main className="relative z-10 mx-auto min-h-0 w-full max-w-[1440px] flex-1 overflow-y-auto overflow-x-hidden px-4 pb-32 pt-4 sm:px-6 sm:pt-6 lg:px-8 lg:pb-10">
             <motion.div
               key={currentPage}
               initial={{ opacity: 0, y: 10 }}
