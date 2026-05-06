@@ -845,7 +845,7 @@ export default function App() {
     }
 
     if (isAdminRoute) return (
-      <div className="min-h-screen bg-zinc-50 flex items-center justify-start p-6 md:p-12 lg:p-24 relative overflow-hidden">
+      <div className="min-h-screen bg-zinc-50 flex items-center justify-start p-4 sm:p-6 lg:p-10 relative overflow-y-auto overflow-x-hidden">
         {/* Background Image - Campeones del Mundo 2022 (Rotativo) */}
         <div className="absolute inset-0 z-0">
           <AnimatePresence mode="wait">
@@ -865,7 +865,7 @@ export default function App() {
         </div>
 
         {/* Top Header */}
-        <div className="absolute top-12 left-0 right-0 flex justify-center z-20">
+        <div className="absolute top-6 sm:top-8 lg:top-10 left-0 right-0 flex justify-center z-20">
            <h2 className="text-sky-400 font-black tracking-[0.4em] text-[10px] uppercase bg-sky-500/10 px-6 py-2 rounded-full border border-sky-500/20 backdrop-blur-md">
              BIENVENIDO A GOLAZO
            </h2>
@@ -874,9 +874,9 @@ export default function App() {
         <motion.div 
           initial={{ opacity: 0, scale: 0.95, y: 20 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
-          className="w-full max-w-md bg-white/20 backdrop-blur-xl rounded-[48px] p-10 shadow-2xl border border-white/20 relative z-10"
+          className="w-full max-w-sm bg-white/20 backdrop-blur-xl rounded-[40px] p-6 sm:p-8 lg:p-9 shadow-2xl border border-white/20 relative z-10"
         >
-          <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center justify-between mb-5">
             <button
               type="button"
               onClick={() => { window.location.href = '/'; }}
@@ -890,13 +890,13 @@ export default function App() {
             </span>
           </div>
 
-          <div className="flex flex-col items-center mb-10">
-            <ArgentinaLogo size="lg" />
-            <p className="text-zinc-700 font-black mt-4 tracking-[0.3em] uppercase text-[9px]">Gestión de Canchas</p>
+          <div className="flex flex-col items-center mb-7">
+            <ArgentinaLogo size="md" />
+            <p className="text-zinc-700 font-black mt-3 tracking-[0.3em] uppercase text-[9px]">Gestión de Canchas</p>
           </div>
 
-          <form onSubmit={handleLogin} className="space-y-6">
-            <div className="space-y-4">
+          <form onSubmit={handleLogin} className="space-y-5">
+            <div className="space-y-3.5">
               <div className="space-y-2">
                 <label className="text-[10px] font-black text-zinc-700 uppercase tracking-[0.2em] ml-1">
                   Email
@@ -907,7 +907,7 @@ export default function App() {
                     type="email" 
                     required
                     placeholder="tu@email.com"
-                    className="w-full pl-14 pr-6 py-5 bg-zinc-50/80 border border-zinc-200 text-zinc-900 rounded-3xl focus:ring-2 focus:ring-sky-500 outline-none transition-all placeholder:text-zinc-400"
+                    className="w-full pl-14 pr-6 py-4 bg-zinc-50/80 border border-zinc-200 text-zinc-900 rounded-3xl focus:ring-2 focus:ring-sky-500 outline-none transition-all placeholder:text-zinc-400"
                     value={loginIdentifier}
                     onChange={e => setLoginIdentifier(e.target.value)}
                   />
@@ -922,7 +922,7 @@ export default function App() {
                     type="password" 
                     required
                     placeholder="********"
-                    className="w-full pl-14 pr-6 py-5 bg-zinc-50/80 border border-zinc-200 text-zinc-900 rounded-3xl focus:ring-2 focus:ring-sky-500 outline-none transition-all"
+                    className="w-full pl-14 pr-6 py-4 bg-zinc-50/80 border border-zinc-200 text-zinc-900 rounded-3xl focus:ring-2 focus:ring-sky-500 outline-none transition-all"
                     value={loginPassword}
                     onChange={e => setLoginPassword(e.target.value)}
                   />
@@ -936,7 +936,7 @@ export default function App() {
               )}
             </div>
 
-            <Button type="submit" className="w-full py-6 text-lg font-black tracking-widest shadow-2xl shadow-sky-500/20 rounded-[24px] bg-argentina text-zinc-900">
+            <Button type="submit" className="w-full py-4 sm:py-5 text-lg font-black tracking-widest shadow-2xl shadow-sky-500/20 rounded-[24px] bg-argentina text-zinc-900">
               ENTRAR
             </Button>
           </form>
