@@ -1752,6 +1752,8 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
               </Button>
             </div>
           </div>
+            </>
+          )}
         </form>
       </Modal>
 
