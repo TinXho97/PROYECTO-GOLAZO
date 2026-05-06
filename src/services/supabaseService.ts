@@ -574,9 +574,29 @@ export const supabaseService = {
   addBooking: async (booking: Omit<Booking, 'id' | 'createdAt'>) => {
     log('Adding booking', booking);
     const startTime = booking.startTime;
+    const endTime = booking.endTime;
     const dateStr = startTime.toISOString().split('T')[0];
     const timeStr = startTime.toTimeString().split(' ')[0];
     const clientId = ensureClientId(booking.client_id, 'Crear reserva');
+
+    const { data: overlappingBookings, error: overlapError } = await supabase
+      .from('bookings')
+      .select('id')
+      .eq('client_id', clientId)
+      .eq('pitch_id', booking.pitchId)
+      .lt('start_time', endTime.toISOString())
+      .gt('end_time', startTime.toISOString())
+      .in('status', ['confirmed', 'pending'])
+      .limit(1);
+
+    if (overlapError) {
+      logError('Error checking booking overlap', overlapError);
+      throw overlapError;
+    }
+
+    if (overlappingBookings && overlappingBookings.length > 0) {
+      throw new Error('Ese horario ya está ocupado para esta cancha. Elegí otro turno.');
+    }
 
     // Anti-abuse validation
     if (booking.clientPhone) {
