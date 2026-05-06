@@ -18,6 +18,51 @@ export default defineConfig(({mode}) => {
         '@': path.resolve(__dirname, '.'),
       },
     },
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            const normalizedId = id.replaceAll('\\', '/');
+
+            if (!normalizedId.includes('node_modules')) return;
+
+            if (
+              normalizedId.includes('/react/') ||
+              normalizedId.includes('/react-dom/') ||
+              normalizedId.includes('/scheduler/')
+            ) {
+              return 'react-vendor';
+            }
+
+            if (normalizedId.includes('/@supabase/')) {
+              return 'supabase-vendor';
+            }
+
+            if (normalizedId.includes('/recharts/')) {
+              return 'charts-vendor';
+            }
+
+            if (normalizedId.includes('/motion/') || normalizedId.includes('/framer-motion/')) {
+              return 'motion-vendor';
+            }
+
+            if (normalizedId.includes('/date-fns/')) {
+              return 'date-vendor';
+            }
+
+            if (normalizedId.includes('/react-day-picker/')) {
+              return 'calendar-vendor';
+            }
+
+            if (normalizedId.includes('/lucide-react/')) {
+              return 'icons-vendor';
+            }
+
+            return 'vendor';
+          },
+        },
+      },
+    },
     server: {
       host: '0.0.0.0',
       port: 3000,

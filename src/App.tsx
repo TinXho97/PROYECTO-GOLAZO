@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, lazy, Suspense } from 'react';
 import { 
   Home, 
   Building2,
@@ -27,17 +27,6 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast, Toaster } from 'sonner';
-import Dashboard from './pages/Dashboard';
-import Admin from './pages/Admin';
-import BookingsList from './pages/BookingsList';
-import CalendarPage from './pages/Calendar';
-import SalesPage from './pages/Sales';
-import RankingPage from './pages/Ranking';
-import SmartStats from './pages/SmartStats';
-import BusinessAnalysis from './pages/BusinessAnalysis';
-import SuperAdminDashboard from './pages/SuperAdminDashboard';
-import SuperAdminSaaS from './pages/SuperAdminSaaS';
-import AIChatFloating from './components/AIChatFloating';
 import { ArgentinaLogo } from './components/ArgentinaLogo';
 import { Button } from './components/Button';
 import { Modal } from './components/Modal';
@@ -49,6 +38,22 @@ import { User, Client } from './types';
 import { supabase, checkSupabaseConnection } from './lib/supabase';
 
 type Page = 'dashboard' | 'bookings' | 'calendar' | 'sales' | 'admin' | 'ranking' | 'stats';
+
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const Admin = lazy(() => import('./pages/Admin'));
+const BookingsList = lazy(() => import('./pages/BookingsList'));
+const CalendarPage = lazy(() => import('./pages/Calendar'));
+const SalesPage = lazy(() => import('./pages/Sales'));
+const RankingPage = lazy(() => import('./pages/Ranking'));
+const SmartStats = lazy(() => import('./pages/SmartStats'));
+const SuperAdminSaaS = lazy(() => import('./pages/SuperAdminSaaS'));
+const AIChatFloating = lazy(() => import('./components/AIChatFloating'));
+
+const PageFallback = () => (
+  <div className="flex min-h-[240px] w-full items-center justify-center">
+    <span className="text-sm font-bold text-zinc-500">Cargando...</span>
+  </div>
+);
 
 const PUBLIC_SELECTION_BACKGROUND = 'https://iili.io/q6oJgJ2.jpg';
 const PUBLIC_INTRO_SESSION_KEY = 'golazo_public_intro_seen';
@@ -458,7 +463,11 @@ export default function App() {
   }, [isPublicRoute, isPublicClientsLoading, selectedPublicClientId, publicClients]);
 
   if (isSuperAdminRoute) {
-    return <SuperAdminSaaS />;
+    return (
+      <Suspense fallback={<PageFallback />}>
+        <SuperAdminSaaS />
+      </Suspense>
+    );
   }
 
   // Blocking logic
@@ -1063,7 +1072,9 @@ export default function App() {
               transition={{ duration: 0.2 }}
               className="min-w-0 w-full"
             >
-              {renderPage()}
+              <Suspense fallback={<PageFallback />}>
+                {renderPage()}
+              </Suspense>
             </motion.div>
           </main>
 
@@ -1295,12 +1306,18 @@ export default function App() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.2 }}
           >
-            {renderPage()}
+            <Suspense fallback={<PageFallback />}>
+              {renderPage()}
+            </Suspense>
           </motion.div>
         </div>
       </main>
 
-      {activeUser.role === 'admin' && <AIChatFloating />}
+      {activeUser.role === 'admin' && (
+        <Suspense fallback={null}>
+          <AIChatFloating />
+        </Suspense>
+      )}
       
       {/* Logo Viewer Modal */}
       <Modal
