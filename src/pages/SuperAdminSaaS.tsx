@@ -537,6 +537,13 @@ export default function SuperAdminSaaS() {
     }
   }, [clients, selectedSettingsClientId]);
 
+  const selectedNewUserClient = clients.find((client) => client.id === newUser.client_id);
+  const newUserFeaturePreview = newUser.create_new_client
+    ? newUser.features
+    : selectedNewUserClient
+      ? resolveClientFeatures(selectedNewUserClient)
+      : newUser.features;
+
   const handleCreateUser = async (e: FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
@@ -1887,7 +1894,7 @@ export default function SuperAdminSaaS() {
       {/* Create User Modal */}
       {isUserModalOpen && (
         <div className="fixed inset-0 bg-[#0B0F19]/90 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-[#111827] border border-white/10 rounded-[32px] w-full max-w-2xl p-8 shadow-2xl my-8">
+          <div className="bg-[#111827] border border-white/10 rounded-[32px] w-full max-w-4xl p-6 sm:p-8 shadow-2xl my-8">
              <div className="flex justify-between items-center mb-8">
               <h3 className="text-2xl font-black text-white tracking-tight">Nuevo Administrador SaaS</h3>
               <button onClick={() => setIsUserModalOpen(false)} className="text-slate-500 hover:text-white bg-[#1F2937] p-2 rounded-full transition-colors">
@@ -1914,21 +1921,21 @@ export default function SuperAdminSaaS() {
 
                   <div className="space-y-3">
                     <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider">Modo de acceso</label>
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <button
                         type="button"
                         onClick={() => setNewUser({ ...newUser, accessMode: 'invite', password: '' })}
-                        className={`rounded-xl border px-4 py-3 text-left transition-colors ${newUser.accessMode === 'invite' ? 'border-[#FF6B00]/40 bg-[#FF6B00]/10 text-white' : 'border-white/10 bg-[#0B0F19] text-slate-300 hover:border-white/20'}`}
+                        className={`min-h-[92px] rounded-xl border px-4 py-3 text-left transition-colors ${newUser.accessMode === 'invite' ? 'border-[#FF6B00]/40 bg-[#FF6B00]/10 text-white' : 'border-white/10 bg-[#0B0F19] text-slate-300 hover:border-white/20'}`}
                       >
-                        <div className="text-xs font-black uppercase tracking-widest">Invitación segura</div>
+                        <div className="text-[11px] font-black uppercase tracking-wider leading-tight">Invitación segura</div>
                         <div className="mt-1 text-[11px] text-slate-400">El admin define su contraseña por email.</div>
                       </button>
                       <button
                         type="button"
                         onClick={() => setNewUser({ ...newUser, accessMode: 'password' })}
-                        className={`rounded-xl border px-4 py-3 text-left transition-colors ${newUser.accessMode === 'password' ? 'border-[#FF6B00]/40 bg-[#FF6B00]/10 text-white' : 'border-white/10 bg-[#0B0F19] text-slate-300 hover:border-white/20'}`}
+                        className={`min-h-[92px] rounded-xl border px-4 py-3 text-left transition-colors ${newUser.accessMode === 'password' ? 'border-[#FF6B00]/40 bg-[#FF6B00]/10 text-white' : 'border-white/10 bg-[#0B0F19] text-slate-300 hover:border-white/20'}`}
                       >
-                        <div className="text-xs font-black uppercase tracking-widest">Compatibilidad manual</div>
+                        <div className="text-[11px] font-black uppercase tracking-wider leading-tight">Compatibilidad manual</div>
                         <div className="mt-1 text-[11px] text-slate-400">Permite definir contraseña desde el panel.</div>
                       </button>
                     </div>
@@ -1967,81 +1974,97 @@ export default function SuperAdminSaaS() {
                     </label>
                   </div>
 
-                  {!newUser.create_new_client && (
-                    <div className="animate-in fade-in slide-in-from-top-2">
-                      <label className="block text-xs font-bold text-slate-400 mb-1.5 uppercase tracking-wider">Vincular a Cliente Existente</label>
-                      <select
-                        required
-                        value={newUser.client_id}
-                        onChange={(e) => setNewUser({...newUser, client_id: e.target.value})}
-                        className="w-full bg-[#0B0F19] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-[#FF6B00] transition-colors"
-                      >
-                        <option value="">Seleccionar cliente...</option>
-                        {clients.map(c => (
-                          <option key={c.id} value={c.id}>{c.name}</option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
                 </div>
 
                 {/* Client Info */}
-                {newUser.create_new_client && (
-                  <div className="space-y-5 animate-in fade-in slide-in-from-right-4">
-                    <h4 className="text-[#FF6B00] font-black uppercase tracking-widest text-[10px] border-b border-white/5 pb-3">Datos del Complejo</h4>
-                    <div>
-                      <label className="block text-xs font-bold text-slate-400 mb-1.5 uppercase tracking-wider">Nombre del Complejo</label>
-                      <input
-                        type="text"
-                        required
-                        value={newUser.complex_name}
-                        onChange={(e) => setNewUser({...newUser, complex_name: e.target.value, client_name: e.target.value})}
-                        className="w-full bg-[#0B0F19] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-[#FF6B00] transition-colors"
-                        placeholder="Ej: Golazo FC"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-slate-400 mb-1.5 uppercase tracking-wider">Teléfono</label>
-                      <input
-                        type="text"
-                        value={newUser.phone}
-                        onChange={(e) => setNewUser({...newUser, phone: e.target.value})}
-                        className="w-full bg-[#0B0F19] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-[#FF6B00] transition-colors"
-                        placeholder="Ej: +54 9 11 2233-4455"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-slate-400 mb-1.5 uppercase tracking-wider">Dirección</label>
-                      <input
-                        type="text"
-                        value={newUser.address}
-                        onChange={(e) => setNewUser({...newUser, address: e.target.value})}
-                        className="w-full bg-[#0B0F19] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-[#FF6B00] transition-colors"
-                        placeholder="Ej: Av. Siempre Viva 742"
-                      />
-                    </div>
+                <div className="space-y-5 animate-in fade-in slide-in-from-right-4">
+                  <h4 className="text-[#FF6B00] font-black uppercase tracking-widest text-[10px] border-b border-white/5 pb-3">Datos del Complejo</h4>
 
-                    <div className="space-y-3 pt-2">
-                      <label className="block text-xs font-bold text-slate-400 mb-1.5 uppercase tracking-wider">Servicios Habilitados</label>
-                      <div className="grid grid-cols-2 gap-3">
-                        {Object.entries(newUser.features).map(([key, val]) => (
-                          <label key={key} className="flex items-center gap-2 cursor-pointer p-3 bg-[#0B0F19] rounded-xl border border-white/5 hover:border-white/10 transition-colors">
-                            <input 
-                              type="checkbox" 
-                              checked={val}
-                              onChange={(e) => setNewUser({
-                                ...newUser, 
-                                features: { ...newUser.features, [key]: e.target.checked }
-                              })}
-                              className="w-4 h-4 rounded border-white/10 bg-[#111827] text-[#FF6B00] focus:ring-[#FF6B00]"
-                            />
-                            <span className="text-xs font-bold text-slate-300 uppercase tracking-tighter">{FEATURE_LABELS[key as ClientFeatureKey]}</span>
-                          </label>
-                        ))}
+                  {newUser.create_new_client ? (
+                    <>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-400 mb-1.5 uppercase tracking-wider">Nombre del Complejo</label>
+                        <input
+                          type="text"
+                          required
+                          value={newUser.complex_name}
+                          onChange={(e) => setNewUser({...newUser, complex_name: e.target.value, client_name: e.target.value})}
+                          className="w-full bg-[#0B0F19] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-[#FF6B00] transition-colors"
+                          placeholder="Ej: Golazo FC"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-400 mb-1.5 uppercase tracking-wider">Teléfono</label>
+                        <input
+                          type="text"
+                          value={newUser.phone}
+                          onChange={(e) => setNewUser({...newUser, phone: e.target.value})}
+                          className="w-full bg-[#0B0F19] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-[#FF6B00] transition-colors"
+                          placeholder="Ej: +54 9 11 2233-4455"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-400 mb-1.5 uppercase tracking-wider">Dirección</label>
+                        <input
+                          type="text"
+                          value={newUser.address}
+                          onChange={(e) => setNewUser({...newUser, address: e.target.value})}
+                          className="w-full bg-[#0B0F19] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-[#FF6B00] transition-colors"
+                          placeholder="Ej: Av. Siempre Viva 742"
+                        />
+                      </div>
+                    </>
+                  ) : (
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-400 mb-1.5 uppercase tracking-wider">Cancha / Cliente Existente</label>
+                        <select
+                          required
+                          value={newUser.client_id}
+                          onChange={(e) => setNewUser({...newUser, client_id: e.target.value})}
+                          className="w-full bg-[#0B0F19] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-[#FF6B00] transition-colors"
+                        >
+                          <option value="">Seleccionar cancha...</option>
+                          {clients.map(c => (
+                            <option key={c.id} value={c.id}>{c.name}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="rounded-2xl border border-white/5 bg-[#0B0F19]/70 p-4">
+                        <div className="text-sm font-black text-white">{selectedNewUserClient?.name || 'Sin cancha seleccionada'}</div>
+                        <div className="mt-2 space-y-1 text-xs font-medium text-slate-400">
+                          <p>Teléfono: {selectedNewUserClient?.phone || '-'}</p>
+                          <p>Dirección: {selectedNewUserClient?.address || '-'}</p>
+                        </div>
                       </div>
                     </div>
+                  )}
+
+                  <div className={`space-y-3 pt-2 ${newUser.create_new_client ? '' : 'opacity-55 grayscale'}`}>
+                    <label className="block text-xs font-bold text-slate-400 mb-1.5 uppercase tracking-wider">Servicios Habilitados</label>
+                    <div className="grid grid-cols-2 gap-3">
+                      {Object.entries(newUserFeaturePreview).map(([key, val]) => (
+                        <label
+                          key={key}
+                          className={`flex items-center gap-2 p-3 rounded-xl border transition-colors ${newUser.create_new_client ? 'cursor-pointer bg-[#0B0F19] border-white/5 hover:border-white/10' : 'cursor-not-allowed bg-slate-900/40 border-white/5'}`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={val}
+                            disabled={!newUser.create_new_client}
+                            onChange={(e) => setNewUser({
+                              ...newUser,
+                              features: { ...newUser.features, [key]: e.target.checked }
+                            })}
+                            className="w-4 h-4 rounded border-white/10 bg-[#111827] text-[#FF6B00] focus:ring-[#FF6B00] disabled:cursor-not-allowed"
+                          />
+                          <span className="text-xs font-bold text-slate-300 uppercase tracking-tighter">{FEATURE_LABELS[key as ClientFeatureKey]}</span>
+                        </label>
+                      ))}
+                    </div>
                   </div>
-                )}
+                </div>
               </div>
               
               <div className="pt-8 flex gap-4 border-t border-white/5">
