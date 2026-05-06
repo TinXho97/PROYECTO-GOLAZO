@@ -173,7 +173,7 @@ const FEATURE_LABELS: Record<ClientFeatureKey, string> = {
   reservas: 'Reservas',
   ventas: 'Ventas',
   ranking: 'Ranking',
-  estadisticas: 'EstadÃ­sticas',
+  estadisticas: 'Estadísticas',
 };
 
 const currencyFormatter = new Intl.NumberFormat('es-AR', {
@@ -280,7 +280,7 @@ export default function SuperAdminSaaS() {
     } = await supabase.auth.getSession();
 
     if (!session?.access_token) {
-      throw new Error('SesiÃ³n expirada. IniciÃ¡ sesiÃ³n nuevamente.');
+      throw new Error('Sesión expirada. Iniciá sesión nuevamente.');
     }
 
     const response = await fetch(`${getSupabaseUrl()}/functions/v1/admin-ops`, {
@@ -301,7 +301,7 @@ export default function SuperAdminSaaS() {
       const message = responseBody?.error?.message || responseBody?.error;
 
       if (code === 'invalid_jwt' || code === 'profile_missing') {
-        throw new Error(message || `SesiÃ³n invÃ¡lida (${code}).`);
+        throw new Error(message || `Sesión inválida (${code}).`);
       }
 
       if (code === 'forbidden') {
@@ -309,7 +309,7 @@ export default function SuperAdminSaaS() {
       }
 
       if (response.status === 404) {
-        throw new Error('La funciÃ³n admin-ops no estÃ¡ disponible en Supabase.');
+        throw new Error('La función admin-ops no está disponible en Supabase.');
       }
 
       throw new Error(message || 'Error inesperado en admin-ops');
@@ -356,7 +356,7 @@ export default function SuperAdminSaaS() {
       setIsAuthenticated(true);
       await Promise.all([fetchClients(), fetchUsers(), fetchMetrics()]);
     } catch (err: any) {
-      setError(err.message || 'Error al iniciar sesiÃ³n');
+      setError(err.message || 'Error al iniciar sesión');
     } finally {
       setIsLoading(false);
     }
@@ -370,7 +370,7 @@ export default function SuperAdminSaaS() {
       setMetricsAnalytics(data.analytics);
     } catch (e) {
       console.error('Error fetching metrics:', e);
-      toast.error('No se pudieron cargar las mÃ©tricas globales');
+      toast.error('No se pudieron cargar las métricas globales');
     } finally {
       setIsMetricsLoading(false);
     }
@@ -419,7 +419,7 @@ export default function SuperAdminSaaS() {
   };
 
   const handleDeleteClient = async (client: Client) => {
-    if (!window.confirm(`Â¿EstÃ¡s seguro de eliminar el cliente ${client.complex_name || client.name}? Esta acciÃ³n borrarÃ¡ tambiÃ©n sus administradores y datos asociados.`)) return;
+    if (!window.confirm(`¿Estás seguro de eliminar el cliente ${client.complex_name || client.name}? Esta acción borrará también sus administradores y datos asociados.`)) return;
 
     try {
       setOpenMenuId(null);
@@ -475,7 +475,7 @@ export default function SuperAdminSaaS() {
     } catch (error: any) {
       console.error('Error fetching audit logs:', error);
       setAuditLogs([]);
-      toast.error(error?.message || 'No se pudo cargar el historial de auditorÃ­a');
+      toast.error(error?.message || 'No se pudo cargar el historial de auditoría');
     } finally {
       setIsAuditLoading(false);
     }
@@ -504,7 +504,7 @@ export default function SuperAdminSaaS() {
       } catch (sessionError: any) {
         console.error('Error loading superadmin session:', sessionError);
         setIsAuthenticated(false);
-        setError(sessionError?.message || 'No se pudo validar la sesiÃ³n de superadmin');
+        setError(sessionError?.message || 'No se pudo validar la sesión de superadmin');
       }
     };
 
@@ -567,7 +567,7 @@ export default function SuperAdminSaaS() {
 
       toast.success(
         newUser.accessMode === 'invite'
-          ? 'Administrador creado y invitaciÃ³n enviada.'
+          ? 'Administrador creado e invitación enviada.'
           : 'Administrador creado exitosamente.',
       );
       setIsUserModalOpen(false);
@@ -581,7 +581,7 @@ export default function SuperAdminSaaS() {
   };
 
   const handleDeleteUser = async (userId: string) => {
-    if (!window.confirm('Â¿EstÃ¡s seguro de eliminar este usuario?')) return;
+    if (!window.confirm('¿Estás seguro de eliminar este usuario?')) return;
     
     try {
       await invokeAdminOp('delete_admin', { userId });
@@ -598,7 +598,7 @@ export default function SuperAdminSaaS() {
       return;
     }
 
-    if (!window.confirm(`Â¿Enviar recuperaciÃ³n de contraseÃ±a a ${admin.email}?`)) {
+    if (!window.confirm(`¿Enviar recuperación de contraseña a ${admin.email}?`)) {
       return;
     }
 
@@ -610,16 +610,16 @@ export default function SuperAdminSaaS() {
         email: admin.email,
         redirectTo: getAdminRedirectUrl(),
       });
-      toast.success('Se enviÃ³ el correo de recuperaciÃ³n al administrador.');
+      toast.success('Se envió el correo de recuperación al administrador.');
     } catch (error: any) {
       const rawMessage = typeof error?.message === 'string' ? error.message.trim() : '';
       const message =
         rawMessage.includes('superadmin') ||
         rawMessage.includes('administrador') ||
         rawMessage.includes('No se encontro') ||
-        rawMessage.includes('No se encontrÃ³')
+        rawMessage.includes('No se encontró')
           ? rawMessage
-          : 'No se pudo enviar la recuperaciÃ³n de contraseÃ±a.';
+          : 'No se pudo enviar la recuperación de contraseña.';
       toast.error(message);
     } finally {
       setIsAccessActionLoading(null);
@@ -627,7 +627,7 @@ export default function SuperAdminSaaS() {
   };
 
   const resetRanking = async (client: Client) => {
-    if (!window.confirm(`Â¿EstÃ¡s seguro de que deseas resetear el ranking para el cliente ${client.name}?`)) return;
+    if (!window.confirm(`¿Estás seguro de que deseas resetear el ranking para el cliente ${client.name}?`)) return;
     
     try {
       const resetDate = new Date().toISOString();
@@ -642,7 +642,7 @@ export default function SuperAdminSaaS() {
     e.preventDefault();
 
     if (!selectedSettingsClientId || !settingsDraft) {
-      toast.error('Selecciona un cliente para editar su configuraciÃ³n.');
+      toast.error('Selecciona un cliente para editar su configuración.');
       return;
     }
 
@@ -662,10 +662,10 @@ export default function SuperAdminSaaS() {
       });
 
       setSettingsDraft(createClientSettingsDraft(updatedClient));
-      toast.success('ConfiguraciÃ³n del cliente actualizada');
+      toast.success('Configuración del cliente actualizada');
       await fetchMetrics();
     } catch (error: any) {
-      toast.error(error.message || 'No se pudo guardar la configuraciÃ³n');
+      toast.error(error.message || 'No se pudo guardar la configuración');
     } finally {
       setIsSavingSettings(false);
     }
@@ -711,7 +711,7 @@ export default function SuperAdminSaaS() {
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="ContraseÃ±a"
+                placeholder="Contraseña"
                 className="w-full bg-[#0B0F19] border border-white/10 rounded-2xl px-5 py-4 text-white focus:outline-none focus:border-[#FF6B00] transition-colors placeholder:text-slate-600"
               />
             </div>
@@ -747,30 +747,30 @@ export default function SuperAdminSaaS() {
   const topPitchMetrics = metricsAnalytics?.pitches.most_profitable ?? [];
   const weakestPitchMetrics = metricsAnalytics?.pitches.least_profitable ?? [];
   const systemScope = [
-    'Altas, bajas y suspensiÃ³n de clientes.',
-    'Vencimientos, extensiÃ³n de servicio y saneamiento de features.',
-    'MÃ³dulos habilitados y consistencia del esquema multicliente.',
-    'MÃ©tricas globales, rentabilidad, alertas y trazabilidad.',
+    'Altas, bajas y suspensión de clientes.',
+    'Vencimientos, extensión de servicio y saneamiento de features.',
+    'Módulos habilitados y consistencia del esquema multicliente.',
+    'Métricas globales, rentabilidad, alertas y trazabilidad.',
   ];
   const clientPanelScope = [
-    'Precios operativos por cancha y gestiÃ³n diaria del calendario.',
+    'Precios operativos por cancha y gestión diaria del calendario.',
     'Altas de productos, stock y ventas del complejo.',
-    'AtenciÃ³n de reservas, cobros y operaciÃ³n del ranking.',
-    'ConfiguraciÃ³n visual y operaciÃ³n interna del negocio.',
+    'Atención de reservas, cobros y operación del ranking.',
+    'Configuración visual y operación interna del negocio.',
   ];
 
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'clients', label: 'Clientes', icon: Building2 },
     { id: 'users', label: 'Administradores', icon: Users },
-    { id: 'audit', label: 'AuditorÃ­a', icon: History },
-    { id: 'metrics', label: 'MÃ©tricas', icon: BarChart2 },
-    { id: 'settings', label: 'ConfiguraciÃ³n', icon: Settings },
+    { id: 'audit', label: 'Auditoría', icon: History },
+    { id: 'metrics', label: 'Métricas', icon: BarChart2 },
+    { id: 'settings', label: 'Configuración', icon: Settings },
   ] as const;
 
   const panelNavItems = navItems.map((item) => {
-    if (item.id === 'metrics') return { ...item, label: 'MÃ©tricas' };
-    if (item.id === 'settings') return { ...item, label: 'ConfiguraciÃ³n' };
+    if (item.id === 'metrics') return { ...item, label: 'Métricas' };
+    if (item.id === 'settings') return { ...item, label: 'Configuración' };
     return item;
   });
 
@@ -851,8 +851,8 @@ export default function SuperAdminSaaS() {
             <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
               <div className="flex items-center justify-between">
                 <div>
-                  <h2 className="text-2xl font-black text-white tracking-tight">VisiÃ³n General</h2>
-                  <p className="text-slate-400 text-sm mt-1">MÃ©tricas principales de la plataforma SaaS</p>
+                  <h2 className="text-2xl font-black text-white tracking-tight">Visión General</h2>
+                  <p className="text-slate-400 text-sm mt-1">Métricas principales de la plataforma SaaS</p>
                 </div>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -900,7 +900,7 @@ export default function SuperAdminSaaS() {
             <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
               <div className="flex items-center justify-between">
                 <div>
-                  <h2 className="text-2xl font-black text-white tracking-tight">GestiÃ³n de Clientes</h2>
+                  <h2 className="text-2xl font-black text-white tracking-tight">Gestión de Clientes</h2>
                   <p className="text-slate-400 text-sm mt-1">Administra los complejos y sus accesos</p>
                 </div>
                 <button
@@ -926,7 +926,7 @@ export default function SuperAdminSaaS() {
                 <div className="text-center py-20 bg-[#111827] rounded-[32px] border border-white/5">
                   <Building2 className="w-16 h-16 text-slate-600 mx-auto mb-4" />
                   <h3 className="text-xl font-bold text-white mb-2">No se encontraron clientes</h3>
-                  <p className="text-slate-400">IntentÃ¡ con otra bÃºsqueda o creÃ¡ un nuevo cliente.</p>
+                  <p className="text-slate-400">Intentá con otra búsqueda o creá un nuevo cliente.</p>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 xl:grid-cols-2 2xl:grid-cols-3 gap-6">
@@ -941,7 +941,7 @@ export default function SuperAdminSaaS() {
                             <div className="flex items-center gap-2 text-xs text-slate-500">
                                <span className="font-mono bg-[#1F2937] px-2 py-0.5 rounded-md text-slate-400">ID: {client.id.substring(0,8)}</span>
                                <span>â€¢</span>
-                               <span>{client.phone || 'Sin telÃ©fono'}</span>
+                               <span>{client.phone || 'Sin teléfono'}</span>
                             </div>
                           </div>
                           <div className="flex items-center gap-2">
@@ -973,7 +973,7 @@ export default function SuperAdminSaaS() {
                                     <Activity className="w-4 h-4" /> Resetear Ranking
                                   </button>
                                   <button onClick={() => { extendExpiration(client, 30); setOpenMenuId(null); }} className="w-full text-left px-4 py-2.5 text-sm hover:bg-white/5 transition-colors text-white font-medium flex items-center gap-2">
-                                    <Calendar className="w-4 h-4" /> Extender 30 dÃ­as
+                                    <Calendar className="w-4 h-4" /> Extender 30 días
                                   </button>
                                   <button onClick={() => { handleDeleteClient(client); }} className="w-full text-left px-4 py-2.5 text-sm hover:bg-red-500/10 transition-colors text-red-400 font-medium flex items-center gap-2">
                                     <Trash2 className="w-4 h-4" /> Eliminar Cliente
@@ -986,7 +986,7 @@ export default function SuperAdminSaaS() {
 
                         {/* Modules */}
                         <div className="mb-6">
-                          <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3">MÃ³dulos Habilitados</h4>
+                          <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3">Módulos Habilitados</h4>
                           <div className="flex flex-wrap gap-2">
                             {(['reservas', 'ventas', 'ranking', 'estadisticas'] as ClientFeatureKey[]).map((mod) => {
                               const isEnabled = resolveClientFeatures(client)[mod];
@@ -1014,7 +1014,7 @@ export default function SuperAdminSaaS() {
                                   </div>
                                   <div>
                                     <p className="text-sm font-medium text-slate-200">{admin.email || admin.profile?.name || 'Sin email'}</p>
-                                    <p className="text-[10px] text-slate-500">Ãšltimo acceso: {admin.last_sign_in_at ? format(new Date(admin.last_sign_in_at), "dd/MM/yy", { locale: es }) : 'Nunca'}</p>
+                                    <p className="text-[10px] text-slate-500">Último acceso: {admin.last_sign_in_at ? format(new Date(admin.last_sign_in_at), "dd/MM/yy", { locale: es }) : 'Nunca'}</p>
                                   </div>
                                 </div>
                                 <button
@@ -1023,7 +1023,7 @@ export default function SuperAdminSaaS() {
                                   disabled={isAccessActionLoading === admin.id || !admin.email}
                                   className="px-3 py-2 rounded-lg bg-sky-500/10 text-sky-300 hover:bg-sky-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-[10px] font-black uppercase tracking-widest"
                                 >
-                                  {isAccessActionLoading === admin.id ? 'Enviando...' : 'Enviar recuperaciÃ³n'}
+                                  {isAccessActionLoading === admin.id ? 'Enviando...' : 'Enviar recuperación'}
                                 </button>
                               </div>
                             )) : (
@@ -1057,7 +1057,7 @@ export default function SuperAdminSaaS() {
               <div className="flex items-center justify-between">
                 <div>
                   <h2 className="text-2xl font-black text-white tracking-tight">Administradores por Cliente</h2>
-                  <p className="text-slate-400 text-sm mt-1">GestiÃ³n real de los accesos operativos del sistema</p>
+                  <p className="text-slate-400 text-sm mt-1">Gestión real de los accesos operativos del sistema</p>
                 </div>
                 <button
                   onClick={() => setIsUserModalOpen(true)}
@@ -1074,8 +1074,8 @@ export default function SuperAdminSaaS() {
                       <tr>
                         <th className="px-6 py-5">Email / Admin</th>
                         <th className="px-6 py-5">Complejo / Cliente</th>
-                        <th className="px-6 py-5">Contacto / DirecciÃ³n</th>
-                        <th className="px-6 py-5">Ãšltimo Acceso</th>
+                        <th className="px-6 py-5">Contacto / Dirección</th>
+                        <th className="px-6 py-5">Último Acceso</th>
                         <th className="px-6 py-5 text-right">Acciones</th>
                       </tr>
                     </thead>
@@ -1112,8 +1112,8 @@ export default function SuperAdminSaaS() {
                               <td className="px-6 py-4">
                                 {client ? (
                                   <div className="space-y-1">
-                                    <div className="text-slate-300 text-xs">{user.profile?.phone || client.phone || 'Sin telÃ©fono'}</div>
-                                    <div className="text-slate-500 text-[10px] truncate max-w-[150px]">{client.address || 'Sin direcciÃ³n'}</div>
+                                    <div className="text-slate-300 text-xs">{user.profile?.phone || client.phone || 'Sin teléfono'}</div>
+                                    <div className="text-slate-500 text-[10px] truncate max-w-[150px]">{client.address || 'Sin dirección'}</div>
                                   </div>
                                 ) : (
                                   <span className="text-slate-500 text-xs">-</span>
@@ -1128,9 +1128,9 @@ export default function SuperAdminSaaS() {
                                     onClick={() => handleSendPasswordRecovery(user)}
                                     disabled={isAccessActionLoading === user.id || !user.email}
                                     className="px-3 py-2 bg-sky-500/10 text-sky-300 hover:bg-sky-500/20 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors text-[10px] font-black uppercase tracking-widest"
-                                    title="Enviar recuperaciÃ³n de contraseÃ±a"
+                                    title="Enviar recuperación de contraseña"
                                   >
-                                    {isAccessActionLoading === user.id ? 'Enviando...' : 'Enviar recuperaciÃ³n'}
+                                    {isAccessActionLoading === user.id ? 'Enviando...' : 'Enviar recuperación'}
                                   </button>
                                   <button
                                     onClick={() => handleDeleteUser(user.id)}
@@ -1156,9 +1156,9 @@ export default function SuperAdminSaaS() {
             <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
               <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                 <div>
-                  <h2 className="text-2xl font-black text-white tracking-tight">MÃ©tricas de negocio y operaciÃ³n</h2>
+                  <h2 className="text-2xl font-black text-white tracking-tight">Métricas de negocio y operación</h2>
                   <p className="text-slate-400 text-sm mt-1">
-                    Vista consolidada de uso, ingresos y salud del SaaS en los Ãºltimos {metricsAnalytics?.window_days ?? 30} dÃ­as.
+                    Vista consolidada de uso, ingresos y salud del SaaS en los últimos {metricsAnalytics?.window_days ?? 30} días.
                   </p>
                 </div>
                 <div className="flex items-center gap-3">
@@ -1169,7 +1169,7 @@ export default function SuperAdminSaaS() {
                     onClick={fetchMetrics}
                     disabled={isMetricsLoading}
                     className="p-2 bg-[#1F2937] text-slate-400 hover:text-white hover:bg-[#374151] rounded-lg transition-colors disabled:opacity-50"
-                    title="Actualizar mÃ©tricas"
+                    title="Actualizar métricas"
                   >
                     <RefreshCw className={`w-5 h-5 ${isMetricsLoading ? 'animate-spin' : ''}`} />
                   </button>
@@ -1250,7 +1250,7 @@ export default function SuperAdminSaaS() {
                     <div className="text-xs text-slate-500">30d</div>
                   </div>
                   {topClientMetrics.length === 0 ? (
-                    <div className="text-sm text-slate-500">TodavÃ­a no hay datos suficientes para mostrar comparativas por cliente.</div>
+                    <div className="text-sm text-slate-500">Todavía no hay datos suficientes para mostrar comparativas por cliente.</div>
                   ) : (
                     <div className="space-y-3">
                       {topClientMetrics.map((clientMetric) => (
@@ -1311,9 +1311,9 @@ export default function SuperAdminSaaS() {
 
                 <section className="space-y-6">
                   <div className="bg-[#111827] border border-white/5 rounded-[28px] p-6">
-                    <h3 className="text-xl font-black text-white">Alertas y anomalÃ­as</h3>
+                    <h3 className="text-xl font-black text-white">Alertas y anomalías</h3>
                     <div className="space-y-3 mt-5">
-                      {(metricsAnalytics?.alerts?.length ? metricsAnalytics.alerts : ['Sin alertas globales crÃ­ticas por ahora.']).map((alert) => (
+                      {(metricsAnalytics?.alerts?.length ? metricsAnalytics.alerts : ['Sin alertas globales críticas por ahora.']).map((alert) => (
                         <div key={alert} className="flex items-start gap-3 bg-[#0B0F19] border border-white/5 rounded-2xl p-4">
                           <AlertTriangle className="w-5 h-5 text-amber-400 mt-0.5 shrink-0" />
                           <p className="text-sm text-slate-300">{alert}</p>
@@ -1354,7 +1354,7 @@ export default function SuperAdminSaaS() {
                 <section className="bg-[#111827] border border-white/5 rounded-[28px] p-6">
                   <div className="flex items-center justify-between gap-4 mb-5">
                     <div>
-                      <h3 className="text-xl font-black text-white">Canchas mÃ¡s rentables</h3>
+                      <h3 className="text-xl font-black text-white">Canchas más rentables</h3>
                       <p className="text-sm text-slate-400 mt-1">Rentabilidad estimada por turnos sobre precio actual.</p>
                     </div>
                     <CircleDollarSign className="w-6 h-6 text-[#FF6B00]" />
@@ -1383,7 +1383,7 @@ export default function SuperAdminSaaS() {
                   <div className="flex items-center justify-between gap-4 mb-5">
                     <div>
                       <h3 className="text-xl font-black text-white">Canchas menos rentables</h3>
-                      <p className="text-sm text-slate-400 mt-1">Ãštil para decidir cambios de precio, promos o revisiÃ³n operativa.</p>
+                      <p className="text-sm text-slate-400 mt-1">Útil para decidir cambios de precio, promos o revisión operativa.</p>
                     </div>
                     <BarChart2 className="w-6 h-6 text-slate-400" />
                   </div>
@@ -1421,7 +1421,7 @@ export default function SuperAdminSaaS() {
                   </div>
                 </div>
                 <div className="bg-[#111827] border border-white/5 rounded-[28px] p-6">
-                  <h3 className="text-lg font-black text-white">Horarios vacÃ­os</h3>
+                  <h3 className="text-lg font-black text-white">Horarios vacíos</h3>
                   <div className="space-y-3 mt-5">
                     {(metricsAnalytics?.reservations.low_hours ?? []).map((entry) => (
                       <div key={`low-${entry.hour}`} className="flex items-center justify-between bg-[#0B0F19] rounded-2xl border border-white/5 px-4 py-3">
@@ -1445,7 +1445,7 @@ export default function SuperAdminSaaS() {
                         </div>
                       ))}
                     {(!metricsAnalytics || ((metricsAnalytics.clients.low_activity.length + metricsAnalytics.clients.many_users_low_operation.length) === 0)) && (
-                      <div className="text-sm text-slate-500">No aparecen clientes crÃ­ticos bajo estas reglas.</div>
+                      <div className="text-sm text-slate-500">No aparecen clientes críticos bajo estas reglas.</div>
                     )}
                   </div>
                 </div>
@@ -1456,15 +1456,15 @@ export default function SuperAdminSaaS() {
           {activeTab === 'settings' && (
             <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
               <div>
-                <h2 className="text-2xl font-black text-white tracking-tight">ConfiguraciÃ³n de supervisiÃ³n</h2>
+                <h2 className="text-2xl font-black text-white tracking-tight">Configuración de supervisión</h2>
                 <p className="text-slate-400 text-sm mt-1">
-                  Esta vista concentra las reglas que sÃ­ corresponden al Super Admin: servicio, vencimientos, mÃ³dulos y consistencia del cliente.
+                  Esta vista concentra las reglas que sí corresponden al Super Admin: servicio, vencimientos, módulos y consistencia del cliente.
                 </p>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
                 {[
-                  { label: 'Vencen en 7 dÃ­as', value: String(expiringSoonClients.length), icon: Calendar },
+                  { label: 'Vencen en 7 días', value: String(expiringSoonClients.length), icon: Calendar },
                   { label: 'Sin admins', value: String(clientsWithoutAdmins.length), icon: Users },
                   { label: 'Features legacy', value: String(clientsWithLegacyFeatures.length), icon: AlertTriangle },
                   { label: 'Suspendidos', value: String(suspendedClients), icon: Power },
@@ -1508,8 +1508,8 @@ export default function SuperAdminSaaS() {
                 <section className="bg-[#111827] border border-white/5 rounded-[28px] p-6">
                   <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between mb-6">
                     <div>
-                      <h3 className="text-xl font-black text-white">ConfiguraciÃ³n por cliente</h3>
-                      <p className="text-sm text-slate-400 mt-1">EdiciÃ³n segura sobre el esquema ya soportado hoy.</p>
+                      <h3 className="text-xl font-black text-white">Configuración por cliente</h3>
+                      <p className="text-sm text-slate-400 mt-1">Edición segura sobre el esquema ya soportado hoy.</p>
                     </div>
                     <select
                       value={selectedSettingsClientId}
@@ -1544,7 +1544,7 @@ export default function SuperAdminSaaS() {
                           />
                         </div>
                         <div>
-                          <label className="block text-xs font-bold text-slate-400 mb-2 uppercase tracking-wider">TelÃ©fono</label>
+                          <label className="block text-xs font-bold text-slate-400 mb-2 uppercase tracking-wider">Teléfono</label>
                           <input
                             value={settingsDraft.phone}
                             onChange={(e) => setSettingsDraft((current) => current ? { ...current, phone: e.target.value } : current)}
@@ -1582,7 +1582,7 @@ export default function SuperAdminSaaS() {
                       </div>
 
                       <div>
-                        <label className="block text-xs font-bold text-slate-400 mb-3 uppercase tracking-wider">MÃ³dulos / features habilitados</label>
+                        <label className="block text-xs font-bold text-slate-400 mb-3 uppercase tracking-wider">Módulos / features habilitados</label>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                           {(Object.keys(settingsDraft.features) as ClientFeatureKey[]).map((featureKey) => (
                             <label key={featureKey} className="flex items-center justify-between gap-3 bg-[#0B0F19] border border-white/5 rounded-2xl px-4 py-3 cursor-pointer">
@@ -1619,7 +1619,7 @@ export default function SuperAdminSaaS() {
                           onClick={() => extendExpiration(selectedSettingsClient, 30)}
                           className="bg-[#1F2937] hover:bg-[#374151] text-white font-bold py-3 rounded-xl transition-colors"
                         >
-                          Extender 30 dÃ­as
+                          Extender 30 días
                         </button>
                         <button
                           type="button"
@@ -1633,7 +1633,7 @@ export default function SuperAdminSaaS() {
                           disabled={isSavingSettings}
                           className="bg-gradient-to-r from-[#FF6B00] to-[#FF8F00] disabled:opacity-50 text-white font-bold py-3 rounded-xl transition-all"
                         >
-                          {isSavingSettings ? 'Guardando...' : 'Guardar configuraciÃ³n'}
+                          {isSavingSettings ? 'Guardando...' : 'Guardar configuración'}
                         </button>
                       </div>
                     </form>
@@ -1698,13 +1698,13 @@ export default function SuperAdminSaaS() {
             <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
               <div className="flex items-center justify-between">
                 <div>
-                  <h2 className="text-2xl font-black text-white tracking-tight">MÃ©tricas Globales</h2>
+                  <h2 className="text-2xl font-black text-white tracking-tight">Métricas Globales</h2>
                   <p className="text-slate-400 text-sm mt-1">Datos reales de toda la plataforma</p>
                 </div>
                 <button
                   onClick={fetchMetrics}
                   className="p-2 bg-[#1F2937] text-slate-400 hover:text-white hover:bg-[#374151] rounded-lg transition-colors"
-                  title="Actualizar MÃ©tricas"
+                  title="Actualizar Métricas"
                 >
                   <RefreshCw className="w-5 h-5" />
                 </button>
@@ -1767,8 +1767,8 @@ export default function SuperAdminSaaS() {
               <div className="w-24 h-24 bg-[#111827] rounded-full flex items-center justify-center border border-white/5 mb-6">
                 <Settings className="w-10 h-10 text-slate-600" />
               </div>
-              <h2 className="text-2xl font-black text-white mb-2">PrÃ³ximamente</h2>
-              <p className="text-slate-400 max-w-md">Este mÃ³dulo estÃ¡ en desarrollo y estarÃ¡ disponible en la prÃ³xima actualizaciÃ³n del sistema.</p>
+              <h2 className="text-2xl font-black text-white mb-2">Próximamente</h2>
+              <p className="text-slate-400 max-w-md">Este módulo está en desarrollo y estará disponible en la próxima actualización del sistema.</p>
             </div>
           )}
         </div>
@@ -1777,7 +1777,7 @@ export default function SuperAdminSaaS() {
       <Modal
         isOpen={isAuditModalOpen}
         onClose={() => setIsAuditModalOpen(false)}
-        title="Historial de AuditorÃ­a"
+        title="Historial de Auditoría"
         className="max-w-5xl"
       >
         <div className="space-y-6">
@@ -1920,8 +1920,8 @@ export default function SuperAdminSaaS() {
                         onClick={() => setNewUser({ ...newUser, accessMode: 'invite', password: '' })}
                         className={`rounded-xl border px-4 py-3 text-left transition-colors ${newUser.accessMode === 'invite' ? 'border-[#FF6B00]/40 bg-[#FF6B00]/10 text-white' : 'border-white/10 bg-[#0B0F19] text-slate-300 hover:border-white/20'}`}
                       >
-                        <div className="text-xs font-black uppercase tracking-widest">InvitaciÃ³n segura</div>
-                        <div className="mt-1 text-[11px] text-slate-400">El admin define su contraseÃ±a por email.</div>
+                        <div className="text-xs font-black uppercase tracking-widest">Invitación segura</div>
+                        <div className="mt-1 text-[11px] text-slate-400">El admin define su contraseña por email.</div>
                       </button>
                       <button
                         type="button"
@@ -1929,7 +1929,7 @@ export default function SuperAdminSaaS() {
                         className={`rounded-xl border px-4 py-3 text-left transition-colors ${newUser.accessMode === 'password' ? 'border-[#FF6B00]/40 bg-[#FF6B00]/10 text-white' : 'border-white/10 bg-[#0B0F19] text-slate-300 hover:border-white/20'}`}
                       >
                         <div className="text-xs font-black uppercase tracking-widest">Compatibilidad manual</div>
-                        <div className="mt-1 text-[11px] text-slate-400">Permite definir contraseÃ±a desde el panel.</div>
+                        <div className="mt-1 text-[11px] text-slate-400">Permite definir contraseña desde el panel.</div>
                       </button>
                     </div>
                   </div>
@@ -2001,7 +2001,7 @@ export default function SuperAdminSaaS() {
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-bold text-slate-400 mb-1.5 uppercase tracking-wider">TelÃ©fono</label>
+                      <label className="block text-xs font-bold text-slate-400 mb-1.5 uppercase tracking-wider">Teléfono</label>
                       <input
                         type="text"
                         value={newUser.phone}
@@ -2011,7 +2011,7 @@ export default function SuperAdminSaaS() {
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-bold text-slate-400 mb-1.5 uppercase tracking-wider">DirecciÃ³n</label>
+                      <label className="block text-xs font-bold text-slate-400 mb-1.5 uppercase tracking-wider">Dirección</label>
                       <input
                         type="text"
                         value={newUser.address}

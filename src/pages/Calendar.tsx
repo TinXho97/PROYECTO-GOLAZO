@@ -400,7 +400,7 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
           });
         }
       } catch (error: any) {
-        setBookingError('No se pudo crear la reserva. RevisÃ¡ los datos o probÃ¡ de nuevo.');
+        setBookingError('No se pudo crear la reserva. Revisá los datos o probá de nuevo.');
         setIsSubmittingBooking(false);
         const errorCode = typeof error?.code === 'string' ? error.code : '';
         const publicMessages: Record<string, string> = {
