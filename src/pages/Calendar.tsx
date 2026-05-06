@@ -1492,7 +1492,7 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
       <Modal
         isOpen={isBookingModalOpen}
         onClose={() => setIsBookingModalOpen(false)}
-        title={isPlayerUser ? 'Reservar cancha' : 'Nueva reserva'}
+        title={isPlayerUser ? 'Solicitar reserva' : 'Nueva reserva'}
         className="max-h-[90vh]"
       >
         {bookingTimer !== null && (
@@ -1542,6 +1542,38 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
             </div>
           </div>
           
+          {isPlayerUser ? (
+            <div className="space-y-3">
+              <div className="bg-sky-50/50 p-4 rounded-2xl border border-sky-100 space-y-3">
+                <div>
+                  <p className="text-xs font-black text-sky-800 uppercase tracking-wider">Seña / pago</p>
+                  <p className="mt-1 text-[11px] font-medium leading-relaxed text-sky-700">
+                    Estos datos son informativos. El complejo confirma el turno cuando recibe el comprobante.
+                  </p>
+                </div>
+                {paymentPublicEnabled ? (
+                  <div className="space-y-1 text-[11px] text-sky-700">
+                    {bankDetails.bank && <p><span className="font-semibold">Banco / billetera:</span> {bankDetails.bank}</p>}
+                    {bankDetails.holder && <p><span className="font-semibold">Titular:</span> {bankDetails.holder}</p>}
+                    {bankDetails.cbu && <p><span className="font-semibold">CBU / CVU:</span> {bankDetails.cbu}</p>}
+                    {bankDetails.alias && <p><span className="font-semibold">Alias:</span> {bankDetails.alias}</p>}
+                    {bankDetails.taxId && <p><span className="font-semibold">CUIT / DNI:</span> {bankDetails.taxId}</p>}
+                    {publicMinDeposit > 0 && <p><span className="font-semibold">Monto mínimo:</span> ${publicMinDeposit}</p>}
+                    {bankDetails.instructions && <p><span className="font-semibold">Instrucciones:</span> {bankDetails.instructions}</p>}
+                  </div>
+                ) : (
+                  <p className="text-[11px] font-medium leading-relaxed text-sky-700">
+                    Este complejo todavía no cargó datos de transferencia. Coordiná el pago con el complejo antes de transferir.
+                  </p>
+                )}
+              </div>
+
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-[11px] font-bold leading-relaxed text-amber-800">
+                Transferí la seña y enviá el comprobante al complejo para confirmar el turno.
+              </div>
+            </div>
+          ) : (
+            <>
           <div className="space-y-1.5">
             <label className="text-xs font-semibold text-zinc-700 ml-1">Método de pago de seña</label>
             <div className="flex gap-2">
@@ -1652,8 +1684,11 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
             </div>
           </div>
 
+            </>
+          )}
+
           <div className="flex items-center justify-between pt-2">
-            <div className="flex items-center gap-2 text-primary">
+            <div className={cn("flex items-center gap-2 text-primary", isPlayerUser && "invisible")}>
               <Zap className="w-4 h-4 fill-primary" />
               <span className="text-xs font-bold">+{isPromoHour(parseInt(bookingData.time)) ? '1.5' : '1'} Puntos</span>
             </div>
@@ -1662,7 +1697,7 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
                 Cancelar
               </Button>
               <Button type="submit" className="px-8 shadow-lg shadow-primary/20">
-                Confirmar Reserva
+                {isPlayerUser ? 'Solicitar reserva' : 'Confirmar Reserva'}
               </Button>
             </div>
           </div>
