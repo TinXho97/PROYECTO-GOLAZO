@@ -1596,7 +1596,7 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
             </div>
           </div>
           
-          {isPlayerUser ? (
+          {isPublicPortalUser ? (
             <div className="space-y-3">
               <div className="bg-sky-50/50 p-4 rounded-2xl border border-sky-100 space-y-3">
                 <div>
@@ -1739,7 +1739,7 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
           </div>
 
           <div className="flex items-center justify-between pt-2">
-            <div className={cn("flex items-center gap-2 text-primary", isPlayerUser && "invisible")}>
+            <div className={cn("flex items-center gap-2 text-primary", isPublicPortalUser && "invisible")}>
               <Zap className="w-4 h-4 fill-primary" />
               <span className="text-xs font-bold">+{isPromoHour(parseInt(bookingData.time)) ? '1.5' : '1'} Puntos</span>
             </div>
