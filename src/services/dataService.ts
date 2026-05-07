@@ -201,7 +201,7 @@ export const dataService = {
     if (isSupabaseConfigured()) {
       const query = supabase
         .from('clients')
-        .select('id, name, complex_name, status, created_at, expires_at, ranking_reset_date, phone, address, enable_ranking, enable_sales, enable_reservations, enable_statistics, features')
+        .select('id, name, complex_name, status, created_at, expires_at, ranking_reset_date, phone, address, enable_ranking, enable_sales, enable_reservations, enable_statistics, features, settings')
         .eq('id', clientId);
       const { data, error } = await query.limit(1).single();
       if (error) {
@@ -229,6 +229,27 @@ export const dataService = {
       return data as Client;
     }
     return null;
+  },
+  updateClientSettings: async (clientId: string, settings: Record<string, unknown>) => {
+    const targetClientId = requireClientId(clientId, 'Actualizar configuracion del cliente');
+
+    if (isSupabaseConfigured()) {
+      return await supabaseService.updateClientSettings(targetClientId, settings);
+    }
+
+    const clients = getStorage<Client[]>('golazo_public_clients', []);
+    const updatedClients = clients.map((client) => {
+      if (client.id !== targetClientId) return client;
+      return {
+        ...client,
+        settings: {
+          ...(client.settings || {}),
+          ...settings,
+        },
+      };
+    });
+    setStorage('golazo_public_clients', updatedClients);
+    return updatedClients.find((client) => client.id === targetClientId) || null;
   },
   // Pitches
   getPitches: async (clientId?: string) => {

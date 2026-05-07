@@ -72,7 +72,7 @@ export default function AIChatFloating() {
       }]);
     } catch (error) {
       console.error("Bot Error:", error);
-      setChatMessages(prev => [...prev, { role: 'bot', text: "Hubo un error al procesar tu solicitud. Por favor, intenta de nuevo." }]);
+      setChatMessages(prev => [...prev, { role: 'bot', text: "Hubo un error al procesar tu solicitud. Por favor, intentá de nuevo." }]);
     } finally {
       setIsTyping(false);
     }

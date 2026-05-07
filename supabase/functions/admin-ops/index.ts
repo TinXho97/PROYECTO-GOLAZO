@@ -344,6 +344,48 @@ const getAuthUserById = async (
   return null
 }
 
+const getAuthUserByEmail = async (
+  adminClient: ReturnType<typeof createAdminClient>,
+  email: string,
+) => {
+  const normalizedEmail = email.trim().toLowerCase()
+  let page = 1
+  const perPage = 1000
+
+  while (true) {
+    const { data, error } = await adminClient.auth.admin.listUsers({ page, perPage })
+    if (error) throw error
+
+    const batch = data.users ?? []
+    const found = batch.find((user: any) => (user.email ?? '').trim().toLowerCase() === normalizedEmail)
+    if (found) return found
+
+    if (batch.length < perPage) break
+    page += 1
+  }
+
+  return null
+}
+
+const resolveRedirectTo = (req: Request, rawRedirectTo: unknown, fallbackPath: string) => {
+  if (typeof rawRedirectTo === 'string' && rawRedirectTo.trim()) {
+    try {
+      return new URL(rawRedirectTo).toString()
+    } catch {
+      throw new HttpError(400, 'validation_error', 'redirectTo debe ser una URL absoluta valida.')
+    }
+  }
+
+  const origin = req.headers.get('origin')?.trim()
+  if (!origin) return null
+
+  try {
+    return new URL(fallbackPath, origin).toString()
+  } catch {
+    return null
+  }
+}
+
 const logAdminAudit = async (
   adminClient: ReturnType<typeof createAdminClient>,
   actor: { id: string; email?: string | null; profile?: { full_name?: string | null } | null },
@@ -1143,7 +1185,7 @@ serve(async (req) => {
               metadata,
               created_at,
               client_id,
-              clients (
+              clients!audit_logs_client_id_fkey (
                 id,
                 name,
                 complex_name
@@ -1398,6 +1440,11 @@ serve(async (req) => {
               : ''
         const email = typeof payload.email === 'string' ? payload.email.trim() : ''
         const password = typeof payload.password === 'string' ? payload.password : ''
+        const sendInvite =
+          payload.sendInvite === true ||
+          payload.inviteOnly === true ||
+          payload.accessMode === 'invite'
+        const redirectTo = resolveRedirectTo(req, payload.redirectTo, '/admin')
         const name =
           typeof payload.name === 'string'
             ? payload.name
@@ -1405,27 +1452,42 @@ serve(async (req) => {
               ? payload.full_name
               : email
 
-        if (!clientId || !email || !password) {
-          return fail(400, 'validation_error', 'clientId, email y password son obligatorios.')
+        if (!clientId || !email) {
+          return fail(400, 'validation_error', 'clientId y email son obligatorios.')
         }
 
-        const { data: authResult, error: authError } = await adminClient.auth.admin.createUser({
-          email,
-          password,
-          email_confirm: true,
-        })
+        if (!sendInvite && !password) {
+          return fail(400, 'validation_error', 'La contraseña es obligatoria cuando no se envia invitacion.')
+        }
 
-        if (authError || !authResult.user) {
+        const authResult = sendInvite
+          ? await adminClient.auth.admin.inviteUserByEmail(email, {
+              ...(redirectTo ? { redirectTo } : {}),
+              data: {
+                role: 'admin',
+                client_id: clientId,
+              },
+            })
+          : await adminClient.auth.admin.createUser({
+              email,
+              password,
+              email_confirm: true,
+            })
+
+        const authError = authResult.error
+
+        if (authError || !authResult.data?.user) {
           throw authError ?? new Error('No se pudo crear el usuario administrador.')
         }
 
-        const createdUser = authResult.user
+        const createdUser = authResult.data.user
 
         const { error: profileError } = await adminClient.from('profiles').insert({
           id: createdUser.id,
           role: 'admin',
           client_id: clientId,
           full_name: name,
+          email,
           phone: null,
         })
 
@@ -1464,6 +1526,7 @@ serve(async (req) => {
             email,
             client_id: clientId,
             name,
+            access_mode: sendInvite ? 'invite' : 'password',
           },
         })
 
@@ -1476,6 +1539,85 @@ serve(async (req) => {
             created_at: createdUser.created_at,
             last_sign_in_at: createdUser.last_sign_in_at ?? null,
           },
+          invitation_sent: sendInvite,
+        })
+      }
+
+      case 'send_admin_password_reset': {
+        const userId =
+          typeof payload.userId === 'string'
+            ? payload.userId.trim()
+            : typeof payload.user_id === 'string'
+              ? payload.user_id.trim()
+              : ''
+        const rawEmail = typeof payload.email === 'string' ? payload.email.trim() : ''
+        const redirectTo = resolveRedirectTo(req, payload.redirectTo, '/admin')
+
+        if (!userId && !rawEmail) {
+          return fail(400, 'validation_error', 'userId o email son obligatorios.')
+        }
+
+        const authUser = userId
+          ? await getAuthUserById(adminClient, userId)
+          : await getAuthUserByEmail(adminClient, rawEmail)
+
+        if (!authUser?.id || !authUser.email) {
+          return fail(404, 'not_found', 'No se encontro el administrador solicitado.')
+        }
+
+        const { data: targetProfile, error: targetProfileError } = await adminClient
+          .from('profiles')
+          .select('role, client_id, full_name')
+          .eq('id', authUser.id)
+          .maybeSingle()
+
+        if (targetProfileError) throw targetProfileError
+
+        if (!targetProfile?.role) {
+          return fail(404, 'not_found', 'No se encontro el perfil del administrador solicitado.')
+        }
+
+        if (targetProfile.role === 'superadmin') {
+          return fail(403, 'forbidden', 'No se puede enviar recuperacion a un superadmin desde este panel.')
+        }
+
+        if (targetProfile.role !== 'admin') {
+          return fail(403, 'forbidden', 'Solo se puede gestionar recuperacion para administradores.')
+        }
+
+        const recoveryClient = createClient(supabaseUrl, supabaseAnonKey, {
+          auth: { persistSession: false, autoRefreshToken: false },
+        })
+
+        const { error: resetError } = await recoveryClient.auth.resetPasswordForEmail(authUser.email, {
+          ...(redirectTo ? { redirectTo } : {}),
+        })
+
+        if (resetError) {
+          throw resetError
+        }
+
+        await logAdminAudit(adminClient, {
+          id: user.id,
+          email: user.email ?? null,
+          profile,
+        }, {
+          action: 'Recuperacion admin enviada',
+          entity: 'admin',
+          entityId: authUser.id,
+          clientId: targetProfile.client_id ?? null,
+          description: `Se envio recuperacion de acceso a ${authUser.email}`,
+          metadata: {
+            target_user_id: authUser.id,
+            target_email: authUser.email,
+            redirect_to: redirectTo,
+          },
+        })
+
+        return ok({
+          userId: authUser.id,
+          email: authUser.email,
+          recovery_sent: true,
         })
       }
 

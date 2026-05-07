@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, lazy, Suspense } from 'react';
 import { 
   Home, 
   Building2,
@@ -27,17 +27,6 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast, Toaster } from 'sonner';
-import Dashboard from './pages/Dashboard';
-import Admin from './pages/Admin';
-import BookingsList from './pages/BookingsList';
-import CalendarPage from './pages/Calendar';
-import SalesPage from './pages/Sales';
-import RankingPage from './pages/Ranking';
-import SmartStats from './pages/SmartStats';
-import BusinessAnalysis from './pages/BusinessAnalysis';
-import SuperAdminDashboard from './pages/SuperAdminDashboard';
-import SuperAdminSaaS from './pages/SuperAdminSaaS';
-import AIChatFloating from './components/AIChatFloating';
 import { ArgentinaLogo } from './components/ArgentinaLogo';
 import { Button } from './components/Button';
 import { Modal } from './components/Modal';
@@ -50,7 +39,67 @@ import { supabase, checkSupabaseConnection } from './lib/supabase';
 
 type Page = 'dashboard' | 'bookings' | 'calendar' | 'sales' | 'admin' | 'ranking' | 'stats';
 
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const Admin = lazy(() => import('./pages/Admin'));
+const BookingsList = lazy(() => import('./pages/BookingsList'));
+const CalendarPage = lazy(() => import('./pages/Calendar'));
+const SalesPage = lazy(() => import('./pages/Sales'));
+const RankingPage = lazy(() => import('./pages/Ranking'));
+const SmartStats = lazy(() => import('./pages/SmartStats'));
+const SuperAdminSaaS = lazy(() => import('./pages/SuperAdminSaaS'));
+const AIChatFloating = lazy(() => import('./components/AIChatFloating'));
+
+const PageFallback = () => (
+  <div className="flex min-h-[240px] w-full items-center justify-center">
+    <span className="text-sm font-bold text-zinc-500">Cargando...</span>
+  </div>
+);
+
 const PUBLIC_SELECTION_BACKGROUND = 'https://iili.io/q6oJgJ2.jpg';
+const PUBLIC_INTRO_SESSION_KEY = 'golazo_public_intro_seen';
+const PUBLIC_INTRO_VIDEO_SRC = '/videos/golazo-intro.mp4';
+const WORLD_CUP_2026_START = new Date('2026-06-11T00:00:00');
+const PUBLIC_CAROUSEL_ITEMS = [
+  {
+    title: 'Elegí complejo',
+    description: 'Encontrá canchas disponibles cerca de tu zona.',
+    icon: Building2,
+    accent: 'from-sky-300 via-white to-sky-500',
+  },
+  {
+    title: 'Reservá horario',
+    description: 'Elegí día, cancha y turno en segundos.',
+    icon: CalendarIcon,
+    accent: 'from-white via-sky-200 to-emerald-300',
+  },
+  {
+    title: 'Coordiná la seña',
+    description: 'Consultá los datos de pago del complejo.',
+    icon: ShieldCheck,
+    accent: 'from-emerald-300 via-white to-amber-300',
+  },
+  {
+    title: 'Jugá',
+    description: 'Llegá al turno y disfrutá el partido.',
+    icon: Trophy,
+    accent: 'from-yellow-300 via-amber-200 to-sky-300',
+  },
+];
+
+const getWorldCupCountdown = () => {
+  const diff = WORLD_CUP_2026_START.getTime() - Date.now();
+
+  if (diff <= 0) {
+    return { hasStarted: true, days: 0, hours: 0, minutes: 0 };
+  }
+
+  const totalMinutes = Math.floor(diff / (1000 * 60));
+  const days = Math.floor(totalMinutes / (60 * 24));
+  const hours = Math.floor((totalMinutes % (60 * 24)) / 60);
+  const minutes = totalMinutes % 60;
+
+  return { hasStarted: false, days, hours, minutes };
+};
 
 export default function App() {
   const pathname = window.location.pathname;
@@ -77,6 +126,15 @@ export default function App() {
   const [publicSearchTerm, setPublicSearchTerm] = useState('');
   const [publicGuestName, setPublicGuestName] = useState(localStorage.getItem('golazo_guest_name') || 'Jugador');
   const [publicGuestPhone, setPublicGuestPhone] = useState(localStorage.getItem('golazo_guest_phone') || '');
+  const [showPublicIntro, setShowPublicIntro] = useState(() => {
+    try {
+      return sessionStorage.getItem(PUBLIC_INTRO_SESSION_KEY) !== 'true';
+    } catch {
+      return false;
+    }
+  });
+  const [publicCountdown, setPublicCountdown] = useState(getWorldCupCountdown);
+  const [publicCarouselIndex, setPublicCarouselIndex] = useState(0);
 
   const loadPublicClients = async () => {
     if (isSuperAdminRoute) return;
@@ -253,20 +311,30 @@ export default function App() {
     setCurrentPage('dashboard');
   };
 
-  const handleSelectPublicClient = (client: Client) => {
+  const handleSelectPublicClient = async (client: Client) => {
     dataService.setPublicClientSelection(client.id);
     setSelectedPublicClientId(client.id);
     setClientConfig(client);
     setUser(null);
     setLoginError(null);
     setCurrentPage('dashboard');
+
+    try {
+      const publicConfig = await dataService.getPublicClientConfig(client.id);
+      setClientConfig(publicConfig || client);
+    } catch (error) {
+      console.error('Error loading selected public client config:', error);
+      setClientConfig(client);
+    }
   };
 
   const handleBackToClientSelector = () => {
     dataService.clearPublicClientSelection();
     setSelectedPublicClientId(null);
+    setClientConfig(null);
     setLoginPassword('');
     setLoginError(null);
+    setCurrentPage('dashboard');
   };
 
   const publicPortalUser: User | null =
@@ -305,6 +373,14 @@ export default function App() {
   const bgImage = PUBLIC_SELECTION_BACKGROUND;
   const selectedPublicClient = publicClients.find((client) => client.id === selectedPublicClientId) || null;
   const getClientDisplayName = (client: Client) => client.complex_name?.trim() || client.name?.trim() || 'Complejo';
+  const isPublicPortalActive = !!publicPortalUser && isPublicRoute;
+  const publicPortalClientName = clientConfig?.complex_name || clientConfig?.name || (selectedPublicClient ? getClientDisplayName(selectedPublicClient) : 'Complejo');
+  const publicPortalLogo = clientConfig?.logo_url || selectedPublicClient?.logo_url || customLogo;
+  const getPublicNavLabel = (item: typeof navItems[number]) => {
+    if (item.id === 'calendar') return 'Reservar';
+    if (item.id === 'bookings') return 'Mis turnos';
+    return item.label;
+  };
   const getClientInitials = (client: Client) =>
     getClientDisplayName(client)
       .split(/\s+/)
@@ -316,6 +392,59 @@ export default function App() {
     const label = `${client.complex_name || ''} ${client.name || ''} ${client.address || ''}`.toLowerCase();
     return label.includes(publicSearchTerm.toLowerCase());
   });
+  const activeCarouselItem = PUBLIC_CAROUSEL_ITEMS[publicCarouselIndex] || PUBLIC_CAROUSEL_ITEMS[0];
+  const ActiveCarouselIcon = activeCarouselItem.icon;
+  const dismissPublicIntro = () => {
+    try {
+      sessionStorage.setItem(PUBLIC_INTRO_SESSION_KEY, 'true');
+    } catch {
+      // If storage is unavailable, keep the app usable and only hide the intro in memory.
+    }
+    setShowPublicIntro(false);
+  };
+
+  useEffect(() => {
+    if (!isPublicRoute || selectedPublicClientId || user || isAdminRoute || isSuperAdminRoute) {
+      setShowPublicIntro(false);
+      return;
+    }
+
+    try {
+      if (sessionStorage.getItem(PUBLIC_INTRO_SESSION_KEY) === 'true') {
+        setShowPublicIntro(false);
+        return;
+      }
+    } catch {
+      setShowPublicIntro(false);
+      return;
+    }
+
+    setShowPublicIntro(true);
+    const timer = window.setTimeout(dismissPublicIntro, 3500);
+    return () => window.clearTimeout(timer);
+  }, [isPublicRoute, selectedPublicClientId, user, isAdminRoute, isSuperAdminRoute]);
+
+  useEffect(() => {
+    if (!isPublicRoute || selectedPublicClientId || user) return;
+
+    setPublicCountdown(getWorldCupCountdown());
+    const interval = window.setInterval(() => {
+      setPublicCountdown(getWorldCupCountdown());
+    }, 60000);
+
+    return () => window.clearInterval(interval);
+  }, [isPublicRoute, selectedPublicClientId, user]);
+
+  useEffect(() => {
+    if (!isPublicRoute || selectedPublicClientId || user) return;
+
+    const interval = window.setInterval(() => {
+      setPublicCarouselIndex((current) => (current + 1) % PUBLIC_CAROUSEL_ITEMS.length);
+    }, 3000);
+
+    return () => window.clearInterval(interval);
+  }, [isPublicRoute, selectedPublicClientId, user]);
+
   useEffect(() => {
     // No rotation needed
   }, []);
@@ -329,12 +458,16 @@ export default function App() {
       setSelectedPublicClientId(null);
       setClientConfig(null);
       setUser(null);
-      toast.error('El complejo seleccionado ya no esta disponible.');
+      toast.error('El complejo seleccionado ya no está disponible.');
     }
   }, [isPublicRoute, isPublicClientsLoading, selectedPublicClientId, publicClients]);
 
   if (isSuperAdminRoute) {
-    return <SuperAdminSaaS />;
+    return (
+      <Suspense fallback={<PageFallback />}>
+        <SuperAdminSaaS />
+      </Suspense>
+    );
   }
 
   // Blocking logic
@@ -427,9 +560,9 @@ export default function App() {
   if (!user) {
     if (isPublicRoute && !selectedPublicClientId) {
       return (
-        <div className="min-h-screen bg-zinc-950 text-white relative overflow-hidden">
+        <div className="relative h-screen overflow-y-auto overflow-x-hidden bg-zinc-950 text-white">
           <div
-            className="absolute inset-0"
+            className="fixed inset-0"
             style={{
               backgroundImage: `url(${PUBLIC_SELECTION_BACKGROUND})`,
               backgroundSize: 'cover',
@@ -437,135 +570,291 @@ export default function App() {
               backgroundRepeat: 'no-repeat',
             }}
           />
-          <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(2,6,23,0.58)_0%,rgba(2,6,23,0.74)_34%,rgba(2,6,23,0.9)_100%)]" />
+          <div className="fixed inset-0 bg-[linear-gradient(180deg,rgba(2,6,23,0.58)_0%,rgba(2,6,23,0.74)_34%,rgba(2,6,23,0.9)_100%)]" />
 
-          <div className="relative z-10 mx-auto flex min-h-screen w-full max-w-7xl flex-col px-5 py-6 sm:px-6 md:px-10 md:py-10">
-            <div className="mb-8 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-              <div className="max-w-4xl space-y-5">
-                <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-4 py-2 text-[11px] font-black uppercase tracking-[0.28em] text-emerald-200 backdrop-blur-xl">
-                  <Target className="w-4 h-4 text-emerald-300" />
+          <AnimatePresence>
+            {showPublicIntro && (
+              <motion.div
+                key="public-intro"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.22, ease: 'easeOut' }}
+                className="fixed inset-0 z-[80] flex items-center justify-center overflow-hidden bg-slate-950 px-5 text-white"
+              >
+                <video
+                  className="absolute inset-0 h-full w-full object-cover"
+                  src={PUBLIC_INTRO_VIDEO_SRC}
+                  autoPlay
+                  muted
+                  playsInline
+                  preload="auto"
+                  onEnded={dismissPublicIntro}
+                  onError={dismissPublicIntro}
+                />
+                <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(2,6,23,0.38)_0%,rgba(2,6,23,0.56)_44%,rgba(2,6,23,0.84)_100%)]" />
+                <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_34%,rgba(56,189,248,0.2),transparent_34%),radial-gradient(circle_at_50%_70%,rgba(245,158,11,0.16),transparent_28%)]" />
+                <button
+                  type="button"
+                  onClick={dismissPublicIntro}
+                  className="absolute right-4 top-4 z-10 rounded-full border border-white/15 bg-white/10 px-4 py-2 text-[10px] font-black uppercase tracking-[0.2em] text-white/85 backdrop-blur-xl transition-colors hover:bg-white/18"
+                >
+                  Saltar
+                </button>
+                <motion.div
+                  initial={{ opacity: 0, y: 18, scale: 0.94 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -10, scale: 0.98 }}
+                  transition={{ duration: 0.36, ease: 'easeOut' }}
+                  className="relative z-10 flex w-full max-w-md flex-col items-center rounded-[32px] border border-white/15 bg-slate-950/34 px-6 py-8 text-center shadow-[0_28px_90px_rgba(2,6,23,0.44)] backdrop-blur-xl sm:px-8"
+                >
+                  <div className="mb-3 flex items-center gap-1.5 text-amber-300 drop-shadow-[0_0_14px_rgba(251,191,36,0.55)]">
+                    <span className="text-lg leading-none">★</span>
+                    <span className="text-lg leading-none">★</span>
+                    <span className="text-lg leading-none">★</span>
+                  </div>
+                  <motion.div
+                    animate={{ y: [0, -4, 0], scale: [1, 1.03, 1] }}
+                    transition={{ duration: 1.3, repeat: Infinity, ease: 'easeInOut' }}
+                    className="mb-5 flex h-20 w-20 items-center justify-center rounded-[28px] border border-white/20 bg-white/14 shadow-[0_22px_70px_rgba(14,165,233,0.25)] backdrop-blur-xl"
+                  >
+                    <Trophy className="h-11 w-11 text-amber-300" />
+                  </motion.div>
+                  <motion.p
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.08, duration: 0.28 }}
+                    className="text-5xl font-black leading-none tracking-[-0.05em] text-white sm:text-6xl"
+                  >
+                    GOLAZO
+                  </motion.p>
+                  <motion.p
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.16, duration: 0.28 }}
+                    className="mt-3 text-base font-black tracking-[-0.02em] text-sky-100 sm:text-lg"
+                  >
+                    Reservá tu cancha en minutos
+                  </motion.p>
+                  <motion.p
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.24, duration: 0.28 }}
+                    className="mt-2 max-w-xs text-sm leading-6 text-zinc-300"
+                  >
+                    Complejos, horarios y turnos en un solo lugar
+                  </motion.p>
+                  <motion.div
+                    initial={{ width: 0, opacity: 0 }}
+                    animate={{ width: 220, opacity: 1 }}
+                    transition={{ delay: 0.28, duration: 0.45, ease: 'easeOut' }}
+                    className="mt-7 h-1 rounded-full bg-gradient-to-r from-sky-300 via-white to-amber-300"
+                  />
+                </motion.div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.28, ease: 'easeOut' }}
+            className="relative z-10 mx-auto flex min-h-full w-full max-w-[1180px] flex-col px-4 py-3 sm:px-6 md:px-8 md:py-4"
+          >
+            <div className="mb-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_330px] lg:items-end">
+              <div className="space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <div className="inline-flex items-center gap-2 rounded-2xl border border-white/15 bg-white/10 px-3 py-2 backdrop-blur-xl">
+                  <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-white text-slate-950 shadow-lg">
+                    <Trophy className="h-5 w-5 text-sky-600" />
+                  </span>
+                    <div>
+                      <p className="text-base font-black leading-none tracking-[-0.04em] text-white">GOLAZO</p>
+                      <div className="mt-1 flex items-center gap-1 text-amber-300">
+                        <span className="text-[9px] leading-none">★</span>
+                        <span className="text-[9px] leading-none">★</span>
+                        <span className="text-[9px] leading-none">★</span>
+                      </div>
+                      <p className="mt-0.5 text-[8px] font-black uppercase tracking-[0.22em] text-emerald-200">Reservas online</p>
+                    </div>
+                  </div>
+                <div className="hidden items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-[9px] font-black uppercase tracking-[0.22em] text-emerald-200 backdrop-blur-xl sm:inline-flex">
+                  <Target className="h-4 w-4 text-emerald-300" />
                   Acceso Público
                 </div>
-                <div className="space-y-4">
-                  <h1 className="max-w-4xl text-4xl font-black leading-[0.92] tracking-[-0.04em] text-white md:text-6xl xl:text-7xl">
-                    Elegí tu complejo y entrá a reservar con una experiencia más pro.
-                  </h1>
-                  <p className="max-w-2xl text-sm leading-6 text-zinc-200 md:text-lg md:leading-8">
-                    Seleccioná el complejo donde querés reservar y seguí al panel público.
-                  </p>
+              </div>
+
+              <div className="max-w-3xl space-y-2">
+                <h1 className="text-3xl font-black leading-[0.98] tracking-[-0.04em] text-white sm:text-4xl lg:text-5xl">
+                  Reservá tu cancha en minutos
+                </h1>
+                <p className="max-w-xl text-sm leading-6 text-zinc-200 md:text-base">
+                  Elegí complejo, horario y jugá.
+                </p>
+              </div>
+              </div>
+
+              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
+                <div className="rounded-2xl border border-sky-300/25 bg-slate-950/35 p-3 shadow-[0_16px_45px_rgba(2,6,23,0.22)] backdrop-blur-xl">
+                  <div className="mb-2 flex items-center justify-between gap-3">
+                    <p className="text-[9px] font-black uppercase tracking-[0.18em] text-sky-100">Rumbo al Mundial 2026</p>
+                    <div className="flex items-center gap-1 text-amber-300">
+                      <span className="text-[9px] leading-none">★</span>
+                      <span className="text-[9px] leading-none">★</span>
+                      <span className="text-[9px] leading-none">★</span>
+                    </div>
+                  </div>
+                  {publicCountdown.hasStarted ? (
+                    <p className="text-sm font-black tracking-[-0.02em] text-white">Viví cada partido en tu complejo</p>
+                  ) : (
+                    <div className="grid grid-cols-3 gap-2">
+                      {[
+                        { label: 'Días', value: publicCountdown.days },
+                        { label: 'Horas', value: publicCountdown.hours },
+                        { label: 'Min', value: publicCountdown.minutes },
+                      ].map((item) => (
+                        <div key={item.label} className="rounded-xl border border-white/10 bg-white/10 px-2 py-2 text-center">
+                          <p className="text-lg font-black leading-none tracking-[-0.04em] text-white">{item.value}</p>
+                          <p className="mt-1 text-[7px] font-black uppercase tracking-[0.18em] text-zinc-300">{item.label}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="relative min-h-[96px] overflow-hidden rounded-2xl border border-amber-200/25 bg-black/25 p-3 shadow-[0_16px_45px_rgba(2,6,23,0.18)] backdrop-blur-xl">
+                  <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-sky-300 via-white to-amber-300" />
+                  <AnimatePresence mode="wait">
+                    <motion.div
+                      key={activeCarouselItem.title}
+                      initial={{ opacity: 0, x: 18 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: -18 }}
+                      transition={{ duration: 0.28, ease: 'easeOut' }}
+                      className="flex items-center gap-3"
+                    >
+                      <div className={cn('flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br shadow-lg', activeCarouselItem.accent)}>
+                        <ActiveCarouselIcon className="h-5 w-5 text-slate-950" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-black tracking-[-0.03em] text-white">{activeCarouselItem.title}</p>
+                        <p className="mt-1 text-xs leading-5 text-zinc-300">{activeCarouselItem.description}</p>
+                      </div>
+                    </motion.div>
+                  </AnimatePresence>
                 </div>
               </div>
             </div>
 
-            <div className="mb-8 grid gap-4 lg:grid-cols-[minmax(0,1fr)_220px] lg:items-center">
+            <div className="mb-3 grid max-w-3xl gap-3 sm:grid-cols-[minmax(0,1fr)_150px] sm:items-center">
               <div className="relative">
-                <Search className="absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-300/80" />
+                <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-300/80" />
                 <input
                   type="text"
                   value={publicSearchTerm}
                   onChange={(e) => setPublicSearchTerm(e.target.value)}
-                  placeholder="Buscar complejo o dirección"
-                  className="h-14 w-full rounded-[24px] border border-white/15 bg-black/25 pl-14 pr-5 text-sm text-white placeholder:text-zinc-300/60 backdrop-blur-xl outline-none transition-all focus:border-emerald-300/60 focus:bg-black/35 md:h-16 md:text-base"
+                  placeholder="Buscar complejo"
+                  className="h-11 w-full rounded-2xl border border-white/15 bg-black/25 pl-11 pr-4 text-sm text-white placeholder:text-zinc-300/60 backdrop-blur-xl outline-none transition-all focus:border-emerald-300/60 focus:bg-black/35"
                 />
               </div>
-              <div className="rounded-[24px] border border-white/12 bg-white/10 px-5 py-4 backdrop-blur-xl">
-                <p className="text-[10px] font-black uppercase tracking-[0.28em] text-zinc-300">Complejos activos</p>
-                <p className="mt-2 text-3xl font-black tracking-tight text-white">{filteredPublicClients.length}</p>
+              <div className="rounded-2xl border border-white/12 bg-white/10 px-3 py-2.5 backdrop-blur-xl">
+                <p className="text-[8px] font-black uppercase tracking-[0.22em] text-zinc-300">Complejos activos</p>
+                <p className="mt-0.5 text-xl font-black tracking-tight text-white">{filteredPublicClients.length}</p>
               </div>
             </div>
 
             {isPublicClientsLoading ? (
-              <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
                 {Array.from({ length: 6 }).map((_, index) => (
-                  <div key={index} className="h-[360px] rounded-[36px] border border-white/10 bg-white/10 animate-pulse backdrop-blur-xl" />
+                  <div key={index} className="h-[180px] rounded-[24px] border border-white/10 bg-white/10 animate-pulse backdrop-blur-xl" />
                 ))}
               </div>
             ) : filteredPublicClients.length === 0 ? (
-              <div className="rounded-[36px] border border-white/10 bg-black/30 p-10 text-center text-zinc-200 backdrop-blur-xl">
+              <div className="rounded-[24px] border border-white/10 bg-black/30 p-6 text-center text-zinc-200 backdrop-blur-xl">
                 No hay complejos activos disponibles para mostrar.
               </div>
             ) : (
-              <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
                 {filteredPublicClients.map((client) => (
                   <button
                     key={client.id}
                     type="button"
                     onClick={() => handleSelectPublicClient(client)}
-                    className="group relative overflow-hidden rounded-[36px] border border-white/12 bg-white/10 p-6 text-left shadow-[0_24px_80px_rgba(0,0,0,0.35)] backdrop-blur-2xl transition-all duration-300 hover:-translate-y-1.5 hover:border-emerald-300/45 hover:bg-white/14"
+                    className="group relative overflow-hidden rounded-[24px] border border-white/12 bg-white/10 p-3 text-left shadow-[0_14px_42px_rgba(0,0,0,0.24)] backdrop-blur-2xl transition-all duration-300 hover:-translate-y-0.5 hover:border-emerald-300/45 hover:bg-white/14 sm:p-4"
                   >
                     <div className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
-                      <div className="absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-emerald-300/14 to-transparent" />
-                      <div className="absolute -right-10 bottom-0 h-40 w-40 rounded-full bg-sky-400/12 blur-3xl" />
+                      <div className="absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-emerald-300/14 to-transparent" />
+                      <div className="absolute -right-10 bottom-0 h-32 w-32 rounded-full bg-sky-400/12 blur-3xl" />
                     </div>
 
-                    <div className="relative z-10 mb-8 flex items-start justify-between gap-4">
-                      <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-[28px] border border-white/15 bg-white/95 text-zinc-900 shadow-[0_18px_40px_rgba(255,255,255,0.12)] sm:h-28 sm:w-28">
+                    <div className="relative z-10 mb-3 flex items-start justify-between gap-3">
+                      <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-2xl border border-white/15 bg-white/95 text-zinc-900 shadow-[0_10px_24px_rgba(255,255,255,0.1)] sm:h-14 sm:w-14">
                         {client.logo_url ? (
                           <img
                             src={client.logo_url}
                             alt={getClientDisplayName(client)}
-                            className="h-full w-full object-contain p-3"
+                            className="h-full w-full object-contain p-2"
                             loading="lazy"
                           />
                         ) : (
-                          <div className="flex h-full w-full flex-col items-center justify-center bg-[linear-gradient(135deg,#f8fafc_0%,#dbeafe_45%,#dcfce7_100%)] p-3 text-center">
-                            <span className="text-2xl font-black tracking-[-0.06em] text-slate-900">
+                          <div className="flex h-full w-full flex-col items-center justify-center bg-[linear-gradient(135deg,#f8fafc_0%,#dbeafe_45%,#dcfce7_100%)] p-2 text-center">
+                            <span className="text-lg font-black tracking-[-0.06em] text-slate-900">
                               {getClientInitials(client)}
                             </span>
-                            <span className="mt-1 text-[9px] font-black uppercase tracking-[0.24em] text-slate-500">
+                            <span className="mt-0.5 text-[7px] font-black uppercase tracking-[0.16em] text-slate-500">
                               Sin logo
                             </span>
                           </div>
                         )}
                       </div>
-                      <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-black/20 px-3 py-2 text-[10px] font-black uppercase tracking-[0.24em] text-emerald-200 backdrop-blur-md">
-                        Entrar ahora
+                      <div className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-black/20 px-3 py-1.5 text-[9px] font-black uppercase tracking-[0.18em] text-emerald-200 backdrop-blur-md">
+                        Reservar
                         <ChevronRight className="w-4 h-4 transition-transform duration-300 group-hover:translate-x-1.5" />
                       </div>
                     </div>
 
-                    <div className="relative z-10 flex min-h-[170px] flex-col">
-                      <div className="mb-4">
-                        <p className="mb-2 text-[10px] font-black uppercase tracking-[0.3em] text-zinc-300/80">
+                    <div className="relative z-10 flex flex-col">
+                      <div className="mb-2.5">
+                        <p className="mb-1 text-[8px] font-black uppercase tracking-[0.24em] text-zinc-300/80">
                           Complejo deportivo
                         </p>
-                        <h2 className="text-2xl font-black tracking-[-0.04em] text-white md:text-[2rem]">
+                        <h2 className="line-clamp-2 text-lg font-black tracking-[-0.04em] text-white sm:text-xl">
                           {getClientDisplayName(client)}
                         </h2>
                       </div>
-                      <div className="mt-auto space-y-4">
-                        <div className="flex min-h-[72px] items-start gap-3 rounded-[24px] border border-white/10 bg-black/20 px-4 py-4 backdrop-blur-md">
+                      <div className="mt-auto space-y-2.5">
+                        <div className="flex items-start gap-2.5 rounded-2xl border border-white/10 bg-black/20 px-3 py-2.5 backdrop-blur-md">
                           <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-emerald-300" />
                           <div>
-                            <p className="text-[10px] font-black uppercase tracking-[0.24em] text-zinc-400">Dirección</p>
-                            <p className="mt-1 text-sm leading-6 text-zinc-100">
-                        {client.address || 'Complejo habilitado para reservas y acceso público.'}
-                      </p>
+                            <p className="text-[8px] font-black uppercase tracking-[0.18em] text-zinc-400">Dirección</p>
+                            <p className="mt-0.5 line-clamp-1 text-xs leading-5 text-zinc-100">
+                              {client.address || 'Complejo habilitado para reservas y acceso público.'}
+                            </p>
                           </div>
                         </div>
 
-                        <div className="flex items-center justify-between border-t border-white/10 pt-4">
-                          <span className="text-[11px] font-black uppercase tracking-[0.28em] text-zinc-300">
+                        <div className="flex items-center justify-between border-t border-white/10 pt-2.5">
+                          <span className="text-[9px] font-black uppercase tracking-[0.2em] text-zinc-300">
                             Reservas online
                           </span>
-                          <span className="inline-flex h-11 items-center gap-2 rounded-full bg-white px-4 text-xs font-black uppercase tracking-[0.18em] text-slate-900 shadow-lg transition-transform duration-300 group-hover:translate-x-1">
-                            Entrar
+                          <span className="inline-flex h-8 items-center gap-2 rounded-full bg-white px-3 text-[10px] font-black uppercase tracking-[0.14em] text-slate-900 shadow-lg transition-transform duration-300 group-hover:translate-x-1">
+                            Reservar
                             <ChevronRight className="h-4 w-4" />
                           </span>
                         </div>
-                    </div>
+                      </div>
                     </div>
                   </button>
                 ))}
               </div>
             )}
-          </div>
+          </motion.div>
         </div>
       );
     }
 
     if (isAdminRoute) return (
-      <div className="min-h-screen bg-zinc-50 flex items-center justify-start p-6 md:p-12 lg:p-24 relative overflow-hidden">
+      <div className="min-h-screen bg-zinc-50 flex items-center justify-start p-4 sm:p-6 lg:p-10 relative overflow-y-auto overflow-x-hidden">
         {/* Background Image - Campeones del Mundo 2022 (Rotativo) */}
         <div className="absolute inset-0 z-0">
           <AnimatePresence mode="wait">
@@ -585,7 +874,7 @@ export default function App() {
         </div>
 
         {/* Top Header */}
-        <div className="absolute top-12 left-0 right-0 flex justify-center z-20">
+        <div className="absolute top-6 sm:top-8 lg:top-10 left-0 right-0 flex justify-center z-20">
            <h2 className="text-sky-400 font-black tracking-[0.4em] text-[10px] uppercase bg-sky-500/10 px-6 py-2 rounded-full border border-sky-500/20 backdrop-blur-md">
              BIENVENIDO A GOLAZO
            </h2>
@@ -594,9 +883,9 @@ export default function App() {
         <motion.div 
           initial={{ opacity: 0, scale: 0.95, y: 20 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
-          className="w-full max-w-md bg-white/20 backdrop-blur-xl rounded-[48px] p-10 shadow-2xl border border-white/20 relative z-10"
+          className="w-full max-w-sm bg-white/20 backdrop-blur-xl rounded-[40px] p-6 sm:p-8 lg:p-9 shadow-2xl border border-white/20 relative z-10"
         >
-          <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center justify-between mb-5">
             <button
               type="button"
               onClick={() => { window.location.href = '/'; }}
@@ -610,13 +899,13 @@ export default function App() {
             </span>
           </div>
 
-          <div className="flex flex-col items-center mb-10">
-            <ArgentinaLogo size="lg" />
-            <p className="text-zinc-700 font-black mt-4 tracking-[0.3em] uppercase text-[9px]">Gestión de Canchas</p>
+          <div className="flex flex-col items-center mb-7">
+            <ArgentinaLogo size="md" />
+            <p className="text-zinc-700 font-black mt-3 tracking-[0.3em] uppercase text-[9px]">Gestión de Canchas</p>
           </div>
 
-          <form onSubmit={handleLogin} className="space-y-6">
-            <div className="space-y-4">
+          <form onSubmit={handleLogin} className="space-y-5">
+            <div className="space-y-3.5">
               <div className="space-y-2">
                 <label className="text-[10px] font-black text-zinc-700 uppercase tracking-[0.2em] ml-1">
                   Email
@@ -627,7 +916,7 @@ export default function App() {
                     type="email" 
                     required
                     placeholder="tu@email.com"
-                    className="w-full pl-14 pr-6 py-5 bg-zinc-50/80 border border-zinc-200 text-zinc-900 rounded-3xl focus:ring-2 focus:ring-sky-500 outline-none transition-all placeholder:text-zinc-400"
+                    className="w-full pl-14 pr-6 py-4 bg-zinc-50/80 border border-zinc-200 text-zinc-900 rounded-3xl focus:ring-2 focus:ring-sky-500 outline-none transition-all placeholder:text-zinc-400"
                     value={loginIdentifier}
                     onChange={e => setLoginIdentifier(e.target.value)}
                   />
@@ -642,7 +931,7 @@ export default function App() {
                     type="password" 
                     required
                     placeholder="********"
-                    className="w-full pl-14 pr-6 py-5 bg-zinc-50/80 border border-zinc-200 text-zinc-900 rounded-3xl focus:ring-2 focus:ring-sky-500 outline-none transition-all"
+                    className="w-full pl-14 pr-6 py-4 bg-zinc-50/80 border border-zinc-200 text-zinc-900 rounded-3xl focus:ring-2 focus:ring-sky-500 outline-none transition-all"
                     value={loginPassword}
                     onChange={e => setLoginPassword(e.target.value)}
                   />
@@ -656,7 +945,7 @@ export default function App() {
               )}
             </div>
 
-            <Button type="submit" className="w-full py-6 text-lg font-black tracking-widest shadow-2xl shadow-sky-500/20 rounded-[24px] bg-argentina text-zinc-900">
+            <Button type="submit" className="w-full py-4 sm:py-5 text-lg font-black tracking-widest shadow-2xl shadow-sky-500/20 rounded-[24px] bg-argentina text-zinc-900">
               ENTRAR
             </Button>
           </form>
@@ -665,34 +954,156 @@ export default function App() {
     );
   }
 
+  const renderDashboard = () => (
+    <Dashboard
+      user={activeUser}
+      onNavigate={(page) => setCurrentPage(page as Page)}
+      onLogout={isPublicPortalActive ? handleBackToClientSelector : handleLogout}
+      onNotificationClick={(id) => {
+        setSelectedBookingId(id);
+        setCurrentPage('calendar');
+      }}
+      clientConfig={clientConfig}
+    />
+  );
+
   const renderPage = () => {
     if (!activeUser) return null;
     const isAdmin = activeUser.role === 'admin' || activeUser.role === 'superadmin';
     
     switch (currentPage) {
-      case 'dashboard': return <Dashboard user={activeUser} onNavigate={(page) => setCurrentPage(page as Page)} onNotificationClick={(id) => { setSelectedBookingId(id); setCurrentPage('calendar'); }} clientConfig={clientConfig} />;
+      case 'dashboard': return renderDashboard();
       case 'bookings': 
-        if (clientConfig && clientConfig.features?.reservas === false) return <Dashboard user={activeUser} onNavigate={(page) => setCurrentPage(page as Page)} clientConfig={clientConfig} />;
+        if (clientConfig && clientConfig.features?.reservas === false) return renderDashboard();
         return <BookingsList user={activeUser} />;
       case 'calendar': 
-        if (clientConfig && clientConfig.features?.reservas === false) return <Dashboard user={activeUser} onNavigate={(page) => setCurrentPage(page as Page)} clientConfig={clientConfig} />;
-        return <CalendarPage user={activeUser} initialBookingId={selectedBookingId} onClearInitialBooking={() => setSelectedBookingId(null)} />;
+        if (clientConfig && clientConfig.features?.reservas === false) return renderDashboard();
+        return <CalendarPage user={activeUser} clientConfig={clientConfig} initialBookingId={selectedBookingId} onClearInitialBooking={() => setSelectedBookingId(null)} />;
       case 'ranking': 
-        if (clientConfig && clientConfig.features?.ranking === false) return <Dashboard user={activeUser} onNavigate={(page) => setCurrentPage(page as Page)} clientConfig={clientConfig} />;
+        if (clientConfig && clientConfig.features?.ranking === false) return renderDashboard();
         return <RankingPage user={activeUser} />;
       case 'stats': 
-        if (clientConfig && clientConfig.features?.estadisticas === false) return <Dashboard user={activeUser} onNavigate={(page) => setCurrentPage(page as Page)} clientConfig={clientConfig} />;
-        return isAdmin ? <SmartStats /> : <Dashboard user={activeUser} onNavigate={(page) => setCurrentPage(page as Page)} clientConfig={clientConfig} />;
+        if (clientConfig && clientConfig.features?.estadisticas === false) return renderDashboard();
+        return isAdmin ? <SmartStats /> : renderDashboard();
       case 'sales': 
-        if (clientConfig && clientConfig.features?.ventas === false) return <Dashboard user={activeUser} onNavigate={(page) => setCurrentPage(page as Page)} clientConfig={clientConfig} />;
-        return isAdmin ? <SalesPage /> : <Dashboard user={activeUser} onNavigate={(page) => setCurrentPage(page as Page)} clientConfig={clientConfig} />;
-      case 'admin': return isAdmin ? <Admin onLogout={handleLogout} /> : <Dashboard user={activeUser} onNavigate={(page) => setCurrentPage(page as Page)} clientConfig={clientConfig} />;
-      default: return <Dashboard user={activeUser} onNavigate={(page) => setCurrentPage(page as Page)} clientConfig={clientConfig} />;
+        if (clientConfig && clientConfig.features?.ventas === false) return renderDashboard();
+        return isAdmin ? <SalesPage /> : renderDashboard();
+      case 'admin': return isAdmin ? <Admin onLogout={handleLogout} /> : renderDashboard();
+      default: return renderDashboard();
     }
   };
 
   if (!activeUser) {
     return null;
+  }
+
+  if (isPublicPortalActive) {
+    return (
+      <div className="relative h-screen overflow-hidden overflow-x-hidden bg-slate-950 text-white">
+        <div
+          className="fixed inset-0"
+          style={{
+            backgroundImage: `url(${PUBLIC_SELECTION_BACKGROUND})`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            backgroundRepeat: 'no-repeat',
+          }}
+        />
+        <div className="fixed inset-0 bg-[linear-gradient(180deg,rgba(2,6,23,0.62)_0%,rgba(2,6,23,0.78)_42%,rgba(2,6,23,0.94)_100%)]" />
+
+        <div className="relative z-10 flex h-full min-h-0 flex-col">
+          <header className="sticky top-0 z-40 border-b border-white/10 bg-slate-950/62 px-4 py-2 backdrop-blur-2xl sm:px-6 lg:px-10">
+            <div className="mx-auto flex w-full max-w-[1440px] items-center justify-between gap-4">
+              <div className="flex min-w-0 items-center gap-3">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/15 bg-white shadow-xl sm:h-12 sm:w-12">
+                  {publicPortalLogo ? (
+                    <img src={publicPortalLogo} alt={publicPortalClientName} className="h-full w-full object-contain p-2" />
+                  ) : selectedPublicClient ? (
+                    <span className="text-lg font-black tracking-[-0.05em] text-slate-900">
+                      {getClientInitials(selectedPublicClient)}
+                    </span>
+                  ) : (
+                    <ArgentinaLogo size="sm" showText={false} />
+                  )}
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[8px] font-black uppercase tracking-[0.24em] text-emerald-200">Reservas Golazo</p>
+                  <h1 className="truncate text-base font-black tracking-[-0.04em] text-white sm:text-xl">
+                    {publicPortalClientName}
+                  </h1>
+                </div>
+              </div>
+
+              <nav className="hidden items-center gap-2 lg:flex">
+                {filteredNavItems.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => setCurrentPage(item.id as Page)}
+                    className={cn(
+                      "inline-flex h-10 items-center gap-2 rounded-xl px-3 text-[10px] font-black uppercase tracking-[0.16em] transition-all",
+                      currentPage === item.id
+                        ? "bg-white text-slate-950 shadow-xl"
+                        : "border border-white/10 bg-white/10 text-white/75 hover:bg-white/15 hover:text-white",
+                    )}
+                  >
+                    <item.icon className="h-4 w-4" />
+                    {getPublicNavLabel(item)}
+                  </button>
+                ))}
+              </nav>
+
+              <button
+                type="button"
+                onClick={handleBackToClientSelector}
+                className="inline-flex h-10 shrink-0 items-center gap-2 rounded-xl border border-white/15 bg-white/10 px-3 text-[9px] font-black uppercase tracking-[0.16em] text-white backdrop-blur-xl transition-all hover:bg-white/15 sm:px-4"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                <span className="hidden sm:inline">Cambiar complejo</span>
+              </button>
+            </div>
+          </header>
+
+          <main className="relative z-10 mx-auto min-h-0 w-full max-w-[1440px] flex-1 overflow-y-auto overflow-x-hidden px-4 pb-32 pt-4 sm:px-6 sm:pt-6 lg:px-8 lg:pb-10">
+            <motion.div
+              key={currentPage}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.2 }}
+              className="min-w-0 w-full"
+            >
+              <Suspense fallback={<PageFallback />}>
+                {renderPage()}
+              </Suspense>
+            </motion.div>
+          </main>
+
+          <nav
+            className="fixed inset-x-3 bottom-3 z-50 grid gap-2 rounded-[24px] border border-white/15 bg-slate-950/86 p-1.5 shadow-2xl backdrop-blur-2xl lg:hidden"
+            style={{ gridTemplateColumns: `repeat(${filteredNavItems.length}, minmax(0, 1fr))` }}
+          >
+            {filteredNavItems.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => setCurrentPage(item.id as Page)}
+                className={cn(
+                  "flex min-h-14 flex-col items-center justify-center gap-1 rounded-2xl px-1 text-[9px] font-black uppercase tracking-tight transition-all",
+                  currentPage === item.id
+                    ? "bg-white text-slate-950"
+                    : "text-white/65 hover:bg-white/10 hover:text-white",
+                )}
+              >
+                <item.icon className="h-5 w-5" />
+                <span className="leading-tight">{getPublicNavLabel(item)}</span>
+              </button>
+            ))}
+          </nav>
+        </div>
+
+        <Toaster position="top-center" richColors />
+      </div>
+    );
   }
 
   return (
@@ -895,12 +1306,18 @@ export default function App() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.2 }}
           >
-            {renderPage()}
+            <Suspense fallback={<PageFallback />}>
+              {renderPage()}
+            </Suspense>
           </motion.div>
         </div>
       </main>
 
-      {activeUser.role === 'admin' && <AIChatFloating />}
+      {activeUser.role === 'admin' && (
+        <Suspense fallback={null}>
+          <AIChatFloating />
+        </Suspense>
+      )}
       
       {/* Logo Viewer Modal */}
       <Modal

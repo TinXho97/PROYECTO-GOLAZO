@@ -1,0 +1,19 @@
+warning: in the working copy of 'src/App.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/pages/Admin.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/pages/BookingsList.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/pages/Calendar.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/pages/Dashboard.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/pages/Ranking.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/services/dataService.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/services/supabaseService.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/types.ts', LF will be replaced by CRLF the next time Git touches it
+ src/App.tsx                     | 123 [32m+++[m[31m----[m
+ src/pages/Admin.tsx             | 178 [32m+++++++++[m[31m-[m
+ src/pages/BookingsList.tsx      |  70 [32m++[m[31m--[m
+ src/pages/Calendar.tsx          | 700 [32m+++++++++++++++++++++++++++++++++++++[m[31m---[m
+ src/pages/Dashboard.tsx         |  66 [32m++[m[31m--[m
+ src/pages/Ranking.tsx           |  82 [32m++[m[31m---[m
+ src/services/dataService.ts     |  23 [32m+[m[31m-[m
+ src/services/supabaseService.ts |  69 [32m+++[m[31m-[m
+ src/types.ts                    |  17 [32m+[m
+ 9 files changed, 1112 insertions(+), 216 deletions(-)

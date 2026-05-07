@@ -14,12 +14,20 @@ interface RankingPageProps {
 
 export default function RankingPage({ user }: RankingPageProps) {
   const effectiveClientId = getEffectiveClientId(user);
+  const isPlayerUser = user.role === 'client';
   const [ranking, setRanking] = useState<{ id: string, name: string, points: number }[]>([]);
   const [userPoints, setUserPoints] = useState(0);
   const [lastPoints, setLastPoints] = useState<{ points: number, isPromo: boolean } | null>(null);
 
   useEffect(() => {
     const fetchData = async () => {
+      if (isPlayerUser) {
+        setRanking([]);
+        setUserPoints(0);
+        setLastPoints(null);
+        return;
+      }
+
       const clientId = effectiveClientId;
       const currentRanking = await dataService.getRanking(clientId);
       setRanking(currentRanking);
@@ -34,7 +42,7 @@ export default function RankingPage({ user }: RankingPageProps) {
       }
     };
     fetchData();
-  }, [effectiveClientId, user.id, user.phone, user.role]);
+  }, [effectiveClientId, isPlayerUser, user.id, user.phone, user.role]);
 
   const identifier = user.role === 'client' && user.phone ? user.phone : user.id;
   const userPosition = ranking.findIndex(p => p.id === identifier) + 1;
@@ -48,55 +56,55 @@ export default function RankingPage({ user }: RankingPageProps) {
   ];
 
   return (
-    <div className="space-y-8 pb-20">
-      <header className="relative overflow-hidden p-6 sm:p-8 rounded-3xl sm:rounded-[40px] bg-zinc-900 text-white shadow-2xl">
+    <div className="w-full space-y-5 pb-20">
+      <header className="relative overflow-hidden rounded-[28px] bg-zinc-900 p-4 text-white shadow-2xl sm:p-6">
         <div className="absolute top-0 right-0 -mt-10 -mr-10 w-64 h-64 bg-sky-500/20 rounded-full blur-3xl" />
-        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
+        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="space-y-2">
-            <Badge variant="neutral" className="bg-sky-500/20 text-sky-400 border-sky-500/30 px-4 py-1">
+            <Badge variant="neutral" className="bg-sky-500/20 text-sky-400 border-sky-500/30 px-3 py-1">
               TEMPORADA MARZO 2026
             </Badge>
-            <h1 className="text-2xl sm:text-4xl lg:text-5xl font-black tracking-tighter">Ranking Mensual</h1>
-            <p className="text-zinc-400 font-medium text-base sm:text-lg">
+            <h1 className="text-2xl font-black tracking-tighter sm:text-4xl">Ranking Mensual</h1>
+            <p className="text-sm font-medium text-zinc-400 sm:text-base">
               Sumá puntos reservando y jugá más para ganar premios.
             </p>
           </div>
           {userPosition > 0 && (
-            <div className="bg-white/10 backdrop-blur-xl p-6 rounded-3xl border border-white/10 flex items-center gap-4">
-              <div className="w-12 h-12 bg-sky-500 rounded-2xl flex items-center justify-center shadow-lg shadow-sky-500/40">
-                <TrendingUp className="w-6 h-6 text-white" />
+            <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/10 p-4 backdrop-blur-xl">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-sky-500 shadow-lg shadow-sky-500/40">
+                <TrendingUp className="h-5 w-5 text-white" />
               </div>
               <div>
                 <p className="text-[10px] font-black text-white/60 uppercase tracking-widest">Tu Posición</p>
-                <p className="text-3xl font-black">Estás #{userPosition} <span className="text-sm font-bold text-sky-400">este mes</span></p>
+                <p className="text-2xl font-black">Estás #{userPosition} <span className="text-xs font-bold text-sky-400">este mes</span></p>
               </div>
             </div>
           )}
         </div>
       </header>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
         {/* User Status & Progress */}
-        <div className="lg:col-span-1 space-y-6">
-          <Card className="bg-sky-600 border-none shadow-2xl rounded-3xl sm:rounded-[40px] overflow-hidden text-white relative">
+        <div className="space-y-4 lg:col-span-1">
+          <Card className="relative overflow-hidden rounded-[28px] border-none bg-sky-600 text-white shadow-2xl">
             <div className="absolute top-0 right-0 p-6 opacity-20">
-              <Target className="w-24 h-24 sm:w-32 sm:h-32 rotate-12" />
+              <Target className="h-20 w-20 rotate-12 sm:h-24 sm:w-24" />
             </div>
-            <CardContent className="p-6 sm:p-8 space-y-6 sm:space-y-8 relative z-10">
+            <CardContent className="relative z-10 space-y-5 p-5 sm:p-6">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs font-black text-white/60 uppercase tracking-widest mb-1">Puntos Acumulados</p>
                   <motion.p 
                     key={userPoints}
-                    initial={{ scale: 0.8, opacity: 0 }}
-                    animate={{ scale: 1, opacity: 1 }}
-                    className="text-3xl sm:text-5xl lg:text-6xl font-black"
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="text-3xl font-black sm:text-5xl"
                   >
                     {userPoints}
                   </motion.p>
                 </div>
-                <div className="w-12 h-12 sm:w-16 sm:h-16 bg-white/20 backdrop-blur-md rounded-2xl flex items-center justify-center shadow-lg">
-                  <Star className="w-6 h-6 sm:w-8 sm:h-8 text-white fill-white" />
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/20 shadow-lg backdrop-blur-md sm:h-14 sm:w-14">
+                  <Star className="h-6 w-6 fill-white text-white sm:h-7 sm:w-7" />
                 </div>
               </div>
 
@@ -109,12 +117,12 @@ export default function RankingPage({ user }: RankingPageProps) {
                 </div>
               )}
 
-              <div className="space-y-4">
+              <div className="space-y-3">
                 <div className="flex justify-between text-sm font-black uppercase tracking-widest">
                   <span>Próximo Premio</span>
                   <span>{userPoints % pointsToFreeTurn} / {pointsToFreeTurn}</span>
                 </div>
-                <div className="h-4 w-full bg-white/20 rounded-full overflow-hidden p-1">
+                <div className="h-3 w-full overflow-hidden rounded-full bg-white/20 p-0.5">
                   <motion.div 
                     initial={{ width: 0 }}
                     animate={{ width: `${progress}%` }}
@@ -129,14 +137,14 @@ export default function RankingPage({ user }: RankingPageProps) {
             </CardContent>
           </Card>
 
-          <Card className="border-none shadow-xl rounded-3xl sm:rounded-[40px] overflow-hidden bg-white">
+          <Card className="overflow-hidden rounded-[28px] border-none bg-white shadow-xl">
             <CardHeader className="pb-2">
               <h3 className="text-lg sm:text-xl font-black text-zinc-900 flex items-center gap-2">
                 <Gift className="w-5 h-5 sm:w-6 sm:h-6 text-sky-500" />
                 Premios
               </h3>
             </CardHeader>
-            <CardContent className="space-y-4 p-4 sm:p-6">
+            <CardContent className="space-y-3 p-4">
               {prizes.map((prize) => {
                 const isUnlocked = userPoints >= prize.points;
                 const pointsNeeded = prize.points - userPoints;
@@ -144,9 +152,8 @@ export default function RankingPage({ user }: RankingPageProps) {
                 return (
                   <motion.div 
                     key={prize.id}
-                    whileHover={{ scale: 1.02 }}
                     className={cn(
-                      "p-5 rounded-3xl border transition-all cursor-pointer relative overflow-hidden group",
+                      "p-4 rounded-2xl border transition-all cursor-pointer relative overflow-hidden group",
                       isUnlocked 
                         ? "bg-emerald-50 border-emerald-100" 
                         : "bg-zinc-50 border-zinc-100 opacity-75"
@@ -154,10 +161,10 @@ export default function RankingPage({ user }: RankingPageProps) {
                   >
                     <div className="flex items-center gap-4 relative z-10">
                       <div className={cn(
-                        "w-12 h-12 rounded-2xl flex items-center justify-center shadow-sm transition-colors",
+                        "w-10 h-10 rounded-xl flex items-center justify-center shadow-sm transition-colors",
                         isUnlocked ? "bg-emerald-500 text-white" : "bg-white text-zinc-400"
                       )}>
-                        <prize.icon className="w-6 h-6" />
+                        <prize.icon className="h-5 w-5" />
                       </div>
                       <div className="flex-1">
                         <p className="text-sm font-black text-zinc-900">{prize.name}</p>
@@ -185,7 +192,7 @@ export default function RankingPage({ user }: RankingPageProps) {
             </CardContent>
           </Card>
 
-          <div className="bg-zinc-900 p-6 rounded-[32px] text-white space-y-3">
+          <div className="space-y-3 rounded-[24px] bg-zinc-900 p-4 text-white">
             <div className="flex items-center gap-2 text-sky-400">
               <Info className="w-5 h-5" />
               <span className="text-xs font-black uppercase tracking-widest">¿Cómo funciona?</span>
@@ -197,21 +204,26 @@ export default function RankingPage({ user }: RankingPageProps) {
         </div>
 
         {/* Ranking List */}
-        <div className="lg:col-span-2 space-y-6">
+        <div className="space-y-4 lg:col-span-2">
           <div className="flex items-center justify-between">
-            <h2 className="text-3xl font-black text-zinc-900 flex items-center gap-3 tracking-tight">
+            <h2 className={cn(
+              "text-xl font-black flex items-center gap-3 tracking-tight sm:text-2xl",
+              user.role === 'client' ? "text-white" : "text-zinc-900"
+            )}>
               <Trophy className="w-8 h-8 text-yellow-500" />
               Tabla de Posiciones
             </h2>
             <Badge variant="neutral" className="font-black">TOP 50</Badge>
           </div>
 
-          <Card className="border-none shadow-xl rounded-3xl sm:rounded-[40px] overflow-hidden bg-white">
+          <Card className="overflow-hidden rounded-[28px] border-none bg-white shadow-xl">
             <CardContent className="p-0">
               <div className="divide-y divide-zinc-50">
                 {ranking.length === 0 ? (
                   <div className="p-12 text-center text-zinc-400">
-                    <p className="font-bold">Aún no hay jugadores en el ranking</p>
+                    <p className="font-bold">
+                      {isPlayerUser ? 'El ranking público estará disponible cuando el complejo habilite estadísticas públicas.' : 'Aún no hay jugadores en el ranking'}
+                    </p>
                   </div>
                 ) : (
                   ranking.map((player, index) => {
@@ -225,16 +237,16 @@ export default function RankingPage({ user }: RankingPageProps) {
                         key={player.id} 
                         whileHover={{ backgroundColor: "rgba(244, 244, 245, 0.5)" }}
                         className={cn(
-                          "p-4 sm:p-6 flex items-center justify-between transition-all relative group",
+                          "p-3 sm:p-4 flex items-center justify-between transition-all relative group",
                           isUser ? "bg-sky-50/80" : ""
                         )}
                       >
                         {isUser && <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-sky-500" />}
                         
-                        <div className="flex items-center gap-3 sm:gap-6">
+                        <div className="flex items-center gap-3 sm:gap-4">
                           <div className={cn(
-                            "w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl flex items-center justify-center font-black text-base sm:text-xl shadow-sm",
-                            index === 0 ? "bg-gradient-to-br from-yellow-300 to-yellow-500 text-white scale-110 shadow-yellow-500/20" :
+                            "w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center font-black text-sm sm:text-base shadow-sm",
+                            index === 0 ? "bg-gradient-to-br from-yellow-300 to-yellow-500 text-white shadow-yellow-500/20" :
                             index === 1 ? "bg-gradient-to-br from-zinc-300 to-zinc-400 text-white shadow-zinc-400/20" :
                             index === 2 ? "bg-gradient-to-br from-orange-300 to-orange-500 text-white shadow-orange-500/20" :
                             "bg-zinc-50 text-zinc-400"
@@ -243,14 +255,14 @@ export default function RankingPage({ user }: RankingPageProps) {
                           </div>
                           <div className="flex items-center gap-2 sm:gap-4">
                             <div className={cn(
-                              "w-10 h-10 sm:w-14 sm:h-14 rounded-xl sm:rounded-2xl flex items-center justify-center transition-transform group-hover:scale-110",
+                              "w-9 h-9 sm:w-11 sm:h-11 rounded-xl flex items-center justify-center transition-colors",
                               isUser ? "bg-sky-500 text-white" : "bg-zinc-100 text-zinc-400"
                             )}>
-                              <UserIcon className="w-5 h-5 sm:w-7 sm:h-7" />
+                              <UserIcon className="w-4 h-4 sm:w-5 sm:h-5" />
                             </div>
                             <div>
                               <div className="flex items-center gap-1 sm:gap-2">
-                                <p className={cn("font-black text-sm sm:text-lg truncate max-w-[100px] sm:max-w-none", isUser ? "text-sky-600" : "text-zinc-900")}>
+                                <p className={cn("font-black text-sm sm:text-base truncate max-w-[120px] sm:max-w-none", isUser ? "text-sky-600" : "text-zinc-900")}>
                                   {player.name}
                                 </p>
                                 {isUser && <Badge variant="neutral" className="bg-sky-500 text-white border-none text-[8px] px-1 sm:px-2">TÚ</Badge>}
@@ -267,7 +279,7 @@ export default function RankingPage({ user }: RankingPageProps) {
                           </div>
                         </div>
                         <div className="text-right">
-                          <p className={cn("text-xl sm:text-3xl font-black", isTop3 ? "text-zinc-900" : "text-zinc-500")}>
+                          <p className={cn("text-lg sm:text-2xl font-black", isTop3 ? "text-zinc-900" : "text-zinc-500")}>
                             {player.points}
                           </p>
                           <p className="text-[8px] sm:text-[10px] font-black text-zinc-400 uppercase tracking-widest">Puntos</p>

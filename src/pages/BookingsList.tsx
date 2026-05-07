@@ -41,6 +41,7 @@ interface BookingsListProps {
 
 export default function BookingsList({ user }: BookingsListProps) {
   const effectiveClientId = getEffectiveClientId(user);
+  const isPlayerUser = user.role === 'client';
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [pitches, setPitches] = useState<Pitch[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -62,8 +63,15 @@ export default function BookingsList({ user }: BookingsListProps) {
 
       try {
         setLoadError(null);
-        const p = await dataService.getPitches(clientId);
+        const p = isPlayerUser
+          ? await dataService.getPublicPitches(clientId)
+          : await dataService.getPitches(clientId);
         setPitches(p);
+
+        if (isPlayerUser) {
+          setBookings([]);
+          return;
+        }
 
         try {
           const b = await dataService.getBookings(clientId);
@@ -78,7 +86,7 @@ export default function BookingsList({ user }: BookingsListProps) {
       }
     };
     fetchData();
-  }, [effectiveClientId]);
+  }, [effectiveClientId, isPlayerUser]);
 
   const userBookingCounts = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -93,11 +101,11 @@ export default function BookingsList({ user }: BookingsListProps) {
       const matchesSearch = b.clientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
                            b.clientPhone.includes(searchTerm);
       const matchesStatus = filterStatus === 'all' || b.status === filterStatus;
-      const matchesUser = user.role === 'admin' || b.userId === user.id;
+      const matchesUser = user.role === 'admin' || b.userId === user.id || (isPlayerUser && !!user.phone && b.clientPhone === user.phone);
       
       return matchesSearch && matchesStatus && matchesUser;
     }).sort((a, b) => b.startTime.getTime() - a.startTime.getTime());
-  }, [bookings, searchTerm, filterStatus, user]);
+  }, [bookings, searchTerm, filterStatus, user, isPlayerUser]);
 
   const groupedBookings = useMemo(() => {
     const today = startOfDay(new Date());
@@ -217,7 +225,7 @@ export default function BookingsList({ user }: BookingsListProps) {
             <div className="flex flex-col md:flex-row">
               {/* Time Section */}
               <div className={cn(
-                "md:w-48 p-6 flex flex-col items-center justify-center text-center border-b md:border-b-0 md:border-r border-zinc-100",
+                cn("flex flex-col items-center justify-center text-center border-b md:border-b-0 md:border-r border-zinc-100", isPlayerUser ? "p-4 md:w-36" : "md:w-48 p-6"),
                 isInPlay ? "bg-emerald-500 text-white" :
                 booking.status === 'confirmed' ? "bg-emerald-50/30" : 
                 booking.status === 'pending' ? "bg-amber-50/30" :
@@ -237,13 +245,13 @@ export default function BookingsList({ user }: BookingsListProps) {
                   )} />
                 )}
                 <span className={cn(
-                  "text-2xl font-black leading-none",
+                  cn("font-black leading-none", isPlayerUser ? "text-xl" : "text-2xl"),
                   isInPlay ? "text-white" : "text-zinc-900"
                 )}>
                   {format(booking.startTime, 'HH:mm')}
                 </span>
                 <span className={cn(
-                  "text-sm font-black uppercase tracking-widest mt-1",
+                  cn("font-black uppercase tracking-widest mt-1", isPlayerUser ? "text-xs" : "text-sm"),
                   isInPlay ? "text-emerald-100" : "text-zinc-500"
                 )}>
                   a {format(booking.endTime, 'HH:mm')} hs
@@ -251,10 +259,10 @@ export default function BookingsList({ user }: BookingsListProps) {
               </div>
 
               {/* Main Content */}
-              <div className="flex-1 p-6 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-                <div className="space-y-4 flex-1">
+              <div className={cn("flex-1 flex flex-col lg:flex-row lg:items-center justify-between", isPlayerUser ? "gap-4 p-4" : "p-6 gap-6")}>
+                <div className={cn("flex-1", isPlayerUser ? "space-y-3" : "space-y-4")}>
                   <div className="flex flex-wrap items-center gap-3">
-                    <h4 className="text-xl font-black text-zinc-900">{booking.clientName}</h4>
+                    <h4 className={cn("font-black text-zinc-900", isPlayerUser ? "text-lg" : "text-xl")}>{booking.clientName}</h4>
                     <div className="flex gap-2">
                       {isInPlay ? (
                         <Badge className="bg-emerald-500 text-white border-none animate-pulse">EN JUEGO</Badge>
@@ -276,7 +284,7 @@ export default function BookingsList({ user }: BookingsListProps) {
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2 text-zinc-900 font-black text-lg">
+                  <div className={cn("flex items-center gap-2 text-zinc-900 font-black", isPlayerUser ? "text-base" : "text-lg")}>
                     <MapPin className="w-5 h-5 text-sky-500" />
                     {pitch?.name || 'Cancha eliminada'}
                   </div>
@@ -414,31 +422,44 @@ export default function BookingsList({ user }: BookingsListProps) {
   }
 
   return (
-    <div className="space-y-8 pb-20">
-      <header className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+    <div className={cn("w-full pb-20", isPlayerUser ? "space-y-4" : "space-y-8")}>
+      <header className={cn(
+        "flex flex-col md:flex-row md:items-center justify-between",
+        isPlayerUser ? "gap-3 rounded-[24px] border border-white/10 bg-white/95 p-4 shadow-2xl shadow-slate-950/20 backdrop-blur-xl sm:p-5" : "gap-6"
+      )}>
         <div>
-          <h1 className="text-4xl font-black text-zinc-900 tracking-tighter">
-            {user.role === 'admin' ? 'Gestión de Reservas' : 'Mis Reservas'}
+          <h1 className={cn("font-black text-zinc-900 tracking-tighter", isPlayerUser ? "text-2xl sm:text-3xl" : "text-3xl sm:text-4xl")}>
+            {user.role === 'admin' ? 'Gestión de Reservas' : 'Mis turnos'}
           </h1>
-          <p className="text-zinc-500 font-medium">Panel de control y seguimiento</p>
+          <p className={cn("text-zinc-500 font-medium", isPlayerUser && "text-sm")}>
+            {isPlayerUser ? 'Tus reservas del complejo, simples y ordenadas' : 'Panel de control y seguimiento'}
+          </p>
         </div>
       </header>
 
       {/* Filters */}
-      <div className="bg-white p-6 rounded-[32px] border border-zinc-100 shadow-sm space-y-4">
-        <div className="flex flex-col lg:flex-row gap-4">
+      <div className={cn(
+        "space-y-4",
+        isPlayerUser
+          ? "bg-white/95 p-3 rounded-[24px] border border-white/40 shadow-2xl shadow-slate-950/15 backdrop-blur-xl sm:p-4"
+          : "bg-white p-6 rounded-[32px] border border-zinc-100 shadow-sm"
+      )}>
+        <div className={cn("flex flex-col lg:flex-row", isPlayerUser ? "gap-3" : "gap-4")}>
           <div className="relative flex-1">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-400" />
             <input
               type="text"
               placeholder="Buscar por nombre o teléfono..."
-              className="w-full pl-12 pr-4 py-4 bg-zinc-50 border-none rounded-2xl focus:ring-2 focus:ring-sky-500 outline-none transition-all font-medium"
+              className={cn(
+                "w-full pl-12 pr-4 bg-zinc-50 border-none rounded-2xl focus:ring-2 focus:ring-sky-500 outline-none transition-all font-medium",
+                isPlayerUser ? "py-3 text-sm" : "py-4"
+              )}
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
             />
           </div>
           <div className="flex flex-wrap gap-3">
-            <div className="flex items-center gap-2 bg-zinc-50 px-4 py-2 rounded-2xl border border-zinc-100">
+            <div className={cn("flex items-center gap-2 bg-zinc-50 px-4 rounded-2xl border border-zinc-100", isPlayerUser ? "py-2.5" : "py-2")}>
               <Filter className="w-4 h-4 text-zinc-400" />
               <select
                 className="bg-transparent font-bold text-sm outline-none text-zinc-600"
@@ -457,12 +478,12 @@ export default function BookingsList({ user }: BookingsListProps) {
         </div>
       </div>
 
-      <div className="space-y-12">
+      <div className={cn(isPlayerUser ? "space-y-6" : "space-y-12")}>
         {groupedBookings.map((group, groupIndex) => (
-          <section key={group.title} className="space-y-6">
+          <section key={group.title} className={cn(isPlayerUser ? "space-y-3" : "space-y-6")}>
             <div className="flex items-center gap-3">
               <div className={cn(
-                "w-10 h-10 rounded-xl flex items-center justify-center text-white shadow-lg",
+                cn("rounded-xl flex items-center justify-center text-white shadow-lg", isPlayerUser ? "h-8 w-8" : "w-10 h-10"),
                 group.title === 'HOY' ? "bg-emerald-500 shadow-emerald-200" :
                 group.title === 'AYER' ? "bg-sky-500 shadow-sky-200" :
                 "bg-zinc-400 shadow-zinc-200"
@@ -471,7 +492,7 @@ export default function BookingsList({ user }: BookingsListProps) {
                  group.title === 'AYER' ? <History className="w-5 h-5" /> :
                  <CalendarIcon className="w-5 h-5" />}
               </div>
-              <h2 className="text-2xl font-black text-zinc-900 tracking-tight uppercase">{group.title}</h2>
+              <h2 className={cn("font-black text-zinc-900 tracking-tight uppercase", isPlayerUser ? "text-xl" : "text-2xl")}>{group.title}</h2>
               <Badge variant="neutral" className={cn(
                 "border-none",
                 group.title === 'HOY' ? "bg-emerald-100 text-emerald-700" :
@@ -481,7 +502,7 @@ export default function BookingsList({ user }: BookingsListProps) {
                 {group.bookings.length} {group.bookings.length === 1 ? 'reserva' : 'reservas'}
               </Badge>
             </div>
-            <div className="space-y-4">
+            <div className={cn(isPlayerUser ? "space-y-3" : "space-y-4")}>
               {group.bookings.map((booking, i) => renderBookingCard(booking, i))}
             </div>
           </section>
@@ -489,15 +510,20 @@ export default function BookingsList({ user }: BookingsListProps) {
 
         {filteredBookings.length === 0 && (
           <motion.div 
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="text-center py-24 bg-white rounded-[40px] border-2 border-dashed border-zinc-100"
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            className={cn(
+              "text-center bg-white border-2 border-dashed border-zinc-100",
+              isPlayerUser ? "rounded-[28px] px-6 py-14" : "py-24 rounded-[40px]"
+            )}
           >
-            <div className="w-20 h-20 bg-zinc-50 rounded-3xl flex items-center justify-center mx-auto mb-6">
-              <AlertCircle className="w-10 h-10 text-zinc-200" />
+            <div className={cn("bg-zinc-50 rounded-3xl flex items-center justify-center mx-auto", isPlayerUser ? "mb-4 h-14 w-14" : "w-20 h-20 mb-6")}>
+              <AlertCircle className={cn("text-zinc-200", isPlayerUser ? "h-7 w-7" : "w-10 h-10")} />
             </div>
-            <h3 className="text-xl font-black text-zinc-900 mb-2">No se encontraron reservas</h3>
-            <p className="text-zinc-400 font-medium">Intenta cambiar los filtros o realiza una nueva reserva.</p>
+            <h3 className="text-xl font-black text-zinc-900 mb-2">{isPlayerUser ? 'Consulta pública pendiente' : 'No se encontraron reservas'}</h3>
+            <p className="text-zinc-400 font-medium">
+              {isPlayerUser ? 'Tus reservas aparecerán acá cuando el complejo habilite la consulta pública por teléfono.' : 'Intentá cambiar los filtros o realizá una nueva reserva.'}
+            </p>
           </motion.div>
         )}
       </div>

@@ -1,4 +1,4 @@
-import { useState, useEffect, type FormEvent } from 'react';
+﻿import { useState, useEffect, type FormEvent } from 'react';
 import { Users, Activity, X, Calendar, Power, Search, Trash2, Plus, LayoutDashboard, Building2, BarChart2, Settings, LogOut, MoreVertical, CheckCircle2, XCircle, ExternalLink, RefreshCw, Package, ShoppingCart, CircleDollarSign, Clock3, AlertTriangle, ShieldCheck, SlidersHorizontal, Gauge, History } from 'lucide-react';
 import { getSupabaseAnonKey, getSupabaseUrl, supabase } from '../lib/supabase';
 import { AuditLog, Client } from '../types';
@@ -136,6 +136,21 @@ interface SuperAdminAnalytics {
   };
 }
 
+type NewAdminAccessMode = 'invite' | 'password';
+
+interface NewAdminFormState {
+  email: string;
+  password: string;
+  client_id: string;
+  create_new_client: boolean;
+  client_name: string;
+  complex_name: string;
+  phone: string;
+  address: string;
+  features: Record<ClientFeatureKey, boolean>;
+  accessMode: NewAdminAccessMode;
+}
+
 interface ClientSettingsDraft {
   name: string;
   complex_name: string;
@@ -245,7 +260,8 @@ export default function SuperAdminSaaS() {
   const [selectedSettingsClientId, setSelectedSettingsClientId] = useState('');
   const [settingsDraft, setSettingsDraft] = useState<ClientSettingsDraft | null>(null);
   const [isSavingSettings, setIsSavingSettings] = useState(false);
-  const [newUser, setNewUser] = useState({ 
+  const [isAccessActionLoading, setIsAccessActionLoading] = useState<string | null>(null);
+  const [newUser, setNewUser] = useState<NewAdminFormState>({ 
     email: '', 
     password: '', 
     client_id: '',
@@ -254,7 +270,8 @@ export default function SuperAdminSaaS() {
     complex_name: '',
     phone: '',
     address: '',
-    features: { ...DEFAULT_FEATURES }
+    features: { ...DEFAULT_FEATURES },
+    accessMode: 'invite',
   });
 
   const invokeAdminOpViaFetch = async <T,>(action: string, payload: Record<string, unknown> = {}) => {
@@ -263,7 +280,7 @@ export default function SuperAdminSaaS() {
     } = await supabase.auth.getSession();
 
     if (!session?.access_token) {
-      throw new Error('Sesion expirada. Inicia sesion nuevamente.');
+      throw new Error('Sesión expirada. Iniciá sesión nuevamente.');
     }
 
     const response = await fetch(`${getSupabaseUrl()}/functions/v1/admin-ops`, {
@@ -284,7 +301,7 @@ export default function SuperAdminSaaS() {
       const message = responseBody?.error?.message || responseBody?.error;
 
       if (code === 'invalid_jwt' || code === 'profile_missing') {
-        throw new Error(message || `Sesion invalida (${code}).`);
+        throw new Error(message || `Sesión inválida (${code}).`);
       }
 
       if (code === 'forbidden') {
@@ -292,7 +309,7 @@ export default function SuperAdminSaaS() {
       }
 
       if (response.status === 404) {
-        throw new Error('La funcion admin-ops no esta disponible en Supabase.');
+        throw new Error('La función admin-ops no está disponible en Supabase.');
       }
 
       throw new Error(message || 'Error inesperado en admin-ops');
@@ -319,8 +336,14 @@ export default function SuperAdminSaaS() {
       complex_name: '',
       phone: '',
       address: '',
-      features: { ...DEFAULT_FEATURES }
+      features: { ...DEFAULT_FEATURES },
+      accessMode: 'invite',
     });
+  };
+
+  const getAdminRedirectUrl = () => {
+    if (typeof window === 'undefined') return undefined;
+    return `${window.location.origin}/admin`;
   };
 
   const handleLogin = async (e: FormEvent) => {
@@ -452,7 +475,7 @@ export default function SuperAdminSaaS() {
     } catch (error: any) {
       console.error('Error fetching audit logs:', error);
       setAuditLogs([]);
-      toast.error(error?.message || 'No se pudo cargar el historial de auditoria');
+      toast.error(error?.message || 'No se pudo cargar el historial de auditoría');
     } finally {
       setIsAuditLoading(false);
     }
@@ -481,7 +504,7 @@ export default function SuperAdminSaaS() {
       } catch (sessionError: any) {
         console.error('Error loading superadmin session:', sessionError);
         setIsAuthenticated(false);
-        setError(sessionError?.message || 'No se pudo validar la sesion de superadmin');
+        setError(sessionError?.message || 'No se pudo validar la sesión de superadmin');
       }
     };
 
@@ -514,6 +537,13 @@ export default function SuperAdminSaaS() {
     }
   }, [clients, selectedSettingsClientId]);
 
+  const selectedNewUserClient = clients.find((client) => client.id === newUser.client_id);
+  const newUserFeaturePreview = newUser.create_new_client
+    ? newUser.features
+    : selectedNewUserClient
+      ? resolveClientFeatures(selectedNewUserClient)
+      : newUser.features;
+
   const handleCreateUser = async (e: FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
@@ -536,11 +566,17 @@ export default function SuperAdminSaaS() {
       await invokeAdminOp('create_admin', {
         clientId,
         email: newUser.email,
-        password: newUser.password,
+        ...(newUser.accessMode === 'password' ? { password: newUser.password } : {}),
+        sendInvite: newUser.accessMode === 'invite',
+        redirectTo: getAdminRedirectUrl(),
         name: newUser.client_name || newUser.complex_name
       });
 
-      toast.success('Usuario y cliente creados exitosamente');
+      toast.success(
+        newUser.accessMode === 'invite'
+          ? 'Administrador creado e invitación enviada.'
+          : 'Administrador creado exitosamente.',
+      );
       setIsUserModalOpen(false);
       resetNewUser();
       await Promise.all([fetchClients(), fetchUsers(), fetchMetrics()]);
@@ -560,6 +596,40 @@ export default function SuperAdminSaaS() {
       await Promise.all([fetchUsers(), fetchMetrics()]);
     } catch (error: any) {
       toast.error(error.message || 'Error al eliminar usuario');
+    }
+  };
+
+  const handleSendPasswordRecovery = async (admin: SuperAdminUser) => {
+    if (!admin.email) {
+      toast.error('Este administrador no tiene email asociado.');
+      return;
+    }
+
+    if (!window.confirm(`¿Enviar recuperación de contraseña a ${admin.email}?`)) {
+      return;
+    }
+
+    setIsAccessActionLoading(admin.id);
+
+    try {
+      await invokeAdminOp('send_admin_password_reset', {
+        userId: admin.id,
+        email: admin.email,
+        redirectTo: getAdminRedirectUrl(),
+      });
+      toast.success('Se envió el correo de recuperación al administrador.');
+    } catch (error: any) {
+      const rawMessage = typeof error?.message === 'string' ? error.message.trim() : '';
+      const message =
+        rawMessage.includes('superadmin') ||
+        rawMessage.includes('administrador') ||
+        rawMessage.includes('No se encontro') ||
+        rawMessage.includes('No se encontró')
+          ? rawMessage
+          : 'No se pudo enviar la recuperación de contraseña.';
+      toast.error(message);
+    } finally {
+      setIsAccessActionLoading(null);
     }
   };
 
@@ -700,14 +770,14 @@ export default function SuperAdminSaaS() {
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'clients', label: 'Clientes', icon: Building2 },
     { id: 'users', label: 'Administradores', icon: Users },
-    { id: 'audit', label: 'Auditoria', icon: History },
+    { id: 'audit', label: 'Auditoría', icon: History },
     { id: 'metrics', label: 'Métricas', icon: BarChart2 },
     { id: 'settings', label: 'Configuración', icon: Settings },
   ] as const;
 
   const panelNavItems = navItems.map((item) => {
-    if (item.id === 'metrics') return { ...item, label: 'Metricas' };
-    if (item.id === 'settings') return { ...item, label: 'Configuracion' };
+    if (item.id === 'metrics') return { ...item, label: 'Métricas' };
+    if (item.id === 'settings') return { ...item, label: 'Configuración' };
     return item;
   });
 
@@ -863,7 +933,7 @@ export default function SuperAdminSaaS() {
                 <div className="text-center py-20 bg-[#111827] rounded-[32px] border border-white/5">
                   <Building2 className="w-16 h-16 text-slate-600 mx-auto mb-4" />
                   <h3 className="text-xl font-bold text-white mb-2">No se encontraron clientes</h3>
-                  <p className="text-slate-400">Intenta con otra búsqueda o crea un nuevo cliente.</p>
+                  <p className="text-slate-400">Intentá con otra búsqueda o creá un nuevo cliente.</p>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 xl:grid-cols-2 2xl:grid-cols-3 gap-6">
@@ -877,7 +947,7 @@ export default function SuperAdminSaaS() {
                             <h3 className="text-xl font-bold text-white mb-1">{client.complex_name || client.name}</h3>
                             <div className="flex items-center gap-2 text-xs text-slate-500">
                                <span className="font-mono bg-[#1F2937] px-2 py-0.5 rounded-md text-slate-400">ID: {client.id.substring(0,8)}</span>
-                               <span>•</span>
+                               <span>â€¢</span>
                                <span>{client.phone || 'Sin teléfono'}</span>
                             </div>
                           </div>
@@ -954,6 +1024,14 @@ export default function SuperAdminSaaS() {
                                     <p className="text-[10px] text-slate-500">Último acceso: {admin.last_sign_in_at ? format(new Date(admin.last_sign_in_at), "dd/MM/yy", { locale: es }) : 'Nunca'}</p>
                                   </div>
                                 </div>
+                                <button
+                                  type="button"
+                                  onClick={() => handleSendPasswordRecovery(admin)}
+                                  disabled={isAccessActionLoading === admin.id || !admin.email}
+                                  className="px-3 py-2 rounded-lg bg-sky-500/10 text-sky-300 hover:bg-sky-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-[10px] font-black uppercase tracking-widest"
+                                >
+                                  {isAccessActionLoading === admin.id ? 'Enviando...' : 'Enviar recuperación'}
+                                </button>
                               </div>
                             )) : (
                               <div className="text-sm text-slate-500 italic p-4 text-center bg-[#0B0F19] rounded-xl border border-white/5 border-dashed">
@@ -970,7 +1048,7 @@ export default function SuperAdminSaaS() {
                             className="w-full py-3 rounded-xl bg-[#1F2937] hover:bg-[#FF6B00] text-white text-sm font-bold transition-all flex items-center justify-center gap-2 group/btn"
                           >
                             <ExternalLink className="w-4 h-4 text-slate-400 group-hover/btn:text-white transition-colors" />
-                            Entrar al panel del cliente
+                            Ver detalle del cliente
                           </button>
                         </div>
                       </div>
@@ -1054,6 +1132,14 @@ export default function SuperAdminSaaS() {
                               <td className="px-6 py-4">
                                 <div className="flex items-center justify-end gap-2">
                                   <button
+                                    onClick={() => handleSendPasswordRecovery(user)}
+                                    disabled={isAccessActionLoading === user.id || !user.email}
+                                    className="px-3 py-2 bg-sky-500/10 text-sky-300 hover:bg-sky-500/20 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors text-[10px] font-black uppercase tracking-widest"
+                                    title="Enviar recuperación de contraseña"
+                                  >
+                                    {isAccessActionLoading === user.id ? 'Enviando...' : 'Enviar recuperación'}
+                                  </button>
+                                  <button
                                     onClick={() => handleDeleteUser(user.id)}
                                     className="p-2 bg-red-500/10 text-red-400 hover:bg-red-500/20 rounded-lg transition-colors"
                                     title="Eliminar Usuario"
@@ -1077,9 +1163,9 @@ export default function SuperAdminSaaS() {
             <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
               <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                 <div>
-                  <h2 className="text-2xl font-black text-white tracking-tight">Metricas de negocio y operacion</h2>
+                  <h2 className="text-2xl font-black text-white tracking-tight">Métricas de negocio y operación</h2>
                   <p className="text-slate-400 text-sm mt-1">
-                    Vista consolidada de uso, ingresos y salud del SaaS en los ultimos {metricsAnalytics?.window_days ?? 30} dias.
+                    Vista consolidada de uso, ingresos y salud del SaaS en los últimos {metricsAnalytics?.window_days ?? 30} días.
                   </p>
                 </div>
                 <div className="flex items-center gap-3">
@@ -1090,7 +1176,7 @@ export default function SuperAdminSaaS() {
                     onClick={fetchMetrics}
                     disabled={isMetricsLoading}
                     className="p-2 bg-[#1F2937] text-slate-400 hover:text-white hover:bg-[#374151] rounded-lg transition-colors disabled:opacity-50"
-                    title="Actualizar metricas"
+                    title="Actualizar métricas"
                   >
                     <RefreshCw className={`w-5 h-5 ${isMetricsLoading ? 'animate-spin' : ''}`} />
                   </button>
@@ -1171,7 +1257,7 @@ export default function SuperAdminSaaS() {
                     <div className="text-xs text-slate-500">30d</div>
                   </div>
                   {topClientMetrics.length === 0 ? (
-                    <div className="text-sm text-slate-500">Todavia no hay datos suficientes para mostrar comparativas por cliente.</div>
+                    <div className="text-sm text-slate-500">Todavía no hay datos suficientes para mostrar comparativas por cliente.</div>
                   ) : (
                     <div className="space-y-3">
                       {topClientMetrics.map((clientMetric) => (
@@ -1292,7 +1378,7 @@ export default function SuperAdminSaaS() {
                           </div>
                           <div className="text-right">
                             <div className="text-sm font-bold text-white">{formatCurrency(pitchMetric.revenue_estimated_30d)}</div>
-                            <div className="text-xs text-slate-500">{pitchMetric.booked_hours_30d.toFixed(1)}h • {formatPercent(pitchMetric.occupancy_rate_estimated_30d)}</div>
+                            <div className="text-xs text-slate-500">{pitchMetric.booked_hours_30d.toFixed(1)}h â€¢ {formatPercent(pitchMetric.occupancy_rate_estimated_30d)}</div>
                           </div>
                         </div>
                       ))
@@ -1320,7 +1406,7 @@ export default function SuperAdminSaaS() {
                           </div>
                           <div className="text-right">
                             <div className="text-sm font-bold text-white">{formatCurrency(pitchMetric.revenue_estimated_30d)}</div>
-                            <div className="text-xs text-slate-500">{pitchMetric.bookings_30d} reservas • {formatCurrency(pitchMetric.current_price)}</div>
+                            <div className="text-xs text-slate-500">{pitchMetric.bookings_30d} reservas â€¢ {formatCurrency(pitchMetric.current_price)}</div>
                           </div>
                         </div>
                       ))
@@ -1361,7 +1447,7 @@ export default function SuperAdminSaaS() {
                         <div key={`watch-${clientMetric.client_id}`} className="bg-[#0B0F19] rounded-2xl border border-white/5 px-4 py-3">
                           <div className="font-bold text-white">{clientMetric.client_name}</div>
                           <div className="text-xs text-slate-500 mt-1">
-                            {clientMetric.bookings_30d} reservas • {clientMetric.unique_contacts_30d} contactos • {formatCurrency(clientMetric.total_revenue_estimated_30d)}
+                            {clientMetric.bookings_30d} reservas â€¢ {clientMetric.unique_contacts_30d} contactos â€¢ {formatCurrency(clientMetric.total_revenue_estimated_30d)}
                           </div>
                         </div>
                       ))}
@@ -1377,15 +1463,15 @@ export default function SuperAdminSaaS() {
           {activeTab === 'settings' && (
             <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
               <div>
-                <h2 className="text-2xl font-black text-white tracking-tight">Configuracion de supervision</h2>
+                <h2 className="text-2xl font-black text-white tracking-tight">Configuración de supervisión</h2>
                 <p className="text-slate-400 text-sm mt-1">
-                  Esta vista concentra las reglas que si corresponden al Super Admin: servicio, vencimientos, modulos y consistencia del cliente.
+                  Esta vista concentra las reglas que sí corresponden al Super Admin: servicio, vencimientos, módulos y consistencia del cliente.
                 </p>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
                 {[
-                  { label: 'Vencen en 7 dias', value: String(expiringSoonClients.length), icon: Calendar },
+                  { label: 'Vencen en 7 días', value: String(expiringSoonClients.length), icon: Calendar },
                   { label: 'Sin admins', value: String(clientsWithoutAdmins.length), icon: Users },
                   { label: 'Features legacy', value: String(clientsWithLegacyFeatures.length), icon: AlertTriangle },
                   { label: 'Suspendidos', value: String(suspendedClients), icon: Power },
@@ -1429,8 +1515,8 @@ export default function SuperAdminSaaS() {
                 <section className="bg-[#111827] border border-white/5 rounded-[28px] p-6">
                   <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between mb-6">
                     <div>
-                      <h3 className="text-xl font-black text-white">Configuracion por cliente</h3>
-                      <p className="text-sm text-slate-400 mt-1">Edicion segura sobre el esquema ya soportado hoy.</p>
+                      <h3 className="text-xl font-black text-white">Configuración por cliente</h3>
+                      <p className="text-sm text-slate-400 mt-1">Edición segura sobre el esquema ya soportado hoy.</p>
                     </div>
                     <select
                       value={selectedSettingsClientId}
@@ -1465,7 +1551,7 @@ export default function SuperAdminSaaS() {
                           />
                         </div>
                         <div>
-                          <label className="block text-xs font-bold text-slate-400 mb-2 uppercase tracking-wider">Telefono</label>
+                          <label className="block text-xs font-bold text-slate-400 mb-2 uppercase tracking-wider">Teléfono</label>
                           <input
                             value={settingsDraft.phone}
                             onChange={(e) => setSettingsDraft((current) => current ? { ...current, phone: e.target.value } : current)}
@@ -1503,7 +1589,7 @@ export default function SuperAdminSaaS() {
                       </div>
 
                       <div>
-                        <label className="block text-xs font-bold text-slate-400 mb-3 uppercase tracking-wider">Modulos / features habilitados</label>
+                        <label className="block text-xs font-bold text-slate-400 mb-3 uppercase tracking-wider">Módulos / features habilitados</label>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                           {(Object.keys(settingsDraft.features) as ClientFeatureKey[]).map((featureKey) => (
                             <label key={featureKey} className="flex items-center justify-between gap-3 bg-[#0B0F19] border border-white/5 rounded-2xl px-4 py-3 cursor-pointer">
@@ -1540,7 +1626,7 @@ export default function SuperAdminSaaS() {
                           onClick={() => extendExpiration(selectedSettingsClient, 30)}
                           className="bg-[#1F2937] hover:bg-[#374151] text-white font-bold py-3 rounded-xl transition-colors"
                         >
-                          Extender 30 dias
+                          Extender 30 días
                         </button>
                         <button
                           type="button"
@@ -1554,7 +1640,7 @@ export default function SuperAdminSaaS() {
                           disabled={isSavingSettings}
                           className="bg-gradient-to-r from-[#FF6B00] to-[#FF8F00] disabled:opacity-50 text-white font-bold py-3 rounded-xl transition-all"
                         >
-                          {isSavingSettings ? 'Guardando...' : 'Guardar configuracion'}
+                          {isSavingSettings ? 'Guardando...' : 'Guardar configuración'}
                         </button>
                       </div>
                     </form>
@@ -1698,7 +1784,7 @@ export default function SuperAdminSaaS() {
       <Modal
         isOpen={isAuditModalOpen}
         onClose={() => setIsAuditModalOpen(false)}
-        title="Historial de Auditoria"
+        title="Historial de Auditoría"
         className="max-w-5xl"
       >
         <div className="space-y-6">
@@ -1808,7 +1894,7 @@ export default function SuperAdminSaaS() {
       {/* Create User Modal */}
       {isUserModalOpen && (
         <div className="fixed inset-0 bg-[#0B0F19]/90 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-[#111827] border border-white/10 rounded-[32px] w-full max-w-2xl p-8 shadow-2xl my-8">
+          <div className="bg-[#111827] border border-white/10 rounded-[32px] w-full max-w-4xl p-6 sm:p-8 shadow-2xl my-8">
              <div className="flex justify-between items-center mb-8">
               <h3 className="text-2xl font-black text-white tracking-tight">Nuevo Administrador SaaS</h3>
               <button onClick={() => setIsUserModalOpen(false)} className="text-slate-500 hover:text-white bg-[#1F2937] p-2 rounded-full transition-colors">
@@ -1832,19 +1918,49 @@ export default function SuperAdminSaaS() {
                       placeholder="admin@cliente.com"
                     />
                   </div>
-                  
-                  <div>
-                    <label className="block text-xs font-bold text-slate-400 mb-1.5 uppercase tracking-wider">Contraseña</label>
-                    <input
-                      type="password"
-                      required
-                      minLength={6}
-                      value={newUser.password}
-                      onChange={(e) => setNewUser({...newUser, password: e.target.value})}
-                      className="w-full bg-[#0B0F19] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-[#FF6B00] transition-colors"
-                      placeholder="Mínimo 6 caracteres"
-                    />
+
+                  <div className="space-y-3">
+                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider">Modo de acceso</label>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setNewUser({ ...newUser, accessMode: 'invite', password: '' })}
+                        className={`min-h-[92px] rounded-xl border px-4 py-3 text-left transition-colors ${newUser.accessMode === 'invite' ? 'border-[#FF6B00]/40 bg-[#FF6B00]/10 text-white' : 'border-white/10 bg-[#0B0F19] text-slate-300 hover:border-white/20'}`}
+                      >
+                        <div className="text-[11px] font-black uppercase tracking-wider leading-tight">Invitación segura</div>
+                        <div className="mt-1 text-[11px] text-slate-400">El admin define su contraseña por email.</div>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setNewUser({ ...newUser, accessMode: 'password' })}
+                        className={`min-h-[92px] rounded-xl border px-4 py-3 text-left transition-colors ${newUser.accessMode === 'password' ? 'border-[#FF6B00]/40 bg-[#FF6B00]/10 text-white' : 'border-white/10 bg-[#0B0F19] text-slate-300 hover:border-white/20'}`}
+                      >
+                        <div className="text-[11px] font-black uppercase tracking-wider leading-tight">Compatibilidad manual</div>
+                        <div className="mt-1 text-[11px] text-slate-400">Permite definir contraseña desde el panel.</div>
+                      </button>
+                    </div>
                   </div>
+
+                  {newUser.accessMode === 'invite' && (
+                    <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-xs font-medium text-emerald-200">
+                      Se enviará una invitación segura para que el administrador cree su acceso sin compartir contraseñas.
+                    </div>
+                  )}
+
+                  {newUser.accessMode === 'password' && (
+                    <div>
+                      <label className="block text-xs font-bold text-slate-400 mb-1.5 uppercase tracking-wider">Contraseña</label>
+                      <input
+                        type="password"
+                        required
+                        minLength={6}
+                        value={newUser.password}
+                        onChange={(e) => setNewUser({...newUser, password: e.target.value})}
+                        className="w-full bg-[#0B0F19] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-[#FF6B00] transition-colors"
+                        placeholder="Mínimo 6 caracteres"
+                      />
+                    </div>
+                  )}
 
                   <div className="pt-2">
                     <label className="flex items-center gap-3 cursor-pointer group">
@@ -1858,81 +1974,97 @@ export default function SuperAdminSaaS() {
                     </label>
                   </div>
 
-                  {!newUser.create_new_client && (
-                    <div className="animate-in fade-in slide-in-from-top-2">
-                      <label className="block text-xs font-bold text-slate-400 mb-1.5 uppercase tracking-wider">Vincular a Cliente Existente</label>
-                      <select
-                        required
-                        value={newUser.client_id}
-                        onChange={(e) => setNewUser({...newUser, client_id: e.target.value})}
-                        className="w-full bg-[#0B0F19] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-[#FF6B00] transition-colors"
-                      >
-                        <option value="">Seleccionar cliente...</option>
-                        {clients.map(c => (
-                          <option key={c.id} value={c.id}>{c.name}</option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
                 </div>
 
                 {/* Client Info */}
-                {newUser.create_new_client && (
-                  <div className="space-y-5 animate-in fade-in slide-in-from-right-4">
-                    <h4 className="text-[#FF6B00] font-black uppercase tracking-widest text-[10px] border-b border-white/5 pb-3">Datos del Complejo</h4>
-                    <div>
-                      <label className="block text-xs font-bold text-slate-400 mb-1.5 uppercase tracking-wider">Nombre del Complejo</label>
-                      <input
-                        type="text"
-                        required
-                        value={newUser.complex_name}
-                        onChange={(e) => setNewUser({...newUser, complex_name: e.target.value, client_name: e.target.value})}
-                        className="w-full bg-[#0B0F19] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-[#FF6B00] transition-colors"
-                        placeholder="Ej: Golazo FC"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-slate-400 mb-1.5 uppercase tracking-wider">Teléfono</label>
-                      <input
-                        type="text"
-                        value={newUser.phone}
-                        onChange={(e) => setNewUser({...newUser, phone: e.target.value})}
-                        className="w-full bg-[#0B0F19] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-[#FF6B00] transition-colors"
-                        placeholder="Ej: +54 9 11 2233-4455"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-slate-400 mb-1.5 uppercase tracking-wider">Dirección</label>
-                      <input
-                        type="text"
-                        value={newUser.address}
-                        onChange={(e) => setNewUser({...newUser, address: e.target.value})}
-                        className="w-full bg-[#0B0F19] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-[#FF6B00] transition-colors"
-                        placeholder="Ej: Av. Siempre Viva 742"
-                      />
-                    </div>
+                <div className="space-y-5 animate-in fade-in slide-in-from-right-4">
+                  <h4 className="text-[#FF6B00] font-black uppercase tracking-widest text-[10px] border-b border-white/5 pb-3">Datos del Complejo</h4>
 
-                    <div className="space-y-3 pt-2">
-                      <label className="block text-xs font-bold text-slate-400 mb-1.5 uppercase tracking-wider">Servicios Habilitados</label>
-                      <div className="grid grid-cols-2 gap-3">
-                        {Object.entries(newUser.features).map(([key, val]) => (
-                          <label key={key} className="flex items-center gap-2 cursor-pointer p-3 bg-[#0B0F19] rounded-xl border border-white/5 hover:border-white/10 transition-colors">
-                            <input 
-                              type="checkbox" 
-                              checked={val}
-                              onChange={(e) => setNewUser({
-                                ...newUser, 
-                                features: { ...newUser.features, [key]: e.target.checked }
-                              })}
-                              className="w-4 h-4 rounded border-white/10 bg-[#111827] text-[#FF6B00] focus:ring-[#FF6B00]"
-                            />
-                            <span className="text-xs font-bold text-slate-300 uppercase tracking-tighter">{FEATURE_LABELS[key as ClientFeatureKey]}</span>
-                          </label>
-                        ))}
+                  {newUser.create_new_client ? (
+                    <>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-400 mb-1.5 uppercase tracking-wider">Nombre del Complejo</label>
+                        <input
+                          type="text"
+                          required
+                          value={newUser.complex_name}
+                          onChange={(e) => setNewUser({...newUser, complex_name: e.target.value, client_name: e.target.value})}
+                          className="w-full bg-[#0B0F19] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-[#FF6B00] transition-colors"
+                          placeholder="Ej: Golazo FC"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-400 mb-1.5 uppercase tracking-wider">Teléfono</label>
+                        <input
+                          type="text"
+                          value={newUser.phone}
+                          onChange={(e) => setNewUser({...newUser, phone: e.target.value})}
+                          className="w-full bg-[#0B0F19] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-[#FF6B00] transition-colors"
+                          placeholder="Ej: +54 9 11 2233-4455"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-400 mb-1.5 uppercase tracking-wider">Dirección</label>
+                        <input
+                          type="text"
+                          value={newUser.address}
+                          onChange={(e) => setNewUser({...newUser, address: e.target.value})}
+                          className="w-full bg-[#0B0F19] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-[#FF6B00] transition-colors"
+                          placeholder="Ej: Av. Siempre Viva 742"
+                        />
+                      </div>
+                    </>
+                  ) : (
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-400 mb-1.5 uppercase tracking-wider">Cancha / Cliente Existente</label>
+                        <select
+                          required
+                          value={newUser.client_id}
+                          onChange={(e) => setNewUser({...newUser, client_id: e.target.value})}
+                          className="w-full bg-[#0B0F19] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-[#FF6B00] transition-colors"
+                        >
+                          <option value="">Seleccionar cancha...</option>
+                          {clients.map(c => (
+                            <option key={c.id} value={c.id}>{c.name}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="rounded-2xl border border-white/5 bg-[#0B0F19]/70 p-4">
+                        <div className="text-sm font-black text-white">{selectedNewUserClient?.name || 'Sin cancha seleccionada'}</div>
+                        <div className="mt-2 space-y-1 text-xs font-medium text-slate-400">
+                          <p>Teléfono: {selectedNewUserClient?.phone || '-'}</p>
+                          <p>Dirección: {selectedNewUserClient?.address || '-'}</p>
+                        </div>
                       </div>
                     </div>
+                  )}
+
+                  <div className={`space-y-3 pt-2 ${newUser.create_new_client ? '' : 'opacity-55 grayscale'}`}>
+                    <label className="block text-xs font-bold text-slate-400 mb-1.5 uppercase tracking-wider">Servicios Habilitados</label>
+                    <div className="grid grid-cols-2 gap-3">
+                      {Object.entries(newUserFeaturePreview).map(([key, val]) => (
+                        <label
+                          key={key}
+                          className={`flex items-center gap-2 p-3 rounded-xl border transition-colors ${newUser.create_new_client ? 'cursor-pointer bg-[#0B0F19] border-white/5 hover:border-white/10' : 'cursor-not-allowed bg-slate-900/40 border-white/5'}`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={val}
+                            disabled={!newUser.create_new_client}
+                            onChange={(e) => setNewUser({
+                              ...newUser,
+                              features: { ...newUser.features, [key]: e.target.checked }
+                            })}
+                            className="w-4 h-4 rounded border-white/10 bg-[#111827] text-[#FF6B00] focus:ring-[#FF6B00] disabled:cursor-not-allowed"
+                          />
+                          <span className="text-xs font-bold text-slate-300 uppercase tracking-tighter">{FEATURE_LABELS[key as ClientFeatureKey]}</span>
+                        </label>
+                      ))}
+                    </div>
                   </div>
-                )}
+                </div>
               </div>
               
               <div className="pt-8 flex gap-4 border-t border-white/5">
@@ -1953,7 +2085,9 @@ export default function SuperAdminSaaS() {
                   ) : (
                     <Plus className="w-5 h-5" />
                   )}
-                  {newUser.create_new_client ? 'Crear SaaS y Admin' : 'Crear Usuario'}
+                  {newUser.accessMode === 'invite'
+                    ? (newUser.create_new_client ? 'Crear SaaS e Invitar Admin' : 'Invitar Admin')
+                    : (newUser.create_new_client ? 'Crear SaaS y Admin' : 'Crear Usuario')}
                 </button>
               </div>
             </form>
@@ -1964,4 +2098,5 @@ export default function SuperAdminSaaS() {
     </div>
   );
 }
+
 
