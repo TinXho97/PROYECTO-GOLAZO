@@ -116,9 +116,10 @@ export default function Admin({ onLogout }: AdminProps) {
     const fetchData = async () => {
       if (!user) return;
       const clientId = effectiveClientId;
-      const pi = await dataService.getPitches(clientId);
-      const pr = await dataService.getProducts(clientId);
-      const logs = await dataService.getAuditLogs(clientId);
+      const clientIdForQuery = clientId || undefined;
+      const pi = await dataService.getPitches(clientIdForQuery);
+      const pr = await dataService.getProducts(clientIdForQuery);
+      const logs = await dataService.getAuditLogs(clientIdForQuery);
       const config = clientId ? await dataService.getClientConfig(clientId) : null;
       setPitches(pi);
       setProducts(pr);
@@ -135,9 +136,10 @@ export default function Admin({ onLogout }: AdminProps) {
   const refreshData = async () => {
     if (!user) return;
     const clientId = effectiveClientId;
-    const pi = await dataService.getPitches(clientId);
-    const pr = await dataService.getProducts(clientId);
-    const logs = await dataService.getAuditLogs(clientId);
+    const clientIdForQuery = clientId || undefined;
+    const pi = await dataService.getPitches(clientIdForQuery);
+    const pr = await dataService.getProducts(clientIdForQuery);
+    const logs = await dataService.getAuditLogs(clientIdForQuery);
     const config = clientId ? await dataService.getClientConfig(clientId) : null;
     setPitches(pi);
     setProducts(pr);

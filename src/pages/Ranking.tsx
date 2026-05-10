@@ -29,14 +29,15 @@ export default function RankingPage({ user }: RankingPageProps) {
       }
 
       const clientId = effectiveClientId;
-      const currentRanking = await dataService.getRanking(clientId);
+      const clientIdForQuery = clientId || undefined;
+      const currentRanking = await dataService.getRanking(clientIdForQuery);
       setRanking(currentRanking);
       const identifier = user.role === 'client' && user.phone ? user.phone : user.id;
-      const points = await dataService.getUserPoints(identifier, clientId);
+      const points = await dataService.getUserPoints(identifier, clientIdForQuery);
       setUserPoints(points);
       
       // Calculate last points
-      const hasCompleted = await dataService.hasCompletedBookings(identifier, clientId);
+      const hasCompleted = await dataService.hasCompletedBookings(identifier, clientIdForQuery);
       if (hasCompleted) {
         setLastPoints({ points: 1, isPromo: false }); // Points logic simplified to 1 per completed booking
       }

@@ -1,5 +1,5 @@
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3'
+import { createClient } from '@supabase/supabase-js'
+import { serve } from 'std/http/server.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -181,7 +181,20 @@ const normalizeFeatures = (
   estadisticas: resolveFeatureFlag(features?.estadisticas, fallback?.enable_statistics),
 })
 
-const mapClientRecord = (client: Record<string, any> | null | undefined) => {
+type ClientRecord = Record<string, any>
+type NormalizedClientFields = {
+  features: ReturnType<typeof normalizeFeatures>
+  enable_ranking: boolean
+  enable_sales: boolean
+  enable_reservations: boolean
+  enable_statistics: boolean
+  feature_drift_detected: boolean
+}
+
+function mapClientRecord<T extends ClientRecord>(client: T): T & NormalizedClientFields
+function mapClientRecord(client: null): null
+function mapClientRecord(client: undefined): undefined
+function mapClientRecord(client: ClientRecord | null | undefined) {
   if (!client) return client
 
   const features = normalizeFeatures(client.features, client)
@@ -417,7 +430,16 @@ const logAdminAudit = async (
   }
 }
 
-const requireSuperadmin = async (req: Request, context: RequestLogContext) => {
+type RequireSuperadminResult = Promise<
+  | { error: Response }
+  | {
+      adminClient: ReturnType<typeof createAdminClient>
+      user: any
+      profile: any
+    }
+>
+
+const requireSuperadmin = async (req: Request, context: RequestLogContext): RequireSuperadminResult => {
   const token = extractBearerToken(req)
 
   if (!token) {
@@ -512,7 +534,7 @@ const requireSuperadmin = async (req: Request, context: RequestLogContext) => {
   }
 }
 
-serve(async (req) => {
+serve(async (req: Request): Promise<Response> => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }

@@ -658,8 +658,8 @@ export default function SuperAdminSaaS() {
       const updatedClient = await updateClient(selectedSettingsClientId, {
         name: settingsDraft.name.trim() || settingsDraft.complex_name.trim(),
         complex_name: settingsDraft.complex_name.trim() || settingsDraft.name.trim(),
-        phone: settingsDraft.phone.trim() || null,
-        address: settingsDraft.address.trim() || null,
+        phone: settingsDraft.phone.trim() || undefined,
+        address: settingsDraft.address.trim() || undefined,
         status: settingsDraft.status,
         expires_at: settingsDraft.expires_at ? new Date(`${settingsDraft.expires_at}T00:00:00`).toISOString() : null,
         ranking_reset_date: settingsDraft.ranking_reset_date

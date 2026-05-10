@@ -454,7 +454,7 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
         paymentUrl: bookingData.paymentMethod === 'mercadopago' ? bookingData.paymentUrl : undefined
       }, clientId || undefined);
       
-      const updatedBookings = await dataService.getBookings(clientId);
+      const updatedBookings = await dataService.getBookings(clientId || undefined);
       setBookings(updatedBookings);
       setIsSubmittingBooking(false);
       setIsBookingModalOpen(false);
@@ -1929,7 +1929,7 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
                     )}
                     onClick={async () => {
                       await api.toggleBookingPayment(selectedBooking.id, effectiveClientId || undefined);
-                      const updatedBookings = await dataService.getBookings(effectiveClientId);
+                      const updatedBookings = await dataService.getBookings(effectiveClientId || undefined);
                       setBookings(updatedBookings);
                       setSelectedBooking(prev => prev ? { ...prev, isPaid: !prev.isPaid } : null);
                       toast.success(selectedBooking.isPaid ? 'Pago cancelado' : '¡Pago registrado!');
@@ -1958,7 +1958,7 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
         onConfirm={async () => {
           if (selectedBooking) {
             await api.cancelBooking(selectedBooking.id, effectiveClientId || undefined);
-            const updatedBookings = await dataService.getBookings(effectiveClientId);
+            const updatedBookings = await dataService.getBookings(effectiveClientId || undefined);
             setBookings(updatedBookings);
             setSelectedBooking(null);
           }

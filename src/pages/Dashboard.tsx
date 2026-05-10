@@ -98,8 +98,9 @@ export default function Dashboard({ user, onNavigate, onLogout, onNotificationCl
 
       try {
         const clientId = effectiveClientId;
+        const clientIdForQuery = clientId || undefined;
         if (isPublicPortalUser) {
-          const publicPitches = await dataService.getPublicPitches(clientId);
+          const publicPitches = await dataService.getPublicPitches(clientIdForQuery);
           setPitches(publicPitches);
           setBookings([]);
           setSales([]);
@@ -108,13 +109,13 @@ export default function Dashboard({ user, onNavigate, onLogout, onNotificationCl
           return;
         }
 
-        const p = await dataService.getPitches(clientId);
-        const b = await dataService.getBookings(clientId);
-        const s = await dataService.getSales(clientId);
-        const prods = await dataService.getProducts(clientId);
+        const p = await dataService.getPitches(clientIdForQuery);
+        const b = await dataService.getBookings(clientIdForQuery);
+        const s = await dataService.getSales(clientIdForQuery);
+        const prods = await dataService.getProducts(clientIdForQuery);
 
         const identifier = user.role === 'client' && user.phone ? user.phone : user.id;
-        const points = await dataService.getUserPoints(identifier, clientId);
+        const points = await dataService.getUserPoints(identifier, clientIdForQuery);
 
         setPitches(p);
         setBookings(b);
@@ -234,10 +235,11 @@ export default function Dashboard({ user, onNavigate, onLogout, onNotificationCl
       
       persistGuestInfo();
 
-      const updatedBookings = await dataService.getBookings(effectiveClientId);
+      const clientIdForQuery = effectiveClientId || undefined;
+      const updatedBookings = await dataService.getBookings(clientIdForQuery);
       setBookings(updatedBookings);
       const identifier = user.role === 'client' && formData.clientPhone ? formData.clientPhone : user.id;
-      const updatedPoints = await dataService.getUserPoints(identifier, effectiveClientId);
+      const updatedPoints = await dataService.getUserPoints(identifier, clientIdForQuery);
       setUserPoints(updatedPoints);
       setIsBookingModalOpen(false);
       resetBookingForm();
@@ -253,10 +255,11 @@ export default function Dashboard({ user, onNavigate, onLogout, onNotificationCl
         
         persistGuestInfo();
 
-        const updatedBookings = await dataService.getBookings(effectiveClientId);
+        const clientIdForQuery = effectiveClientId || undefined;
+        const updatedBookings = await dataService.getBookings(clientIdForQuery);
         setBookings(updatedBookings);
         const identifier = user.role === 'client' && formData.clientPhone ? formData.clientPhone : user.id;
-        const updatedPoints = await dataService.getUserPoints(identifier, effectiveClientId);
+        const updatedPoints = await dataService.getUserPoints(identifier, clientIdForQuery);
         setUserPoints(updatedPoints);
         setIsBookingModalOpen(false);
         resetBookingForm();
@@ -643,7 +646,7 @@ export default function Dashboard({ user, onNavigate, onLogout, onNotificationCl
               } else {
                 let booking = bookings.find(b => b.id === bookingId);
                 if (!booking) {
-                  const latestBookings = await dataService.getBookings(effectiveClientId);
+                  const latestBookings = await dataService.getBookings(effectiveClientId || undefined);
                   setBookings(latestBookings);
                   booking = latestBookings.find(b => b.id === bookingId);
                 }
@@ -1330,7 +1333,7 @@ export default function Dashboard({ user, onNavigate, onLogout, onNotificationCl
                 onClick={async () => {
                   try {
                     await api.cancelBooking(selectedBooking.id, effectiveClientId || undefined);
-                    const updatedBookings = await dataService.getBookings(effectiveClientId);
+                    const updatedBookings = await dataService.getBookings(effectiveClientId || undefined);
                     setBookings(updatedBookings);
                     setIsBookingDetailModalOpen(false);
                   } catch (error) {

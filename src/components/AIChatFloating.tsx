@@ -12,11 +12,11 @@ import {
   Star
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { dataService, api } from '../services/dataService';
-import { supabase } from '../lib/supabase';
+import { dataService } from '../services/dataService';
 import { cn } from '../lib/utils';
 import { processMessage } from '../bot';
-import { BotResponse } from '../bot/responses';
+import { getEffectiveClientId } from '../lib/tenant';
+import { User as UserType } from '../types';
 
 interface Message {
   role: 'user' | 'bot';
@@ -30,14 +30,17 @@ export default function AIChatFloating() {
   const [chatMessages, setChatMessages] = useState<Message[]>([
     { 
       role: 'bot', 
-      text: '¡Hola! Soy el asistente virtual de reservas. ¿En qué te puedo ayudar hoy?',
+      text: 'Hola, soy LIO. Puedo ayudarte a crear una reserva, consultar horarios disponibles o ver canchas.',
       options: [
-        { label: 'Reservar Cancha', value: 'reservar' },
+        { label: 'Crear reserva', value: 'crear reserva' },
+        { label: 'Ver horarios disponibles', value: 'ver horarios disponibles' },
+        { label: 'Ver canchas', value: 'ver canchas' },
         { label: 'Ayuda', value: 'ayuda' }
       ]
     }
   ]);
   const [isTyping, setIsTyping] = useState(false);
+  const [currentUser, setCurrentUser] = useState<UserType | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
   
   // Fake user id for the bot session
@@ -49,6 +52,10 @@ export default function AIChatFloating() {
     }
   }, [chatMessages, isOpen]);
 
+  useEffect(() => {
+    dataService.getCurrentUser().then(setCurrentUser);
+  }, []);
+
   const handleSendMessage = async (e?: React.FormEvent, textValue?: string) => {
     if (e) e.preventDefault();
     const userMsg = textValue || chatInput;
@@ -59,11 +66,15 @@ export default function AIChatFloating() {
     setIsTyping(true);
 
     try {
-      // Get client info from localStorage or use defaults
-      const clientName = localStorage.getItem('golazo_guest_name') || 'Cliente';
-      const clientPhone = localStorage.getItem('golazo_guest_phone') || '0000000000';
+      const clientId = getEffectiveClientId(currentUser);
+      const clientName = localStorage.getItem('golazo_guest_name') || null;
+      const clientPhone = localStorage.getItem('golazo_guest_phone') || null;
       
-      const response = await processMessage(sessionId, userMsg, clientName, clientPhone);
+      const response = await processMessage(sessionId, userMsg, {
+        clientId,
+        clientName,
+        clientPhone,
+      });
       
       setChatMessages(prev => [...prev, { 
         role: 'bot', 

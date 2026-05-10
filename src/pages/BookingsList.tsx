@@ -154,8 +154,9 @@ export default function BookingsList({ user }: BookingsListProps) {
   const handleStatusUpdate = async (id: string, status: BookingStatus) => {
     try {
       const clientId = effectiveClientId;
-      await api.updateBookingStatus(id, status, clientId);
-      const b = await dataService.getBookings(clientId);
+      const clientIdForQuery = clientId || undefined;
+      await api.updateBookingStatus(id, status, clientIdForQuery);
+      const b = await dataService.getBookings(clientIdForQuery);
       setBookings(b);
     } catch (error) {
       console.error('Error updating status:', error);
@@ -165,8 +166,9 @@ export default function BookingsList({ user }: BookingsListProps) {
   const handleTogglePayment = async (id: string) => {
     try {
       const clientId = effectiveClientId;
-      await api.toggleBookingPayment(id, clientId);
-      const b = await dataService.getBookings(clientId);
+      const clientIdForQuery = clientId || undefined;
+      await api.toggleBookingPayment(id, clientIdForQuery);
+      const b = await dataService.getBookings(clientIdForQuery);
       setBookings(b);
     } catch (error) {
       console.error('Error toggling payment:', error);
@@ -177,8 +179,9 @@ export default function BookingsList({ user }: BookingsListProps) {
     if (!confirmCancel) return;
     try {
       const clientId = effectiveClientId;
-      await api.cancelBooking(confirmCancel, clientId);
-      const b = await dataService.getBookings(clientId);
+      const clientIdForQuery = clientId || undefined;
+      await api.cancelBooking(confirmCancel, clientIdForQuery);
+      const b = await dataService.getBookings(clientIdForQuery);
       setBookings(b);
       setConfirmCancel(null);
     } catch (error) {

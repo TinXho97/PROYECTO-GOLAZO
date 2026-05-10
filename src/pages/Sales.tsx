@@ -48,8 +48,9 @@ export default function SalesPage() {
   useEffect(() => {
     const fetchData = async () => {
       if (!user) return;
-      const p = await dataService.getProducts(clientId);
-      const s = await dataService.getSales(clientId);
+      const clientIdForQuery = clientId || undefined;
+      const p = await dataService.getProducts(clientIdForQuery);
+      const s = await dataService.getSales(clientIdForQuery);
       setProducts(p);
       setSales(s);
     };
@@ -65,9 +66,10 @@ export default function SalesPage() {
     if (!selectedProduct) return;
 
     try {
-      await api.addSale(selectedProduct.id, quantity, paymentMethod, clientId || undefined);
-      const updatedSales = await dataService.getSales(clientId);
-      const updatedProducts = await dataService.getProducts(clientId);
+      const clientIdForQuery = clientId || undefined;
+      await api.addSale(selectedProduct.id, quantity, paymentMethod, clientIdForQuery);
+      const updatedSales = await dataService.getSales(clientIdForQuery);
+      const updatedProducts = await dataService.getProducts(clientIdForQuery);
       setSales(updatedSales);
       setProducts(updatedProducts);
       setIsSaleModalOpen(false);
@@ -86,9 +88,10 @@ export default function SalesPage() {
 
   const executeDeleteSale = async () => {
     if (!confirmDeleteSale) return;
-    await api.deleteSale(confirmDeleteSale, clientId || undefined);
-    const updatedSales = await dataService.getSales(clientId);
-    const updatedProducts = await dataService.getProducts(clientId);
+    const clientIdForQuery = clientId || undefined;
+    await api.deleteSale(confirmDeleteSale, clientIdForQuery);
+    const updatedSales = await dataService.getSales(clientIdForQuery);
+    const updatedProducts = await dataService.getProducts(clientIdForQuery);
     setSales(updatedSales);
     setProducts(updatedProducts);
     setConfirmDeleteSale(null);

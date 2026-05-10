@@ -954,9 +954,9 @@ export default function App() {
     );
   }
 
-  const renderDashboard = () => (
+  const renderDashboard = (dashboardUser: User) => (
     <Dashboard
-      user={activeUser}
+      user={dashboardUser}
       onNavigate={(page) => setCurrentPage(page as Page)}
       onLogout={isPublicPortalActive ? handleBackToClientSelector : handleLogout}
       onNotificationClick={(id) => {
@@ -972,24 +972,24 @@ export default function App() {
     const isAdmin = activeUser.role === 'admin' || activeUser.role === 'superadmin';
     
     switch (currentPage) {
-      case 'dashboard': return renderDashboard();
+      case 'dashboard': return renderDashboard(activeUser);
       case 'bookings': 
-        if (clientConfig && clientConfig.features?.reservas === false) return renderDashboard();
+        if (clientConfig && clientConfig.features?.reservas === false) return renderDashboard(activeUser);
         return <BookingsList user={activeUser} />;
       case 'calendar': 
-        if (clientConfig && clientConfig.features?.reservas === false) return renderDashboard();
+        if (clientConfig && clientConfig.features?.reservas === false) return renderDashboard(activeUser);
         return <CalendarPage user={activeUser} clientConfig={clientConfig} initialBookingId={selectedBookingId} onClearInitialBooking={() => setSelectedBookingId(null)} />;
       case 'ranking': 
-        if (clientConfig && clientConfig.features?.ranking === false) return renderDashboard();
+        if (clientConfig && clientConfig.features?.ranking === false) return renderDashboard(activeUser);
         return <RankingPage user={activeUser} />;
       case 'stats': 
-        if (clientConfig && clientConfig.features?.estadisticas === false) return renderDashboard();
-        return isAdmin ? <SmartStats /> : renderDashboard();
+        if (clientConfig && clientConfig.features?.estadisticas === false) return renderDashboard(activeUser);
+        return isAdmin ? <SmartStats /> : renderDashboard(activeUser);
       case 'sales': 
-        if (clientConfig && clientConfig.features?.ventas === false) return renderDashboard();
-        return isAdmin ? <SalesPage /> : renderDashboard();
-      case 'admin': return isAdmin ? <Admin onLogout={handleLogout} /> : renderDashboard();
-      default: return renderDashboard();
+        if (clientConfig && clientConfig.features?.ventas === false) return renderDashboard(activeUser);
+        return isAdmin ? <SalesPage /> : renderDashboard(activeUser);
+      case 'admin': return isAdmin ? <Admin onLogout={handleLogout} /> : renderDashboard(activeUser);
+      default: return renderDashboard(activeUser);
     }
   };
 

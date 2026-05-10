@@ -1,9 +1,9 @@
 import { dataService } from '../services/dataService';
 import { format, parseISO, addDays, startOfDay, isBefore } from 'date-fns';
 
-export async function getAvailableSlots(dateStr: string, pitchId: string): Promise<string[]> {
+export async function getAvailableSlots(dateStr: string, pitchId: string, clientId: string): Promise<string[]> {
   const date = parseISO(dateStr);
-  const bookings = await dataService.getBookings();
+  const bookings = await dataService.getBookings(clientId);
   
   // Filter bookings for this pitch and date
   const dayBookings = bookings.filter(b => 
