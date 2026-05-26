@@ -27,7 +27,9 @@ import {
   Timer,
   Activity,
   Settings,
-  Banknote
+  Banknote,
+  LogIn,
+  Mail
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'motion/react';
@@ -40,6 +42,7 @@ import { dataService, api } from '../services/dataService';
 import { Pitch, Booking, Client, User as UserType } from '../types';
 import { cn } from '../lib/utils';
 import { getEffectiveClientId } from '../lib/tenant';
+import { supabase } from '../lib/supabase';
 
 interface CalendarProps {
   user: UserType;
@@ -71,6 +74,9 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
   
   const [isBookingModalOpen, setIsBookingModalOpen] = useState(false);
   const [bookingTimer, setBookingTimer] = useState<number | null>(null);
+  const [publicGoogleProfile, setPublicGoogleProfile] = useState(
+    isPublicPortalUser ? dataService.getPublicGoogleProfile() : null
+  );
   const [bookingData, setBookingData] = useState({
     pitch: null as Pitch | null,
     date: new Date(),
@@ -83,6 +89,22 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
     paymentMethod: 'transferencia' as 'transferencia' | 'mercadopago',
     paymentUrl: ''
   });
+
+  const applyPublicGoogleProfile = () => {
+    if (!isPublicPortalUser) return null;
+
+    const profile = dataService.getPublicGoogleProfile();
+    setPublicGoogleProfile(profile);
+
+    if (profile?.name || profile?.email) {
+      setBookingData(prev => ({
+        ...prev,
+        clientName: profile.name || prev.clientName,
+      }));
+    }
+
+    return profile;
+  };
 
   const getStringValue = (source: unknown, keys: string[]) => {
     if (!source || typeof source !== 'object') return '';
@@ -300,14 +322,54 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
 
   const openBookingModal = (pitch: Pitch, date: Date, time: string) => {
     setBookingError(null);
+    const profile = applyPublicGoogleProfile();
     setBookingData(prev => ({
       ...prev,
       pitch,
       date,
       time,
+      clientName: profile?.name || prev.clientName,
     }));
     setBookingTimer(300);
     setIsBookingModalOpen(true);
+  };
+
+  const handlePublicGoogleLogin = async () => {
+    if (!isPublicPortalUser) return;
+
+    try {
+      const currentPath = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+      dataService.setPublicGoogleReturnTarget({
+        path: currentPath,
+        clientId: effectiveClientId || user.client_id || null,
+        clientSlug: clientConfig?.slug || bookingData.pitch?.client_slug || null,
+      });
+
+      if (effectiveClientId) {
+        dataService.setPublicClientSelection(effectiveClientId);
+      }
+
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: `${window.location.origin}/auth/callback`,
+          queryParams: {
+            prompt: 'select_account',
+          },
+        },
+      });
+
+      if (error) throw error;
+    } catch (error) {
+      console.error('Error starting public Google OAuth:', error);
+      toast.error('No se pudo abrir Google. Podés reservar sin cuenta.');
+    }
+  };
+
+  const handleUseGuestCheckout = () => {
+    dataService.clearPublicGoogleProfile();
+    setPublicGoogleProfile(null);
+    toast('Podés reservar sin cuenta completando tus datos.');
   };
 
   useEffect(() => {
@@ -781,6 +843,83 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
                   onChange={e => setBookingData(prev => ({ ...prev, notes: e.target.value }))}
                 />
               </div>
+            </section>
+
+            <section className="space-y-3 rounded-2xl border border-zinc-200 bg-white p-4">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-zinc-400">Reservá más rápido</p>
+                <h4 className="text-sm font-black text-zinc-900">Elegí cómo completar tus datos</h4>
+              </div>
+
+              {publicGoogleProfile ? (
+                <div className="space-y-3">
+                  <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-3 text-emerald-900">
+                    <div className="flex items-start gap-3">
+                      {publicGoogleProfile.avatarUrl ? (
+                        <img
+                          src={publicGoogleProfile.avatarUrl}
+                          alt={publicGoogleProfile.name}
+                          className="h-10 w-10 rounded-full border border-emerald-100 bg-white object-cover"
+                        />
+                      ) : (
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white text-emerald-700">
+                          <User className="h-5 w-5" />
+                        </div>
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-black">Conectado como: {publicGoogleProfile.name}</p>
+                        {publicGoogleProfile.email && (
+                          <p className="mt-1 flex items-center gap-1 truncate text-xs font-bold text-emerald-700">
+                            <Mail className="h-3.5 w-3.5 shrink-0" />
+                            Email: {publicGoogleProfile.email}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-11 rounded-2xl text-[10px] font-black uppercase tracking-widest"
+                      onClick={handlePublicGoogleLogin}
+                    >
+                      <LogIn className="mr-2 h-4 w-4" />
+                      Usar otra cuenta
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className="h-11 rounded-2xl text-[10px] font-black uppercase tracking-widest"
+                      onClick={handleUseGuestCheckout}
+                    >
+                      <User className="mr-2 h-4 w-4" />
+                      Reservar sin cuenta
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <Button
+                    type="button"
+                    className="h-11 rounded-2xl text-[10px] font-black uppercase tracking-widest"
+                    onClick={handlePublicGoogleLogin}
+                  >
+                    <LogIn className="mr-2 h-4 w-4" />
+                    Continuar con Google
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-11 rounded-2xl text-[10px] font-black uppercase tracking-widest"
+                    onClick={handleUseGuestCheckout}
+                  >
+                    <User className="mr-2 h-4 w-4" />
+                    Reservar sin cuenta
+                  </Button>
+                </div>
+              )}
             </section>
 
             <section className="space-y-3">

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, lazy, Suspense } from 'react';
+import React, { useState, useEffect, lazy, Suspense, useRef } from 'react';
 import { 
   Home, 
   Building2,
@@ -23,7 +23,8 @@ import {
   Lightbulb,
   ArrowLeft,
   Search,
-  MapPin
+  MapPin,
+  LogIn
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast, Toaster } from 'sonner';
@@ -56,8 +57,9 @@ const PageFallback = () => (
 );
 
 const PUBLIC_SELECTION_BACKGROUND = 'https://iili.io/q6oJgJ2.jpg';
-const PUBLIC_INTRO_SESSION_KEY = 'golazo_public_intro_seen';
 const PUBLIC_INTRO_VIDEO_SRC = '/videos/golazo-intro.mp4';
+const PUBLIC_INTRO_DURATION_MS = 3500;
+const ADMIN_INTRO_DURATION_MS = 2200;
 const WORLD_CUP_2026_START = new Date('2026-06-11T00:00:00');
 const PUBLIC_CAROUSEL_ITEMS = [
   {
@@ -105,13 +107,15 @@ export default function App() {
   const pathname = window.location.pathname;
   const isSuperAdminRoute = pathname.startsWith('/panel-interno-golazo-');
   const isAdminRoute = pathname === '/admin' || pathname.startsWith('/admin/');
-  const isPublicRoute = !isSuperAdminRoute && !isAdminRoute;
+  const isAuthCallbackRoute = pathname === '/auth/callback';
+  const isPublicRoute = !isSuperAdminRoute && !isAdminRoute && !isAuthCallbackRoute;
   const [currentPage, setCurrentPage] = useState<Page>('dashboard');
   const [selectedBookingId, setSelectedBookingId] = useState<string | null>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [showSplash, setShowSplash] = useState(false);
+  const [showAdminIntro, setShowAdminIntro] = useState(false);
   const [loginIdentifier, setLoginIdentifier] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
@@ -123,18 +127,15 @@ export default function App() {
   const [publicClients, setPublicClients] = useState<Client[]>([]);
   const [isPublicClientsLoading, setIsPublicClientsLoading] = useState(true);
   const [selectedPublicClientId, setSelectedPublicClientId] = useState<string | null>(dataService.getPublicClientSelectionId());
+  const [showPublicAccessChoice, setShowPublicAccessChoice] = useState(false);
+  const [publicAccessMode, setPublicAccessMode] = useState<'guest' | 'google' | null>(null);
   const [publicSearchTerm, setPublicSearchTerm] = useState('');
   const [publicGuestName, setPublicGuestName] = useState(localStorage.getItem('golazo_guest_name') || 'Jugador');
   const [publicGuestPhone, setPublicGuestPhone] = useState(localStorage.getItem('golazo_guest_phone') || '');
-  const [showPublicIntro, setShowPublicIntro] = useState(() => {
-    try {
-      return sessionStorage.getItem(PUBLIC_INTRO_SESSION_KEY) !== 'true';
-    } catch {
-      return false;
-    }
-  });
+  const [showPublicIntro, setShowPublicIntro] = useState(false);
   const [publicCountdown, setPublicCountdown] = useState(getWorldCupCountdown);
   const [publicCarouselIndex, setPublicCarouselIndex] = useState(0);
+  const loginSplashTimerRef = useRef<number | null>(null);
 
   const loadPublicClients = async () => {
     if (isSuperAdminRoute) return;
@@ -156,6 +157,21 @@ export default function App() {
     setIsClientLoading(true);
 
     try {
+      if (isPublicRoute) {
+        const publicClientId = dataService.getPublicClientSelectionId();
+        setUser(null);
+        setSelectedClientId(null);
+        setSelectedPublicClientId(publicClientId);
+
+        if (publicClientId) {
+          const publicClientConfig = await dataService.getPublicClientConfig(publicClientId);
+          setClientConfig(publicClientConfig);
+        } else {
+          setClientConfig(null);
+        }
+        return;
+      }
+
       const currentUser = await dataService.getCurrentUser();
 
       if (!currentUser) {
@@ -221,8 +237,65 @@ export default function App() {
     }
   };
 
+  const handlePublicAuthCallback = async () => {
+    setIsClientLoading(true);
+
+    const returnTarget = dataService.consumePublicGoogleReturnTarget();
+    const safeReturnPath = (() => {
+      const targetPath = returnTarget?.path || '/';
+      if (!targetPath.startsWith('/')) return '/';
+      if (targetPath.startsWith('/admin') || targetPath.startsWith('/panel-interno-golazo-') || targetPath.startsWith('/auth/callback')) return '/';
+      return targetPath;
+    })();
+
+    try {
+      if (returnTarget?.clientId) {
+        dataService.setPublicClientSelection(returnTarget.clientId);
+      }
+
+      const { data, error } = await supabase.auth.getSession();
+      if (error || !data.session?.user) {
+        dataService.setPublicGoogleAuthError('No se pudo completar el acceso con Google.');
+        window.location.replace(safeReturnPath);
+        return;
+      }
+
+      const authUser = data.session.user;
+      const metadata = authUser.user_metadata || {};
+      const email = authUser.email || String(metadata.email || '');
+      const name = String(metadata.full_name || metadata.name || email.split('@')[0] || 'Jugador');
+      const avatarUrl = String(metadata.avatar_url || metadata.picture || '');
+
+      dataService.setPublicGoogleProfile({
+        name,
+        email,
+        avatarUrl: avatarUrl || undefined,
+      });
+
+      if (name) {
+        localStorage.setItem('golazo_guest_name', name);
+      }
+
+      const { error: signOutError } = await supabase.auth.signOut();
+      if (signOutError) {
+        console.warn('Google public session could not be cleared after callback:', signOutError);
+      }
+
+      window.location.replace(safeReturnPath);
+    } catch (error) {
+      console.error('Error handling public Google callback:', error);
+      dataService.setPublicGoogleAuthError('Google no pudo completar el acceso. Podés reservar sin cuenta.');
+      window.location.replace(safeReturnPath);
+    }
+  };
+
   useEffect(() => {
     const initApp = async () => {
+      if (isAuthCallbackRoute) {
+        await handlePublicAuthCallback();
+        return;
+      }
+
       if (dataService.isSupabaseConfigured()) {
         const isConnected = await checkSupabaseConnection();
         if (!isConnected) {
@@ -239,6 +312,7 @@ export default function App() {
     initApp();
 
     const { data: authListener } = supabase.auth.onAuthStateChange(() => {
+      if (isAuthCallbackRoute) return;
       refreshSessionState();
     });
 
@@ -257,6 +331,21 @@ export default function App() {
       authListener.subscription.unsubscribe();
       window.removeEventListener('storage', handleStorageChange);
       window.removeEventListener('guest_info_updated', handleGuestInfoUpdated as EventListener);
+    };
+  }, []);
+
+  useEffect(() => {
+    const publicGoogleError = dataService.consumePublicGoogleAuthError();
+    if (publicGoogleError) {
+      toast.error(publicGoogleError);
+    }
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (loginSplashTimerRef.current) {
+        window.clearTimeout(loginSplashTimerRef.current);
+      }
     };
   }, []);
 
@@ -289,10 +378,15 @@ export default function App() {
 
       setShowSplash(true);
 
-      setTimeout(() => {
+      if (loginSplashTimerRef.current) {
+        window.clearTimeout(loginSplashTimerRef.current);
+      }
+
+      loginSplashTimerRef.current = window.setTimeout(() => {
         setUser(newUser);
         setSelectedClientId(newUser.client_id || null);
         setShowSplash(false);
+        loginSplashTimerRef.current = null;
       }, 2500);
     } catch (error) {
       setLoginError(error instanceof Error ? error.message : 'Error al iniciar sesión');
@@ -304,6 +398,8 @@ export default function App() {
     setUser(null);
     setSelectedClientId(null);
     setSelectedPublicClientId(null);
+    setShowPublicAccessChoice(false);
+    setPublicAccessMode(null);
     setClientConfig(null);
     setLoginIdentifier('');
     setLoginPassword('');
@@ -317,6 +413,8 @@ export default function App() {
     setClientConfig(client);
     setUser(null);
     setLoginError(null);
+    setShowPublicAccessChoice(true);
+    setPublicAccessMode(null);
     setCurrentPage('dashboard');
 
     try {
@@ -331,14 +429,53 @@ export default function App() {
   const handleBackToClientSelector = () => {
     dataService.clearPublicClientSelection();
     setSelectedPublicClientId(null);
+    setShowPublicAccessChoice(false);
+    setPublicAccessMode(null);
     setClientConfig(null);
     setLoginPassword('');
     setLoginError(null);
     setCurrentPage('dashboard');
   };
 
+  const enterPublicPortalAsGuest = () => {
+    dataService.clearPublicGoogleProfile();
+    setPublicAccessMode('guest');
+    setShowPublicAccessChoice(false);
+    setCurrentPage('dashboard');
+  };
+
+  const handlePublicAccessGoogleLogin = async () => {
+    if (!selectedPublicClientId) return;
+
+    try {
+      setPublicAccessMode('google');
+      dataService.setPublicClientSelection(selectedPublicClientId);
+      dataService.setPublicGoogleReturnTarget({
+        path: `${window.location.pathname}${window.location.search}${window.location.hash}`,
+        clientId: selectedPublicClientId,
+        clientSlug: clientConfig?.slug || publicClients.find((client) => client.id === selectedPublicClientId)?.slug || null,
+      });
+
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: `${window.location.origin}/auth/callback`,
+          queryParams: {
+            prompt: 'select_account',
+          },
+        },
+      });
+
+      if (error) throw error;
+    } catch (error) {
+      console.error('Error starting public Google OAuth:', error);
+      setPublicAccessMode(null);
+      toast.error('No se pudo abrir Google. Podés reservar sin cuenta.');
+    }
+  };
+
   const publicPortalUser: User | null =
-    !user && selectedPublicClientId && isPublicRoute
+    !user && selectedPublicClientId && isPublicRoute && !showPublicAccessChoice
       ? {
           id: `public-player:${selectedPublicClientId}`,
           name: publicGuestName,
@@ -395,34 +532,30 @@ export default function App() {
   const activeCarouselItem = PUBLIC_CAROUSEL_ITEMS[publicCarouselIndex] || PUBLIC_CAROUSEL_ITEMS[0];
   const ActiveCarouselIcon = activeCarouselItem.icon;
   const dismissPublicIntro = () => {
-    try {
-      sessionStorage.setItem(PUBLIC_INTRO_SESSION_KEY, 'true');
-    } catch {
-      // If storage is unavailable, keep the app usable and only hide the intro in memory.
-    }
     setShowPublicIntro(false);
   };
 
   useEffect(() => {
-    if (!isPublicRoute || selectedPublicClientId || user || isAdminRoute || isSuperAdminRoute) {
-      setShowPublicIntro(false);
-      return;
-    }
-
-    try {
-      if (sessionStorage.getItem(PUBLIC_INTRO_SESSION_KEY) === 'true') {
-        setShowPublicIntro(false);
-        return;
-      }
-    } catch {
+    if (isClientLoading || !isPublicRoute || user || isAdminRoute || isSuperAdminRoute) {
       setShowPublicIntro(false);
       return;
     }
 
     setShowPublicIntro(true);
-    const timer = window.setTimeout(dismissPublicIntro, 3500);
+    const timer = window.setTimeout(dismissPublicIntro, PUBLIC_INTRO_DURATION_MS);
     return () => window.clearTimeout(timer);
-  }, [isPublicRoute, selectedPublicClientId, user, isAdminRoute, isSuperAdminRoute]);
+  }, [isClientLoading, isPublicRoute, user, isAdminRoute, isSuperAdminRoute]);
+
+  useEffect(() => {
+    if (isClientLoading || !isAdminRoute || isSuperAdminRoute || user) {
+      setShowAdminIntro(false);
+      return;
+    }
+
+    setShowAdminIntro(true);
+    const timer = window.setTimeout(() => setShowAdminIntro(false), ADMIN_INTRO_DURATION_MS);
+    return () => window.clearTimeout(timer);
+  }, [isClientLoading, isAdminRoute, isSuperAdminRoute, user]);
 
   useEffect(() => {
     if (!isPublicRoute || selectedPublicClientId || user) return;
@@ -456,11 +589,156 @@ export default function App() {
     if (!selectedClientStillExists) {
       dataService.clearPublicClientSelection();
       setSelectedPublicClientId(null);
+      setShowPublicAccessChoice(false);
+      setPublicAccessMode(null);
       setClientConfig(null);
       setUser(null);
       toast.error('El complejo seleccionado ya no está disponible.');
     }
   }, [isPublicRoute, isPublicClientsLoading, selectedPublicClientId, publicClients]);
+
+  const publicIntroOverlay = (
+    <AnimatePresence>
+      {showPublicIntro && (
+        <motion.div
+          key="public-intro"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.22, ease: 'easeOut' }}
+          className="fixed inset-0 z-[80] flex flex-col items-center justify-center overflow-hidden bg-zinc-950 p-6 text-white"
+        >
+          <button
+            type="button"
+            onClick={dismissPublicIntro}
+            className="absolute right-4 top-4 z-10 rounded-full border border-white/15 bg-white/10 px-4 py-2 text-[10px] font-black uppercase tracking-[0.2em] text-white/85 backdrop-blur-xl transition-colors hover:bg-white/18"
+          >
+            Saltar
+          </button>
+          <motion.div
+            initial={{ opacity: 0, y: 18, scale: 0.94 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -10, scale: 0.98 }}
+            transition={{ duration: 0.36, ease: 'easeOut' }}
+            className="relative z-10 flex w-full max-w-md flex-col items-center rounded-[32px] border border-white/15 bg-slate-950/34 px-6 py-8 text-center shadow-[0_28px_90px_rgba(2,6,23,0.44)] backdrop-blur-xl sm:px-8"
+          >
+            <div className="mb-3 flex items-center gap-1.5 text-amber-300 drop-shadow-[0_0_14px_rgba(251,191,36,0.55)]">
+              <span className="text-lg leading-none">â˜…</span>
+              <span className="text-lg leading-none">â˜…</span>
+              <span className="text-lg leading-none">â˜…</span>
+            </div>
+            <motion.div
+              animate={{ y: [0, -4, 0], scale: [1, 1.03, 1] }}
+              transition={{ duration: 1.3, repeat: Infinity, ease: 'easeInOut' }}
+              className="mb-5 flex h-20 w-20 items-center justify-center rounded-[28px] border border-white/20 bg-white/14 shadow-[0_22px_70px_rgba(14,165,233,0.25)] backdrop-blur-xl"
+            >
+              <Trophy className="h-11 w-11 text-amber-300" />
+            </motion.div>
+            <motion.p
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.08, duration: 0.28 }}
+              className="text-5xl font-black leading-none tracking-[-0.05em] text-white sm:text-6xl"
+            >
+              GOLAZO
+            </motion.p>
+            <motion.p
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.16, duration: 0.28 }}
+              className="mt-3 text-base font-black tracking-[-0.02em] text-sky-100 sm:text-lg"
+            >
+              ReservÃ¡ tu cancha en minutos
+            </motion.p>
+            <motion.p
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.24, duration: 0.28 }}
+              className="mt-2 max-w-xs text-sm leading-6 text-zinc-300"
+            >
+              Complejos, horarios y turnos en un solo lugar
+            </motion.p>
+            <motion.div
+              initial={{ width: 0, opacity: 0 }}
+              animate={{ width: 220, opacity: 1 }}
+              transition={{ delay: 0.28, duration: 0.45, ease: 'easeOut' }}
+              className="mt-7 h-1 rounded-full bg-gradient-to-r from-sky-300 via-white to-amber-300"
+            />
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+
+  const publicIntroOverlayAdminStyle = (
+    <AnimatePresence>
+      {showPublicIntro && (
+        <motion.div
+          key="public-intro-admin-style"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.22, ease: 'easeOut' }}
+          className="fixed inset-0 z-[90] flex flex-col items-center justify-center overflow-hidden bg-zinc-950 p-6 text-white"
+        >
+          <button
+            type="button"
+            onClick={dismissPublicIntro}
+            className="absolute right-4 top-4 z-10 rounded-full border border-white/15 bg-white/10 px-4 py-2 text-[10px] font-black uppercase tracking-[0.2em] text-white/85 backdrop-blur-xl transition-colors hover:bg-white/18"
+          >
+            Saltar
+          </button>
+
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9, y: 16 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 1.04 }}
+            transition={{ duration: 0.35, ease: 'easeOut' }}
+            className="relative z-10 flex flex-col items-center gap-8 text-center"
+          >
+            <motion.div
+              animate={{
+                scale: [1, 1.08, 1],
+                rotate: [0, 4, -4, 0],
+              }}
+              transition={{ duration: 3.5, repeat: Infinity, ease: 'easeInOut' }}
+            >
+              <ArgentinaLogo size="lg" />
+            </motion.div>
+            <div className="space-y-3">
+              <motion.p
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.25, duration: 0.3 }}
+                className="text-white text-3xl font-black tracking-[-0.04em] sm:text-5xl"
+              >
+                BIENVENIDO A GOLAZO
+              </motion.p>
+              <motion.p
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 0.45, duration: 0.3 }}
+                className="text-sky-400 font-black tracking-[0.35em] uppercase text-[10px] sm:text-xs"
+              >
+                Reservas online
+              </motion.p>
+              <motion.div
+                initial={{ width: 0, opacity: 0 }}
+                animate={{ width: 220, opacity: 1 }}
+                transition={{ delay: 0.55, duration: 0.5, ease: 'easeOut' }}
+                className="mx-auto h-1 rounded-full bg-gradient-to-r from-sky-400 via-white to-sky-400"
+              />
+            </div>
+          </motion.div>
+
+          <div className="absolute top-0 left-0 w-full h-full pointer-events-none overflow-hidden">
+            <div className="absolute -top-24 -left-24 w-96 h-96 bg-sky-500/20 rounded-full blur-[120px]" />
+            <div className="absolute -bottom-24 -right-24 w-96 h-96 bg-sky-500/20 rounded-full blur-[120px]" />
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
 
   if (isSuperAdminRoute) {
     return (
@@ -558,6 +836,51 @@ export default function App() {
   }
 
   if (!user) {
+    if (isAdminRoute && showAdminIntro) {
+      return (
+        <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center p-6 relative overflow-hidden">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9, y: 16 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 1.04 }}
+            transition={{ duration: 0.35, ease: 'easeOut' }}
+            className="flex flex-col items-center gap-8 text-center"
+          >
+            <motion.div
+              animate={{
+                scale: [1, 1.08, 1],
+                rotate: [0, 4, -4, 0],
+              }}
+              transition={{ duration: 3.5, repeat: Infinity, ease: 'easeInOut' }}
+            >
+              <ArgentinaLogo size="lg" />
+            </motion.div>
+            <div className="space-y-3">
+              <motion.p
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.25, duration: 0.3 }}
+                className="text-white text-3xl font-black tracking-[-0.04em] sm:text-5xl"
+              >
+                BIENVENIDO A GOLAZO
+              </motion.p>
+              <motion.div
+                initial={{ width: 0, opacity: 0 }}
+                animate={{ width: 220, opacity: 1 }}
+                transition={{ delay: 0.45, duration: 0.5, ease: 'easeOut' }}
+                className="mx-auto h-1 rounded-full bg-gradient-to-r from-sky-400 via-white to-sky-400"
+              />
+            </div>
+          </motion.div>
+
+          <div className="absolute top-0 left-0 w-full h-full pointer-events-none overflow-hidden">
+            <div className="absolute -top-24 -left-24 w-96 h-96 bg-sky-500/20 rounded-full blur-[120px]" />
+            <div className="absolute -bottom-24 -right-24 w-96 h-96 bg-sky-500/20 rounded-full blur-[120px]" />
+          </div>
+        </div>
+      );
+    }
+
     if (isPublicRoute && !selectedPublicClientId) {
       return (
         <div className="relative h-screen overflow-y-auto overflow-x-hidden bg-zinc-950 text-white">
@@ -580,20 +903,8 @@ export default function App() {
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.22, ease: 'easeOut' }}
-                className="fixed inset-0 z-[80] flex items-center justify-center overflow-hidden bg-slate-950 px-5 text-white"
+          className="fixed inset-0 z-[80] flex flex-col items-center justify-center overflow-hidden bg-zinc-950 p-6 text-white"
               >
-                <video
-                  className="absolute inset-0 h-full w-full object-cover"
-                  src={PUBLIC_INTRO_VIDEO_SRC}
-                  autoPlay
-                  muted
-                  playsInline
-                  preload="auto"
-                  onEnded={dismissPublicIntro}
-                  onError={dismissPublicIntro}
-                />
-                <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(2,6,23,0.38)_0%,rgba(2,6,23,0.56)_44%,rgba(2,6,23,0.84)_100%)]" />
-                <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_34%,rgba(56,189,248,0.2),transparent_34%),radial-gradient(circle_at_50%_70%,rgba(245,158,11,0.16),transparent_28%)]" />
                 <button
                   type="button"
                   onClick={dismissPublicIntro}
@@ -654,6 +965,7 @@ export default function App() {
               </motion.div>
             )}
           </AnimatePresence>
+          {publicIntroOverlayAdminStyle}
 
           <motion.div
             initial={{ opacity: 0, y: 12 }}
@@ -849,6 +1161,90 @@ export default function App() {
               </div>
             )}
           </motion.div>
+        </div>
+      );
+    }
+
+    if (isPublicRoute && selectedPublicClientId && showPublicAccessChoice) {
+      const accessClientName = publicPortalClientName;
+      const accessClientLogo = publicPortalLogo;
+      const accessClientInitials = selectedPublicClient ? getClientInitials(selectedPublicClient) : 'G';
+
+      return (
+        <div className="relative h-screen overflow-hidden bg-slate-950 text-white">
+          <div
+            className="fixed inset-0"
+            style={{
+              backgroundImage: `url(${PUBLIC_SELECTION_BACKGROUND})`,
+              backgroundSize: 'cover',
+              backgroundPosition: 'center',
+              backgroundRepeat: 'no-repeat',
+            }}
+          />
+          <div className="fixed inset-0 bg-[linear-gradient(180deg,rgba(2,6,23,0.68)_0%,rgba(2,6,23,0.82)_48%,rgba(2,6,23,0.95)_100%)]" />
+
+          <div className="relative z-10 flex h-full items-center justify-center px-4 py-6">
+            <motion.div
+              initial={{ opacity: 0, y: 14, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              transition={{ duration: 0.24, ease: 'easeOut' }}
+              className="w-full max-w-md rounded-[28px] border border-white/15 bg-white/95 p-5 text-zinc-950 shadow-2xl shadow-slate-950/30 backdrop-blur-2xl sm:p-6"
+            >
+              <button
+                type="button"
+                onClick={handleBackToClientSelector}
+                className="mb-5 inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500 transition-colors hover:text-zinc-900"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                Volver al selector
+              </button>
+
+              <div className="mb-6 flex items-center gap-3 rounded-2xl border border-zinc-100 bg-zinc-50 p-3">
+                <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-white shadow-sm">
+                  {accessClientLogo ? (
+                    <img src={accessClientLogo} alt={accessClientName} className="h-full w-full object-contain p-2" />
+                  ) : (
+                    <span className="text-lg font-black tracking-[-0.05em] text-slate-900">{accessClientInitials}</span>
+                  )}
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[9px] font-black uppercase tracking-[0.2em] text-sky-600">Complejo seleccionado</p>
+                  <h2 className="truncate text-lg font-black tracking-[-0.04em] text-zinc-950">{accessClientName}</h2>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-[10px] font-black uppercase tracking-[0.22em] text-emerald-600">Reservá más rápido</p>
+                <h1 className="text-3xl font-black tracking-[-0.05em] text-zinc-950">Elegí cómo entrar</h1>
+                <p className="text-sm font-semibold leading-6 text-zinc-600">
+                  Podés continuar con Google para autocompletar tus datos o reservar sin cuenta.
+                </p>
+              </div>
+
+              <div className="mt-6 space-y-3">
+                <Button
+                  type="button"
+                  className="h-12 w-full rounded-2xl text-xs font-black uppercase tracking-widest"
+                  onClick={handlePublicAccessGoogleLogin}
+                  disabled={publicAccessMode === 'google'}
+                >
+                  <LogIn className="mr-2 h-4 w-4" />
+                  Continuar con Google
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-12 w-full rounded-2xl text-xs font-black uppercase tracking-widest"
+                  onClick={enterPublicPortalAsGuest}
+                  disabled={publicAccessMode === 'google'}
+                >
+                  <UserIcon className="mr-2 h-4 w-4" />
+                  Reservar sin cuenta
+                </Button>
+              </div>
+            </motion.div>
+          </div>
+          <Toaster position="top-center" richColors />
         </div>
       );
     }
@@ -1101,6 +1497,7 @@ export default function App() {
           </nav>
         </div>
 
+        {publicIntroOverlayAdminStyle}
         <Toaster position="top-center" richColors />
       </div>
     );

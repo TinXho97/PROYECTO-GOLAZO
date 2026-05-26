@@ -90,6 +90,21 @@ const setStorage = <T>(key: string, data: T) => {
 };
 
 const PUBLIC_CLIENT_SELECTION_KEY = 'golazo_public_client_selection';
+const PUBLIC_GOOGLE_PROFILE_KEY = 'golazo_public_google_profile';
+const PUBLIC_GOOGLE_RETURN_KEY = 'golazo_public_google_return';
+const PUBLIC_GOOGLE_ERROR_KEY = 'golazo_public_google_error';
+
+type PublicGoogleProfile = {
+  name: string;
+  email: string;
+  avatarUrl?: string;
+};
+
+type PublicGoogleReturnTarget = {
+  path: string;
+  clientId?: string | null;
+  clientSlug?: string | null;
+};
 
 const getPublicClientSelection = () => {
   if (typeof window === 'undefined') return null;
@@ -104,6 +119,57 @@ const setPublicClientSelection = (clientId: string) => {
 const clearPublicClientSelection = () => {
   if (typeof window === 'undefined') return;
   localStorage.removeItem(PUBLIC_CLIENT_SELECTION_KEY);
+};
+
+const getPublicGoogleProfile = (): PublicGoogleProfile | null => {
+  if (typeof window === 'undefined') return null;
+
+  try {
+    const stored = localStorage.getItem(PUBLIC_GOOGLE_PROFILE_KEY);
+    return stored ? JSON.parse(stored) as PublicGoogleProfile : null;
+  } catch {
+    return null;
+  }
+};
+
+const setPublicGoogleProfile = (profile: PublicGoogleProfile) => {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(PUBLIC_GOOGLE_PROFILE_KEY, JSON.stringify(profile));
+};
+
+const clearPublicGoogleProfile = () => {
+  if (typeof window === 'undefined') return;
+  localStorage.removeItem(PUBLIC_GOOGLE_PROFILE_KEY);
+};
+
+const setPublicGoogleReturnTarget = (target: PublicGoogleReturnTarget) => {
+  if (typeof window === 'undefined') return;
+  sessionStorage.setItem(PUBLIC_GOOGLE_RETURN_KEY, JSON.stringify(target));
+};
+
+const consumePublicGoogleReturnTarget = (): PublicGoogleReturnTarget | null => {
+  if (typeof window === 'undefined') return null;
+
+  try {
+    const stored = sessionStorage.getItem(PUBLIC_GOOGLE_RETURN_KEY);
+    sessionStorage.removeItem(PUBLIC_GOOGLE_RETURN_KEY);
+    return stored ? JSON.parse(stored) as PublicGoogleReturnTarget : null;
+  } catch {
+    sessionStorage.removeItem(PUBLIC_GOOGLE_RETURN_KEY);
+    return null;
+  }
+};
+
+const setPublicGoogleAuthError = (message: string) => {
+  if (typeof window === 'undefined') return;
+  sessionStorage.setItem(PUBLIC_GOOGLE_ERROR_KEY, message);
+};
+
+const consumePublicGoogleAuthError = () => {
+  if (typeof window === 'undefined') return null;
+  const message = sessionStorage.getItem(PUBLIC_GOOGLE_ERROR_KEY);
+  sessionStorage.removeItem(PUBLIC_GOOGLE_ERROR_KEY);
+  return message;
 };
 
 const requireClientId = (clientId: string | null | undefined, operation: string) => {
@@ -172,6 +238,21 @@ export const dataService = {
   clearPublicClientSelection: () => {
     clearPublicClientSelection();
   },
+  getPublicGoogleProfile: () => getPublicGoogleProfile(),
+  setPublicGoogleProfile: (profile: PublicGoogleProfile) => {
+    setPublicGoogleProfile(profile);
+  },
+  clearPublicGoogleProfile: () => {
+    clearPublicGoogleProfile();
+  },
+  setPublicGoogleReturnTarget: (target: PublicGoogleReturnTarget) => {
+    setPublicGoogleReturnTarget(target);
+  },
+  consumePublicGoogleReturnTarget: () => consumePublicGoogleReturnTarget(),
+  setPublicGoogleAuthError: (message: string) => {
+    setPublicGoogleAuthError(message);
+  },
+  consumePublicGoogleAuthError: () => consumePublicGoogleAuthError(),
   getPublicClients: async () => {
     if (isSupabaseConfigured()) {
       const clients = await supabaseService.getPublicClients();
