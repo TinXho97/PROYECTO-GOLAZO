@@ -42,6 +42,8 @@ interface BookingsListProps {
 export default function BookingsList({ user }: BookingsListProps) {
   const effectiveClientId = getEffectiveClientId(user);
   const isPlayerUser = user.role === 'client';
+  const isPublicPortalUser = isPlayerUser && user.id.startsWith('public-player:');
+  const isPublicGooglePlayer = isPublicPortalUser && dataService.getPublicAccessMode() === 'google';
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [pitches, setPitches] = useState<Pitch[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -54,7 +56,7 @@ export default function BookingsList({ user }: BookingsListProps) {
   useEffect(() => {
     const fetchData = async () => {
       const clientId = effectiveClientId;
-      if (!clientId) {
+      if (!clientId && !isPublicGooglePlayer) {
         setLoadError('No se pudieron cargar las reservas: falta client_id del complejo seleccionado.');
         setPitches([]);
         setBookings([]);
@@ -64,12 +66,17 @@ export default function BookingsList({ user }: BookingsListProps) {
       try {
         setLoadError(null);
         const p = isPlayerUser
-          ? await dataService.getPublicPitches(clientId)
+          ? (clientId ? await dataService.getPublicPitches(clientId) : [])
           : await dataService.getPitches(clientId);
         setPitches(p);
 
         if (isPlayerUser) {
-          setBookings([]);
+          if (isPublicGooglePlayer) {
+            const ownBookings = await dataService.getPublicOwnBookings();
+            setBookings(ownBookings);
+          } else {
+            setBookings([]);
+          }
           return;
         }
 
@@ -86,7 +93,7 @@ export default function BookingsList({ user }: BookingsListProps) {
       }
     };
     fetchData();
-  }, [effectiveClientId, isPlayerUser]);
+  }, [effectiveClientId, isPlayerUser, isPublicGooglePlayer]);
 
   const userBookingCounts = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -101,11 +108,11 @@ export default function BookingsList({ user }: BookingsListProps) {
       const matchesSearch = b.clientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
                            b.clientPhone.includes(searchTerm);
       const matchesStatus = filterStatus === 'all' || b.status === filterStatus;
-      const matchesUser = user.role === 'admin' || b.userId === user.id || (isPlayerUser && !!user.phone && b.clientPhone === user.phone);
+      const matchesUser = user.role === 'admin' || isPublicGooglePlayer || b.userId === user.id || (isPlayerUser && !!user.phone && b.clientPhone === user.phone);
       
       return matchesSearch && matchesStatus && matchesUser;
     }).sort((a, b) => b.startTime.getTime() - a.startTime.getTime());
-  }, [bookings, searchTerm, filterStatus, user, isPlayerUser]);
+  }, [bookings, searchTerm, filterStatus, user, isPlayerUser, isPublicGooglePlayer]);
 
   const groupedBookings = useMemo(() => {
     const today = startOfDay(new Date());
@@ -523,9 +530,13 @@ export default function BookingsList({ user }: BookingsListProps) {
             <div className={cn("bg-zinc-50 rounded-3xl flex items-center justify-center mx-auto", isPlayerUser ? "mb-4 h-14 w-14" : "w-20 h-20 mb-6")}>
               <AlertCircle className={cn("text-zinc-200", isPlayerUser ? "h-7 w-7" : "w-10 h-10")} />
             </div>
-            <h3 className="text-xl font-black text-zinc-900 mb-2">{isPlayerUser ? 'Consulta pública pendiente' : 'No se encontraron reservas'}</h3>
+            <h3 className="text-xl font-black text-zinc-900 mb-2">
+              {isPlayerUser
+                ? (isPublicGooglePlayer ? 'Todavia no tenes turnos' : 'Ingresa con Google para ver tus turnos guardados')
+                : 'No se encontraron reservas'}
+            </h3>
             <p className="text-zinc-400 font-medium">
-              {isPlayerUser ? 'Tus reservas aparecerán acá cuando el complejo habilite la consulta pública por teléfono.' : 'Intentá cambiar los filtros o realizá una nueva reserva.'}
+              {isPlayerUser ? (isPublicGooglePlayer ? 'Cuando reserves con esta cuenta, tus turnos apareceran aca.' : 'Las reservas sin cuenta siguen funcionando, pero no quedan asociadas a un historial personal.') : 'Intentá cambiar los filtros o realizá una nueva reserva.'}
             </p>
           </motion.div>
         )}

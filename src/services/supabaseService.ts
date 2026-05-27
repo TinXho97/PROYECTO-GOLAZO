@@ -312,16 +312,29 @@ export const supabaseService = {
     client_name: string;
     client_phone: string;
     notes?: string;
+    accessToken?: string;
   }) => {
-    log('Creating public booking via Edge Function...', payload);
+    log('Creating public booking via Edge Function...', {
+      client_slug: payload.client_slug,
+      pitch_id: payload.pitch_id,
+      start_time: payload.start_time,
+      has_access_token: Boolean(payload.accessToken),
+    });
+
+    const { accessToken, ...bodyPayload } = payload;
+    const headers: Record<string, string> = {
+      apikey: getSupabaseAnonKey(),
+      'Content-Type': 'application/json',
+    };
+
+    if (accessToken) {
+      headers.Authorization = `Bearer ${accessToken}`;
+    }
 
     const response = await fetch(`${getSupabaseUrl()}/functions/v1/public-create-booking`, {
       method: 'POST',
-      headers: {
-        apikey: getSupabaseAnonKey(),
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload),
+      headers,
+      body: JSON.stringify(bodyPayload),
     });
 
     const responseBody = await response.json().catch(() => null);
@@ -341,6 +354,7 @@ export const supabaseService = {
         id: string;
         client_id: string;
         pitch_id: string;
+        public_player_id?: string | null;
         client_name: string;
         client_phone: string;
         start_time: string;
@@ -350,6 +364,38 @@ export const supabaseService = {
       };
       message?: string;
     };
+  },
+
+  getPublicOwnBookings: async () => {
+    log('Fetching public player bookings...');
+
+    const { data, error } = await supabase
+      .from('bookings')
+      .select('id, pitch_id, user_id, public_player_id, client_name, client_phone, start_time, end_time, status, created_at, deposit_amount, is_paid, receipt_url, payment_url, client_id')
+      .order('start_time', { ascending: false });
+
+    if (error) {
+      logError('Error fetching public player bookings', error);
+      throw error;
+    }
+
+    return (data || []).map(b => ({
+      id: b.id,
+      pitchId: b.pitch_id,
+      userId: b.user_id || '',
+      publicPlayerId: b.public_player_id || undefined,
+      clientName: b.client_name,
+      clientPhone: b.client_phone,
+      startTime: new Date(b.start_time),
+      endTime: new Date(b.end_time),
+      status: normalizeBookingStatus(b.status),
+      createdAt: new Date(b.created_at),
+      depositAmount: b.deposit_amount,
+      isPaid: b.is_paid,
+      receiptUrl: b.receipt_url,
+      paymentUrl: b.payment_url,
+      client_id: b.client_id,
+    })) as Booking[];
   },
 
   // Test Connection

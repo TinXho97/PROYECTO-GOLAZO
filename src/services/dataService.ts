@@ -1,4 +1,4 @@
-import { Pitch, Booking, Product, Sale, User, UserRole, AuditLog, AuditLogFilters, AuditLogInput, BookingStatus, Client } from '../types';
+import { Pitch, Booking, Product, Sale, User, UserRole, AuditLog, AuditLogFilters, AuditLogInput, BookingStatus, Client, PublicAccessMode, PublicGoogleProfile } from '../types';
 import { addHours, startOfDay, endOfDay, isSameDay } from 'date-fns';
 import { supabaseService } from './supabaseService';
 import { getPublicPortalClientById } from './publicPortalClients';
@@ -90,15 +90,10 @@ const setStorage = <T>(key: string, data: T) => {
 };
 
 const PUBLIC_CLIENT_SELECTION_KEY = 'golazo_public_client_selection';
+const PUBLIC_ACCESS_MODE_KEY = 'golazo_public_access_mode';
 const PUBLIC_GOOGLE_PROFILE_KEY = 'golazo_public_google_profile';
 const PUBLIC_GOOGLE_RETURN_KEY = 'golazo_public_google_return';
 const PUBLIC_GOOGLE_ERROR_KEY = 'golazo_public_google_error';
-
-type PublicGoogleProfile = {
-  name: string;
-  email: string;
-  avatarUrl?: string;
-};
 
 type PublicGoogleReturnTarget = {
   path: string;
@@ -119,6 +114,22 @@ const setPublicClientSelection = (clientId: string) => {
 const clearPublicClientSelection = () => {
   if (typeof window === 'undefined') return;
   localStorage.removeItem(PUBLIC_CLIENT_SELECTION_KEY);
+};
+
+const getPublicAccessMode = (): PublicAccessMode | null => {
+  if (typeof window === 'undefined') return null;
+  const mode = localStorage.getItem(PUBLIC_ACCESS_MODE_KEY);
+  return mode === 'guest' || mode === 'google' ? mode : null;
+};
+
+const setPublicAccessMode = (mode: PublicAccessMode) => {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(PUBLIC_ACCESS_MODE_KEY, mode);
+};
+
+const clearPublicAccessMode = () => {
+  if (typeof window === 'undefined') return;
+  localStorage.removeItem(PUBLIC_ACCESS_MODE_KEY);
 };
 
 const getPublicGoogleProfile = (): PublicGoogleProfile | null => {
@@ -170,6 +181,21 @@ const consumePublicGoogleAuthError = () => {
   const message = sessionStorage.getItem(PUBLIC_GOOGLE_ERROR_KEY);
   sessionStorage.removeItem(PUBLIC_GOOGLE_ERROR_KEY);
   return message;
+};
+
+const getPublicGoogleSession = async () => {
+  if (!isSupabaseConfigured()) return null;
+  const { data, error } = await supabase.auth.getSession();
+  if (error || !data.session?.user) return null;
+  const profile = getPublicGoogleProfile();
+  if (getPublicAccessMode() !== 'google') return null;
+  if (profile?.authUserId && profile.authUserId !== data.session.user.id) return null;
+  return data.session;
+};
+
+const isPublicGoogleUser = async () => {
+  const session = await getPublicGoogleSession();
+  return Boolean(session?.user);
 };
 
 const requireClientId = (clientId: string | null | undefined, operation: string) => {
@@ -238,6 +264,13 @@ export const dataService = {
   clearPublicClientSelection: () => {
     clearPublicClientSelection();
   },
+  getPublicAccessMode: () => getPublicAccessMode(),
+  setPublicAccessMode: (mode: PublicAccessMode) => {
+    setPublicAccessMode(mode);
+  },
+  clearPublicAccessMode: () => {
+    clearPublicAccessMode();
+  },
   getPublicGoogleProfile: () => getPublicGoogleProfile(),
   setPublicGoogleProfile: (profile: PublicGoogleProfile) => {
     setPublicGoogleProfile(profile);
@@ -253,6 +286,8 @@ export const dataService = {
     setPublicGoogleAuthError(message);
   },
   consumePublicGoogleAuthError: () => consumePublicGoogleAuthError(),
+  getPublicGoogleSession: () => getPublicGoogleSession(),
+  isPublicGoogleUser: () => isPublicGoogleUser(),
   getPublicClients: async () => {
     if (isSupabaseConfigured()) {
       const clients = await supabaseService.getPublicClients();
@@ -361,6 +396,7 @@ export const dataService = {
     client_name: string;
     client_phone: string;
     notes?: string;
+    accessToken?: string;
   }) => {
     if (isSupabaseConfigured()) {
       return await supabaseService.createPublicBooking(payload);
@@ -422,6 +458,13 @@ export const dataService = {
       if (endDate && b.startTime > new Date(endDate)) match = false;
       return match;
     });
+  },
+  getPublicOwnBookings: async () => {
+    if (isSupabaseConfigured()) {
+      return await supabaseService.getPublicOwnBookings();
+    }
+
+    return [];
   },
   saveBookings: async (bookings: Booking[]) => setStorage('golazo_bookings', bookings),
   

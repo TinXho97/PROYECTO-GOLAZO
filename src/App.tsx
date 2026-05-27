@@ -128,7 +128,7 @@ export default function App() {
   const [isPublicClientsLoading, setIsPublicClientsLoading] = useState(true);
   const [selectedPublicClientId, setSelectedPublicClientId] = useState<string | null>(dataService.getPublicClientSelectionId());
   const [showPublicAccessChoice, setShowPublicAccessChoice] = useState(false);
-  const [publicAccessMode, setPublicAccessMode] = useState<'guest' | 'google' | null>(null);
+  const [publicAccessMode, setPublicAccessMode] = useState(dataService.getPublicAccessMode());
   const [publicSearchTerm, setPublicSearchTerm] = useState('');
   const [publicGuestName, setPublicGuestName] = useState(localStorage.getItem('golazo_guest_name') || 'Jugador');
   const [publicGuestPhone, setPublicGuestPhone] = useState(localStorage.getItem('golazo_guest_phone') || '');
@@ -267,18 +267,16 @@ export default function App() {
       const avatarUrl = String(metadata.avatar_url || metadata.picture || '');
 
       dataService.setPublicGoogleProfile({
+        authUserId: authUser.id,
         name,
         email,
         avatarUrl: avatarUrl || undefined,
       });
+      dataService.setPublicAccessMode('google');
+      setPublicAccessMode('google');
 
       if (name) {
         localStorage.setItem('golazo_guest_name', name);
-      }
-
-      const { error: signOutError } = await supabase.auth.signOut();
-      if (signOutError) {
-        console.warn('Google public session could not be cleared after callback:', signOutError);
       }
 
       window.location.replace(safeReturnPath);
@@ -400,6 +398,8 @@ export default function App() {
     setSelectedPublicClientId(null);
     setShowPublicAccessChoice(false);
     setPublicAccessMode(null);
+    dataService.clearPublicAccessMode();
+    dataService.clearPublicGoogleProfile();
     setClientConfig(null);
     setLoginIdentifier('');
     setLoginPassword('');
@@ -415,6 +415,7 @@ export default function App() {
     setLoginError(null);
     setShowPublicAccessChoice(true);
     setPublicAccessMode(null);
+    dataService.clearPublicAccessMode();
     setCurrentPage('dashboard');
 
     try {
@@ -431,14 +432,28 @@ export default function App() {
     setSelectedPublicClientId(null);
     setShowPublicAccessChoice(false);
     setPublicAccessMode(null);
+    dataService.clearPublicAccessMode();
     setClientConfig(null);
     setLoginPassword('');
     setLoginError(null);
     setCurrentPage('dashboard');
   };
 
-  const enterPublicPortalAsGuest = () => {
+  const enterPublicPortalAsGuest = async () => {
+    const shouldSignOutPublicGoogle = dataService.getPublicAccessMode() === 'google';
     dataService.clearPublicGoogleProfile();
+    dataService.setPublicAccessMode('guest');
+
+    if (shouldSignOutPublicGoogle && dataService.isSupabaseConfigured()) {
+      const { data } = await supabase.auth.getSession();
+      if (data.session?.user) {
+        const { error } = await supabase.auth.signOut();
+        if (error) {
+          console.warn('Google public session could not be cleared for guest access:', error);
+        }
+      }
+    }
+
     setPublicAccessMode('guest');
     setShowPublicAccessChoice(false);
     setCurrentPage('dashboard');
@@ -449,6 +464,7 @@ export default function App() {
 
     try {
       setPublicAccessMode('google');
+      dataService.setPublicAccessMode('google');
       dataService.setPublicClientSelection(selectedPublicClientId);
       dataService.setPublicGoogleReturnTarget({
         path: `${window.location.pathname}${window.location.search}${window.location.hash}`,
@@ -470,6 +486,7 @@ export default function App() {
     } catch (error) {
       console.error('Error starting public Google OAuth:', error);
       setPublicAccessMode(null);
+      dataService.clearPublicAccessMode();
       toast.error('No se pudo abrir Google. Podés reservar sin cuenta.');
     }
   };

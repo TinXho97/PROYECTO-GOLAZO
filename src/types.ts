@@ -1,6 +1,7 @@
 export type PitchType = 'F5' | 'F7' | 'F11';
 export type BookingStatus = 'confirmed' | 'cancelled' | 'pending' | 'completed' | 'no_show';
 export type UserRole = 'admin' | 'client' | 'superadmin';
+export type PublicAccessMode = 'guest' | 'google';
 
 export interface User {
   id: string;
@@ -19,6 +20,24 @@ export interface Player {
   created_at?: Date;
 }
 
+export interface PublicPlayer {
+  id: string;
+  authUserId: string;
+  email?: string;
+  name?: string;
+  avatarUrl?: string;
+  phone?: string;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
+export interface PublicGoogleProfile {
+  authUserId: string;
+  name: string;
+  email: string;
+  avatarUrl?: string;
+}
+
 export interface Pitch {
   id: string;
   name: string;
@@ -35,6 +54,7 @@ export interface Booking {
   pitchId: string;
   userId: string;
   playerId?: string;
+  publicPlayerId?: string;
   clientName: string;
   clientPhone: string;
   startTime: Date;

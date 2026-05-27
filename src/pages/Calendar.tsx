@@ -339,6 +339,7 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
 
     try {
       const currentPath = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+      dataService.setPublicAccessMode('google');
       dataService.setPublicGoogleReturnTarget({
         path: currentPath,
         clientId: effectiveClientId || user.client_id || null,
@@ -362,12 +363,26 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
       if (error) throw error;
     } catch (error) {
       console.error('Error starting public Google OAuth:', error);
+      dataService.clearPublicAccessMode();
       toast.error('No se pudo abrir Google. Podés reservar sin cuenta.');
     }
   };
 
-  const handleUseGuestCheckout = () => {
+  const handleUseGuestCheckout = async () => {
+    const shouldSignOutPublicGoogle = dataService.getPublicAccessMode() === 'google';
     dataService.clearPublicGoogleProfile();
+    dataService.setPublicAccessMode('guest');
+
+    if (shouldSignOutPublicGoogle) {
+      const { data } = await supabase.auth.getSession();
+      if (data.session?.user) {
+        const { error } = await supabase.auth.signOut();
+        if (error) {
+          console.warn('Google public session could not be cleared for guest checkout:', error);
+        }
+      }
+    }
+
     setPublicGoogleProfile(null);
     toast('Podés reservar sin cuenta completando tus datos.');
   };
@@ -413,6 +428,15 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
           throw new Error('No se pudo identificar el complejo para esta reserva pública.');
         }
 
+        const publicGoogleSession =
+          dataService.getPublicAccessMode() === 'google'
+            ? await dataService.getPublicGoogleSession()
+            : null;
+
+        if (dataService.getPublicAccessMode() === 'google' && !publicGoogleSession?.access_token) {
+          throw new Error('Tu sesion de Google expiro. Volve a ingresar con Google o reserva sin cuenta.');
+        }
+
         const result = await dataService.createPublicBooking({
           client_slug: bookingData.pitch.client_slug,
           pitch_id: bookingData.pitch.id,
@@ -420,6 +444,7 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
           client_name: bookingData.clientName.trim(),
           client_phone: bookingData.clientPhone.trim(),
           notes: bookingData.notes.trim() || undefined,
+          accessToken: publicGoogleSession?.access_token,
         });
 
         const createdBooking = result.booking;
@@ -429,6 +454,7 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
             id: createdBooking.id,
             pitchId: createdBooking.pitch_id,
             userId: user.id,
+            publicPlayerId: createdBooking.public_player_id || undefined,
             clientName: createdBooking.client_name,
             clientPhone: createdBooking.client_phone,
             startTime: new Date(createdBooking.start_time),

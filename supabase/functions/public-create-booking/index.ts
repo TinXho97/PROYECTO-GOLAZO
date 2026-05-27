@@ -118,6 +118,21 @@ const parseStartTime = (value: unknown) => {
   return Number.isNaN(parsed.getTime()) ? null : parsed
 }
 
+const getBearerToken = (req: Request) => {
+  const authorization = req.headers.get('authorization') || ''
+  const match = authorization.match(/^Bearer\s+(.+)$/i)
+  return match?.[1]?.trim() || null
+}
+
+const resolvePublicAuthUser = async (token: string) => {
+  const { data, error } = await adminClient.auth.getUser(token)
+  if (error || !data.user) {
+    return { user: null, error }
+  }
+
+  return { user: data.user, error: null }
+}
+
 const isMissingSchemaObjectError = (error: { code?: string; message?: string } | null | undefined) => {
   const message = error?.message ?? ''
   return (
@@ -158,11 +173,13 @@ serve(async (req) => {
   const clientName = normalizeText(body.client_name, 120)
   const clientPhone = normalizePhone(body.client_phone)
   const notes = normalizeText(body.notes, 1000)
+  const bearerToken = getBearerToken(req)
 
   logInfo(context, 'request received', {
     clientSlug,
     pitchId: typeof pitchId === 'string' ? pitchId : null,
     hasNotes: Boolean(notes),
+    hasAuthorization: Boolean(bearerToken),
   })
 
   if (!clientSlug || !isUuid(pitchId) || !startAt || !clientName || !clientPhone) {
@@ -190,6 +207,8 @@ serve(async (req) => {
   const timeStr = startAt.toTimeString().slice(0, 8)
 
   try {
+    let publicPlayerId: string | null = null
+
     const { data: client, error: clientError } = await adminClient
       .from('clients')
       .select(`
@@ -273,6 +292,7 @@ serve(async (req) => {
       receipt_url: null,
       payment_url: null,
       client_id: client.id,
+      public_player_id: publicPlayerId,
     }
 
     if (notes) {
@@ -282,7 +302,7 @@ serve(async (req) => {
     const { data: booking, error: bookingError } = await adminClient
       .from('bookings')
       .insert(insertPayload)
-      .select('id, pitch_id, client_id, client_name, client_phone, start_time, end_time, status, created_at')
+      .select('id, pitch_id, client_id, public_player_id, client_name, client_phone, start_time, end_time, status, created_at')
       .single()
 
     if (bookingError) {
@@ -310,6 +330,7 @@ serve(async (req) => {
         start_time: booking.start_time,
         end_time: booking.end_time,
         client_phone: clientPhone,
+        public_player_id: publicPlayerId,
         ...(notes ? { notes } : {}),
       },
       created_at: new Date().toISOString(),
@@ -334,6 +355,7 @@ serve(async (req) => {
       clientId: client.id,
       pitchId: pitch.id,
       status: booking.status,
+      hasPublicPlayer: Boolean(publicPlayerId),
     })
 
     return ok({
@@ -341,6 +363,7 @@ serve(async (req) => {
         id: booking.id,
         client_id: booking.client_id,
         pitch_id: booking.pitch_id,
+        public_player_id: booking.public_player_id,
         client_name: booking.client_name,
         client_phone: booking.client_phone,
         start_time: booking.start_time,
