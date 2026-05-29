@@ -113,7 +113,12 @@ export default function Dashboard({ user, onNavigate, onLogout, onNotificationCl
         const p = await dataService.getPitches(clientIdForQuery);
         const b = await dataService.getBookings(clientIdForQuery);
         const s = await dataService.getSales(clientIdForQuery);
-        const prods = await dataService.getProducts(clientIdForQuery);
+        let prods: Product[] = [];
+        try {
+          prods = await dataService.getProducts(clientIdForQuery);
+        } catch (productsError) {
+          console.error('Error loading dashboard products:', productsError);
+        }
 
         const identifier = user.role === 'client' && user.phone ? user.phone : user.id;
         const points = isRankingEnabled ? await dataService.getUserPoints(identifier, clientIdForQuery) : 0;

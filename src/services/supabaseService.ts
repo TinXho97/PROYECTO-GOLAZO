@@ -25,58 +25,16 @@ const ensureClientId = (clientId: unknown, operation: string): string => {
   return clientId;
 };
 
-const ensureTenantId = (tenantId: unknown, operation: string): string => {
-  if (!isUuid(tenantId)) {
-    throw new Error(`${operation}: tenant_id es obligatorio y debe ser un UUID valido`);
-  }
-
-  return tenantId;
-};
-
-const normalizeProductName = (name: string) =>
-  name
-    .trim()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .replace(/\s+/g, ' ');
-
-const generateProductSku = (name: string) => {
-  const prefix = normalizeProductName(name)
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 24)
-    .toUpperCase() || 'PRODUCTO';
-
-  return `${prefix}-${Date.now().toString(36).toUpperCase()}`;
-};
-
 const mapProductRow = (row: any): Product => ({
   id: row.id,
   name: row.name,
-  price: Number(row.sale_price ?? 0),
-  category: 'otro',
-  stock: Number(row.stock_quantity ?? 0),
+  price: Number(row.price ?? 0),
+  category: row.category || 'otro',
+  stock: Number(row.stock ?? 0),
   min_stock: Number(row.min_stock ?? 0),
   active: Boolean(row.active),
-  client_id: row.tenant_id || undefined,
-  tenant_id: row.tenant_id || undefined,
-  sku: row.sku,
-  barcode: row.barcode,
-  normalized_name: row.normalized_name,
-  description: row.description,
-  category_id: row.category_id,
-  brand_id: row.brand_id,
-  supplier_id: row.supplier_id,
-  unit: row.unit,
-  cost_without_tax: row.cost_without_tax,
-  cost_with_tax: row.cost_with_tax,
-  sale_price: row.sale_price,
-  tax_rate: Number(row.tax_rate ?? 0),
-  stock_quantity: Number(row.stock_quantity ?? 0),
-  ideal_stock: Number(row.ideal_stock ?? 0),
-  profit_margin_percent: Number(row.profit_margin_percent ?? 0),
-  image_url: row.image_url,
+  client_id: row.client_id || undefined,
+  created_at: row.created_at,
 });
 
 const normalizeBookingStatus = (status: unknown): BookingStatus => {
@@ -912,13 +870,13 @@ export const supabaseService = {
 
   // Products
   getProducts: async (clientId?: string) => {
-    log('Fetching products...', { tenantId: clientId });
-    const tenantId = ensureTenantId(clientId, 'Listar productos');
+    log('Fetching products...', { clientId });
+    const requiredClientId = ensureClientId(clientId, 'Listar productos');
 
     const { data, error } = await supabase
       .from('products')
-      .select('id, tenant_id, sku, barcode, name, normalized_name, description, category_id, brand_id, supplier_id, unit, cost_without_tax, cost_with_tax, sale_price, tax_rate, stock_quantity, min_stock, image_url, active, ideal_stock, profit_margin_percent, created_at, updated_at')
-      .eq('tenant_id', tenantId)
+      .select('id, name, price, category, created_at, stock, min_stock, active, client_id')
+      .eq('client_id', requiredClientId)
       .order('created_at', { ascending: false })
       .limit(50);
     
@@ -933,39 +891,22 @@ export const supabaseService = {
 
   addProduct: async (product: Omit<Product, 'id'>) => {
     log('Adding product', product);
-    const tenantId = ensureTenantId(product.tenant_id || product.client_id, 'Crear producto');
+    const clientId = ensureClientId(product.client_id, 'Crear producto');
     const name = product.name.trim();
     const initialStock = Math.max(0, Number(product.stock) || 0);
     const minStock = Math.max(0, Number(product.min_stock) || 0);
-    const salePrice = Math.max(0, Number(product.price) || 0);
-    const normalizedName = normalizeProductName(name);
-    const now = new Date().toISOString();
+    const price = Math.max(0, Number(product.price) || 0);
 
     const { data, error } = await supabase
       .from('products')
       .insert([{
-        tenant_id: tenantId,
-        sku: product.sku || generateProductSku(name),
-        barcode: product.barcode || null,
         name,
-        normalized_name: product.normalized_name || normalizedName,
-        description: product.description || null,
-        category_id: product.category_id || null,
-        brand_id: product.brand_id || null,
-        supplier_id: product.supplier_id || null,
-        unit: product.unit || 'unidad',
-        cost_without_tax: product.cost_without_tax ?? null,
-        cost_with_tax: product.cost_with_tax ?? null,
-        sale_price: salePrice,
-        tax_rate: product.tax_rate ?? 0,
-        stock_quantity: initialStock,
+        price,
+        category: product.category || 'otro',
+        stock: initialStock,
         min_stock: minStock,
-        image_url: product.image_url || null,
         active: product.active ?? true,
-        ideal_stock: product.ideal_stock ?? Math.max(initialStock, minStock),
-        profit_margin_percent: product.profit_margin_percent ?? 0,
-        created_at: now,
-        updated_at: now,
+        client_id: clientId,
       }])
       .select()
       .single();
@@ -982,26 +923,20 @@ export const supabaseService = {
 
   updateProduct: async (id: string, updates: Partial<Product>, clientId?: string) => {
     log(`Updating product ${id}`, updates);
-    const tenantId = ensureTenantId(clientId, 'Actualizar producto');
+    const requiredClientId = ensureClientId(clientId, 'Actualizar producto');
     const payload: Record<string, unknown> = {};
-    if (updates.name !== undefined) {
-      payload.name = updates.name.trim();
-      payload.normalized_name = normalizeProductName(updates.name);
-    }
-    if (updates.price !== undefined) payload.sale_price = Math.max(0, Number(updates.price) || 0);
-    if (updates.stock !== undefined) payload.stock_quantity = Math.max(0, Number(updates.stock) || 0);
+    if (updates.name !== undefined) payload.name = updates.name.trim();
+    if (updates.price !== undefined) payload.price = Math.max(0, Number(updates.price) || 0);
+    if (updates.category !== undefined) payload.category = updates.category;
+    if (updates.stock !== undefined) payload.stock = Math.max(0, Number(updates.stock) || 0);
     if (updates.min_stock !== undefined) payload.min_stock = Math.max(0, Number(updates.min_stock) || 0);
     if (updates.active !== undefined) payload.active = updates.active;
-    if (updates.category_id !== undefined) payload.category_id = updates.category_id;
-    if (updates.sku !== undefined) payload.sku = updates.sku;
-    if (updates.unit !== undefined) payload.unit = updates.unit || 'unidad';
-    payload.updated_at = new Date().toISOString();
 
     const { error } = await supabase
       .from('products')
       .update(payload)
       .eq('id', id)
-      .eq('tenant_id', tenantId);
+      .eq('client_id', requiredClientId);
     
     if (error) {
       logError(`Error updating product ${id}`, error);
@@ -1014,15 +949,15 @@ export const supabaseService = {
       if (updates.stock !== undefined) {
         const { data: product } = await supabase
           .from('products')
-          .select('name, stock_quantity, min_stock')
+          .select('name, stock, min_stock')
           .eq('id', id)
-          .eq('tenant_id', tenantId)
+          .eq('client_id', requiredClientId)
           .single();
-        if (product && Number(product.stock_quantity) <= Number(product.min_stock)) {
+        if (product && Number(product.stock) <= Number(product.min_stock)) {
           await supabase.from('notifications').insert([{
             type: 'stock',
-            message: `Stock bajo - ${product.name} (Quedan ${product.stock_quantity})`,
-            client_id: tenantId
+            message: `Stock bajo - ${product.name} (Quedan ${product.stock})`,
+            client_id: requiredClientId
           }]);
         }
       }
@@ -1033,12 +968,12 @@ export const supabaseService = {
 
   deleteProduct: async (id: string, clientId?: string) => {
     log(`Deleting product ${id}`);
-    const tenantId = ensureTenantId(clientId, 'Eliminar producto');
+    const requiredClientId = ensureClientId(clientId, 'Eliminar producto');
     const { error } = await supabase
       .from('products')
       .delete()
       .eq('id', id)
-      .eq('tenant_id', tenantId);
+      .eq('client_id', requiredClientId);
     
     if (error) {
       logError(`Error deleting product ${id}`, error);
@@ -1050,7 +985,7 @@ export const supabaseService = {
   bulkUpdateStock: async (updates: { productId: string; quantityToAdd: number; newStock: number }[], clientId?: string) => {
     log(`Bulk updating stock for ${updates.length} products`);
     const client = supabase;
-    const tenantId = ensureTenantId(clientId, 'Actualizar stock');
+    const requiredClientId = ensureClientId(clientId, 'Actualizar stock');
     
     if (updates.length === 0) return;
 
@@ -1060,9 +995,9 @@ export const supabaseService = {
       // 1. Obtener todos los productos en una sola query
       const { data: products, error: fetchError } = await client
         .from('products')
-        .select('id, name, min_stock, tenant_id')
+        .select('id, name, min_stock, client_id')
         .in('id', productIds)
-        .eq('tenant_id', tenantId);
+        .eq('client_id', requiredClientId);
         
       if (fetchError) throw fetchError;
       
@@ -1080,7 +1015,7 @@ export const supabaseService = {
           notificationsToInsert.push({
             type: 'stock',
             message: `Stock bajo - ${product.name} (Quedan ${update.newStock})`,
-            client_id: tenantId
+            client_id: requiredClientId
           });
         }
       }
@@ -1090,9 +1025,9 @@ export const supabaseService = {
       // así que hacemos los updates en paralelo, pero agrupamos los inserts.
       const updatePromises = updates.map(update => 
         client.from('products')
-          .update({ stock_quantity: Math.max(0, Number(update.newStock) || 0), updated_at: new Date().toISOString() })
+          .update({ stock: Math.max(0, Number(update.newStock) || 0) })
           .eq('id', update.productId)
-          .eq('tenant_id', tenantId)
+          .eq('client_id', requiredClientId)
       );
       
       await Promise.all([

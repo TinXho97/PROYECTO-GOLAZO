@@ -77,23 +77,7 @@ export interface Product {
   min_stock: number;
   active: boolean;
   client_id?: string;
-  tenant_id?: string;
-  sku?: string;
-  barcode?: string | null;
-  normalized_name?: string;
-  description?: string | null;
-  category_id?: string | null;
-  brand_id?: string | null;
-  supplier_id?: string | null;
-  unit?: string;
-  cost_without_tax?: number | null;
-  cost_with_tax?: number | null;
-  sale_price?: number | null;
-  tax_rate?: number;
-  stock_quantity?: number;
-  ideal_stock?: number;
-  profit_margin_percent?: number;
-  image_url?: string | null;
+  created_at?: string;
 }
 
 export interface StockMovement {

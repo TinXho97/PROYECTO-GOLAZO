@@ -87,15 +87,17 @@ const SmartStats: React.FC = () => {
     reservas: count,
     ingresos: data.incomeByDay[day] || 0
   }));
+  const hasChartData = chartData.length > 0;
 
   const dayOfWeekData = Object.entries(data.bookingsByDayOfWeek).map(([day, count]) => ({
     name: ['Dom', 'Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab'][parseInt(day)],
     count
   }));
+  const hasDayOfWeekData = dayOfWeekData.length > 0;
 
   const getPitchDisplayName = (pitchId: string) => {
-    const name = data.pitchNames[pitchId]?.trim();
-    return name || 'Cancha eliminada';
+    const name = data.pitchNames?.[pitchId]?.trim();
+    return name || 'Cancha sin nombre';
   };
 
   const pitchData = Object.entries(data.incomeByPitch).map(([id, income]) => ({
@@ -183,47 +185,53 @@ const SmartStats: React.FC = () => {
               </div>
             </div>
           </div>
-          <div className="h-[300px] w-full">
-            <ResponsiveContainer width="100%" height="100%" minWidth={0}>
-              <AreaChart data={chartData}>
-                <defs>
-                  <linearGradient id="colorIncome" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.1}/>
-                    <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f4f4f5" />
-                <XAxis 
-                  dataKey="name" 
-                  axisLine={false} 
-                  tickLine={false} 
-                  tick={{ fill: '#a1a1aa', fontSize: 10, fontWeight: 700 }}
-                />
-                <YAxis 
-                  axisLine={false} 
-                  tickLine={false} 
-                  tick={{ fill: '#a1a1aa', fontSize: 10, fontWeight: 700 }}
-                  tickFormatter={(val: number) => `$${val/1000}k`}
-                />
-                <Tooltip 
-                  contentStyle={{ 
-                    borderRadius: '24px', 
-                    border: '1px solid #e4e4e7', 
-                    boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)',
-                    fontSize: '12px',
-                    fontWeight: 'bold'
-                  }}
-                />
-                <Area 
-                  type="monotone" 
-                  dataKey="ingresos" 
-                  stroke="#10b981" 
-                  strokeWidth={4}
-                  fillOpacity={1} 
-                  fill="url(#colorIncome)" 
-                />
-              </AreaChart>
-            </ResponsiveContainer>
+          <div className="h-[300px] min-h-[300px] w-full min-w-0">
+            {hasChartData ? (
+              <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+                <AreaChart data={chartData}>
+                  <defs>
+                    <linearGradient id="colorIncome" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#10b981" stopOpacity={0.1}/>
+                      <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f4f4f5" />
+                  <XAxis 
+                    dataKey="name" 
+                    axisLine={false} 
+                    tickLine={false} 
+                    tick={{ fill: '#a1a1aa', fontSize: 10, fontWeight: 700 }}
+                  />
+                  <YAxis 
+                    axisLine={false} 
+                    tickLine={false} 
+                    tick={{ fill: '#a1a1aa', fontSize: 10, fontWeight: 700 }}
+                    tickFormatter={(val: number) => `$${val/1000}k`}
+                  />
+                  <Tooltip 
+                    contentStyle={{ 
+                      borderRadius: '24px', 
+                      border: '1px solid #e4e4e7', 
+                      boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)',
+                      fontSize: '12px',
+                      fontWeight: 'bold'
+                    }}
+                  />
+                  <Area 
+                    type="monotone" 
+                    dataKey="ingresos" 
+                    stroke="#10b981" 
+                    strokeWidth={4}
+                    fillOpacity={1} 
+                    fill="url(#colorIncome)" 
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="flex h-full items-center justify-center text-xs font-bold uppercase tracking-widest text-zinc-400">
+                Sin datos para mostrar
+              </div>
+            )}
           </div>
         </div>
 
@@ -275,28 +283,34 @@ const SmartStats: React.FC = () => {
             <Calendar className="w-6 h-6 text-zinc-400" />
             Ocupación por Día
           </h3>
-          <div className="h-[250px] w-full">
-            <ResponsiveContainer width="100%" height="100%" minWidth={0}>
-              <BarChart data={dayOfWeekData}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f4f4f5" />
-                <XAxis 
-                  dataKey="name" 
-                  axisLine={false} 
-                  tickLine={false} 
-                  tick={{ fill: '#a1a1aa', fontSize: 10, fontWeight: 700 }}
-                />
-                <YAxis hide />
-                <Tooltip 
-                  cursor={{ fill: '#f8fafc' }}
-                  contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
-                />
-                <Bar dataKey="count" fill="#0ea5e9" radius={[8, 8, 0, 0]}>
-                  {dayOfWeekData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.count === Math.max(...dayOfWeekData.map(d => d.count as number)) ? '#0ea5e9' : '#e2e8f0'} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
+          <div className="h-[250px] min-h-[250px] w-full min-w-0">
+            {hasDayOfWeekData ? (
+              <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+                <BarChart data={dayOfWeekData}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f4f4f5" />
+                  <XAxis 
+                    dataKey="name" 
+                    axisLine={false} 
+                    tickLine={false} 
+                    tick={{ fill: '#a1a1aa', fontSize: 10, fontWeight: 700 }}
+                  />
+                  <YAxis hide />
+                  <Tooltip 
+                    cursor={{ fill: '#f8fafc' }}
+                    contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+                  />
+                  <Bar dataKey="count" fill="#0ea5e9" radius={[8, 8, 0, 0]}>
+                    {dayOfWeekData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.count === Math.max(...dayOfWeekData.map(d => d.count as number)) ? '#0ea5e9' : '#e2e8f0'} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="flex h-full items-center justify-center text-xs font-bold uppercase tracking-widest text-zinc-400">
+                Sin datos para mostrar
+              </div>
+            )}
           </div>
         </div>
 
