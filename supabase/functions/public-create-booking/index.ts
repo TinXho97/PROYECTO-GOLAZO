@@ -11,6 +11,8 @@ const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
 const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
 const bookingDurationMinutes = Number(Deno.env.get('PUBLIC_BOOKING_DURATION_MINUTES') ?? '60')
 const defaultBookingStatus = (Deno.env.get('PUBLIC_BOOKING_DEFAULT_STATUS') ?? 'pending').toLowerCase()
+const maxReceiptBytes = 2 * 1024 * 1024
+const allowedReceiptTypes = new Set(['image/jpeg', 'image/png', 'image/webp', 'application/pdf'])
 
 if (!supabaseUrl || !serviceRoleKey) {
   throw new Error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY')
@@ -112,6 +114,57 @@ const normalizeText = (value: unknown, maxLength: number) =>
 const normalizePhone = (value: unknown) =>
   typeof value === 'string' ? value.replace(/[^\d+]/g, '').slice(0, 20) : ''
 
+const normalizeBoolean = (value: unknown) => value === true || value === 'true'
+
+const normalizeNumber = (value: unknown, fallback = 0) => {
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = Number(value)
+    if (Number.isFinite(parsed)) return parsed
+  }
+  return fallback
+}
+
+const normalizeReceiptDataUrl = (value: unknown) => {
+  if (typeof value !== 'string' || !value.trim()) {
+    return { receiptUrl: '', error: null as string | null }
+  }
+
+  const receiptUrl = value.trim()
+  const match = receiptUrl.match(/^data:([^;,]+);base64,([A-Za-z0-9+/=\s]+)$/)
+  if (!match) {
+    return { receiptUrl: '', error: 'El comprobante debe ser una imagen o PDF valido.' }
+  }
+
+  const mimeType = match[1].toLowerCase()
+  const base64Payload = match[2].replace(/\s/g, '')
+  if (!allowedReceiptTypes.has(mimeType)) {
+    return { receiptUrl: '', error: 'El comprobante debe ser JPG, PNG, WEBP o PDF.' }
+  }
+
+  if (!base64Payload || base64Payload.length % 4 !== 0) {
+    return { receiptUrl: '', error: 'El comprobante no tiene contenido valido.' }
+  }
+
+  const padding = base64Payload.endsWith('==') ? 2 : base64Payload.endsWith('=') ? 1 : 0
+  const estimatedBytes = Math.floor((base64Payload.length * 3) / 4) - padding
+  if (estimatedBytes <= 0) {
+    return { receiptUrl: '', error: 'El comprobante esta vacio.' }
+  }
+
+  if (estimatedBytes > maxReceiptBytes) {
+    return { receiptUrl: '', error: 'El comprobante supera el maximo permitido de 2MB.' }
+  }
+
+  try {
+    atob(base64Payload.slice(0, 128))
+  } catch {
+    return { receiptUrl: '', error: 'El comprobante no tiene contenido valido.' }
+  }
+
+  return { receiptUrl: `data:${mimeType};base64,${base64Payload}`, error: null as string | null }
+}
+
 const parseStartTime = (value: unknown) => {
   if (typeof value !== 'string' || !value.trim()) return null
   const parsed = new Date(value)
@@ -158,7 +211,7 @@ serve(async (req) => {
       name: 'public-create-booking',
       status: 'ok',
       method: 'POST',
-      message: 'Send POST with { client_slug, pitch_id, start_time, client_name, client_phone, notes? }',
+      message: 'Send POST with { client_slug, pitch_id, start_time, client_name, client_phone, notes?, receipt_url? }',
     })
   }
 
@@ -173,14 +226,20 @@ serve(async (req) => {
   const clientName = normalizeText(body.client_name, 120)
   const clientPhone = normalizePhone(body.client_phone)
   const notes = normalizeText(body.notes, 1000)
+  const receipt = normalizeReceiptDataUrl(body.receipt_url)
   const bearerToken = getBearerToken(req)
 
   logInfo(context, 'request received', {
     clientSlug,
     pitchId: typeof pitchId === 'string' ? pitchId : null,
     hasNotes: Boolean(notes),
+    hasReceipt: Boolean(receipt.receiptUrl),
     hasAuthorization: Boolean(bearerToken),
   })
+
+  if (receipt.error) {
+    return fail(400, 'invalid_receipt', receipt.error)
+  }
 
   if (!clientSlug || !isUuid(pitchId) || !startAt || !clientName || !clientPhone) {
     return fail(
@@ -218,7 +277,8 @@ serve(async (req) => {
         status,
         expires_at,
         public_slug,
-        public_booking_enabled
+        public_booking_enabled,
+        settings
       `)
       .eq('public_slug', clientSlug)
       .maybeSingle()
@@ -235,6 +295,24 @@ serve(async (req) => {
     const clientExpired = client.expires_at ? new Date(client.expires_at).getTime() < Date.now() : false
     if (client.status !== 'active' || clientExpired || client.public_booking_enabled === false) {
       return fail(403, 'client_not_publicly_bookable', 'Este complejo no acepta reservas públicas en este momento.')
+    }
+
+    const settings = client.settings && typeof client.settings === 'object'
+      ? client.settings as Record<string, unknown>
+      : {}
+    const paymentPublic = settings.payment_public && typeof settings.payment_public === 'object'
+      ? settings.payment_public as Record<string, unknown>
+      : null
+    const paymentPublicEnabled = normalizeBoolean(paymentPublic?.enabled)
+    const minDeposit = normalizeNumber(paymentPublic?.min_deposit ?? paymentPublic?.minDeposit, 0)
+    const receiptRequired = paymentPublicEnabled && minDeposit > 0
+
+    if (receiptRequired && !receipt.receiptUrl) {
+      return fail(
+        400,
+        'receipt_required',
+        'Debes subir el comprobante de transferencia para solicitar la reserva.',
+      )
     }
 
     const { data: pitch, error: pitchError } = await adminClient
@@ -287,9 +365,9 @@ serve(async (req) => {
       start_time: startAt.toISOString(),
       end_time: endAt.toISOString(),
       status: defaultBookingStatus,
-      deposit_amount: 0,
+      deposit_amount: receiptRequired && receipt.receiptUrl ? minDeposit : 0,
       is_paid: false,
-      receipt_url: null,
+      receipt_url: receipt.receiptUrl || null,
       payment_url: null,
       client_id: client.id,
       public_player_id: publicPlayerId,
@@ -302,7 +380,7 @@ serve(async (req) => {
     const { data: booking, error: bookingError } = await adminClient
       .from('bookings')
       .insert(insertPayload)
-      .select('id, pitch_id, client_id, public_player_id, client_name, client_phone, start_time, end_time, status, created_at')
+      .select('id, pitch_id, client_id, public_player_id, client_name, client_phone, start_time, end_time, status, created_at, receipt_url')
       .single()
 
     if (bookingError) {
@@ -331,6 +409,7 @@ serve(async (req) => {
         end_time: booking.end_time,
         client_phone: clientPhone,
         public_player_id: publicPlayerId,
+        has_receipt: Boolean(receipt.receiptUrl),
         ...(notes ? { notes } : {}),
       },
       created_at: new Date().toISOString(),
@@ -370,6 +449,7 @@ serve(async (req) => {
         end_time: booking.end_time,
         status: booking.status,
         created_at: booking.created_at,
+        receipt_url: booking.receipt_url,
       },
       message:
         booking.status === 'confirmed'

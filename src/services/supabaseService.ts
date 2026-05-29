@@ -366,6 +366,7 @@ export const supabaseService = {
     client_name: string;
     client_phone: string;
     notes?: string;
+    receipt_url?: string;
     accessToken?: string;
   }) => {
     log('Creating public booking via Edge Function...', {
@@ -415,6 +416,7 @@ export const supabaseService = {
         end_time: string;
         status: string;
         created_at: string;
+        receipt_url?: string | null;
       };
       message?: string;
     };

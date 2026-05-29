@@ -159,7 +159,7 @@ export default function App() {
   const [showPublicAccessChoice, setShowPublicAccessChoice] = useState(false);
   const [publicAccessMode, setPublicAccessMode] = useState(dataService.getPublicAccessMode());
   const [publicSearchTerm, setPublicSearchTerm] = useState('');
-  const [publicGuestName, setPublicGuestName] = useState(localStorage.getItem('golazo_guest_name') || 'Jugador');
+  const [publicGuestName, setPublicGuestName] = useState(localStorage.getItem('golazo_guest_name') || '');
   const [publicGuestPhone, setPublicGuestPhone] = useState(localStorage.getItem('golazo_guest_phone') || '');
   const [showPublicIntro, setShowPublicIntro] = useState(false);
   const [publicCountdown, setPublicCountdown] = useState(getWorldCupCountdown);
@@ -295,7 +295,7 @@ export default function App() {
       const authUser = data.session.user;
       const metadata = authUser.user_metadata || {};
       const email = authUser.email || String(metadata.email || '');
-      const name = String(metadata.full_name || metadata.name || email.split('@')[0] || 'Jugador');
+      const name = String(metadata.full_name || metadata.name || email.split('@')[0] || '');
       const avatarUrl = String(metadata.avatar_url || metadata.picture || '');
 
       dataService.setPublicGoogleProfile({
@@ -351,7 +351,7 @@ export default function App() {
     };
 
     const handleGuestInfoUpdated = () => {
-      setPublicGuestName(localStorage.getItem('golazo_guest_name') || 'Jugador');
+      setPublicGuestName(localStorage.getItem('golazo_guest_name') || '');
       setPublicGuestPhone(localStorage.getItem('golazo_guest_phone') || '');
     };
 

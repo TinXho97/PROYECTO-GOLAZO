@@ -24,12 +24,10 @@ import {
   Star,
   Plus,
   Share2,
+  Upload,
   Timer,
   Activity,
-  Settings,
-  Banknote,
-  LogIn,
-  Mail
+  Settings
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'motion/react';
@@ -82,10 +80,11 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
     pitch: null as Pitch | null,
     date: new Date(),
     time: '',
-    clientName: user.role === 'client' ? user.name : '',
+    clientName: isPublicPortalUser ? '' : user.role === 'client' ? user.name : '',
     clientPhone: '',
     notes: '',
     receipt: null as string | null,
+    receiptFileName: '',
     depositAmount: '',
     paymentMethod: 'transferencia' as 'transferencia' | 'mercadopago',
     paymentUrl: ''
@@ -170,6 +169,7 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
       (paymentSettings as { enabled?: boolean | string }).enabled === 'true')
   );
   const publicMinDeposit = getNumberValue(paymentSettings, ['min_deposit', 'minDeposit'], 500);
+  const isPublicReceiptRequired = isPublicPortalUser && paymentPublicEnabled && publicMinDeposit > 0;
 
   useEffect(() => {
     const fetchData = async () => {
@@ -329,7 +329,7 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
       pitch,
       date,
       time,
-      clientName: profile?.name || prev.clientName,
+      clientName: isPublicPortalUser ? profile?.name || '' : profile?.name || prev.clientName,
     }));
     setBookingTimer(300);
     setIsBookingModalOpen(true);
@@ -438,6 +438,10 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
           throw new Error('Tu sesion de Google expiro. Volve a ingresar con Google o reserva sin cuenta.');
         }
 
+        if (isPublicReceiptRequired && !bookingData.receipt) {
+          throw new Error('Subi el comprobante de transferencia para solicitar la reserva.');
+        }
+
         const result = await dataService.createPublicBooking({
           client_slug: bookingData.pitch.client_slug,
           pitch_id: bookingData.pitch.id,
@@ -445,6 +449,7 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
           client_name: bookingData.clientName.trim(),
           client_phone: bookingData.clientPhone.trim(),
           notes: bookingData.notes.trim() || undefined,
+          receipt_url: bookingData.receipt || undefined,
           accessToken: publicGoogleSession?.access_token,
         });
 
@@ -462,6 +467,7 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
             endTime: new Date(createdBooking.end_time),
             status: createdBooking.status as Booking['status'],
             createdAt: new Date(createdBooking.created_at),
+            receiptUrl: createdBooking.receipt_url || undefined,
             client_id: createdBooking.client_id,
           },
         ]);
@@ -474,6 +480,7 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
           ...prev,
           notes: '',
           receipt: null,
+          receiptFileName: '',
           depositAmount: '',
           paymentMethod: 'transferencia',
           paymentUrl: ''
@@ -507,17 +514,6 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
       return;
     }
 
-    const deposit = Number(bookingData.depositAmount) || 0;
-    if (deposit < 500) {
-      toast.error('La seña mínima es de $500.');
-      return;
-    }
-
-    if (bookingData.paymentMethod === 'transferencia' && !bookingData.receipt) {
-      toast.error('Por favor, carga el comprobante de la seña.');
-      return;
-    }
-
     const [h, m] = bookingData.time.split(':').map(Number);
     const startTime = new Date(bookingData.date);
     startTime.setHours(h, m, 0, 0);
@@ -538,9 +534,7 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
         startTime,
         endTime,
         status: 'confirmed',
-        receiptUrl: bookingData.receipt || undefined,
-        depositAmount: Number(bookingData.depositAmount) || 0,
-        paymentUrl: bookingData.paymentMethod === 'mercadopago' ? bookingData.paymentUrl : undefined
+        depositAmount: 0,
       }, clientId || undefined);
       
       const updatedBookings = await dataService.getBookings(clientId || undefined);
@@ -551,6 +545,7 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
         ...prev, 
         notes: '',
         receipt: null, 
+        receiptFileName: '',
         depositAmount: '',
         paymentMethod: 'transferencia',
         paymentUrl: ''
@@ -575,14 +570,30 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    e.target.value = '';
     if (file) {
+      const allowedReceiptTypes = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
+      if (!allowedReceiptTypes.includes(file.type)) {
+        toast.error('Formato no valido. Subi JPG, PNG, WEBP o PDF.');
+        return;
+      }
+
+      if (file.size === 0) {
+        toast.error('El comprobante esta vacio. Elegi otro archivo.');
+        return;
+      }
+
       if (file.size > 2 * 1024 * 1024) {
         toast.error('El archivo es muy pesado (máximo 2MB).');
         return;
       }
       const reader = new FileReader();
       reader.onloadend = () => {
-        setBookingData(prev => ({ ...prev, receipt: reader.result as string }));
+        setBookingData(prev => ({
+          ...prev,
+          receipt: reader.result as string,
+          receiptFileName: file.name,
+        }));
       };
       reader.readAsDataURL(file);
     }
@@ -864,93 +875,7 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
                 </h3>
                 <p className="text-xs font-semibold capitalize text-zinc-600">{format(bookingData.date, "EEEE d 'de' MMMM", { locale: es })}</p>
               </div>
-              <div className="space-y-1.5">
-                <label className="ml-1 text-xs font-semibold text-zinc-700">Notas para el complejo</label>
-                <textarea
-                  rows={3}
-                  placeholder="Opcional: aclaraciones sobre el turno"
-                  className="w-full rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm font-medium text-zinc-900 placeholder:text-zinc-400 outline-none focus:ring-2 focus:ring-sky-500/20"
-                  value={bookingData.notes}
-                  onChange={e => setBookingData(prev => ({ ...prev, notes: e.target.value }))}
-                />
-              </div>
-            </section>
 
-            <section className="space-y-3 rounded-2xl border border-zinc-200 bg-white p-4">
-              <div>
-                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-zinc-400">Reservá más rápido</p>
-                <h4 className="text-sm font-black text-zinc-900">Elegí cómo completar tus datos</h4>
-              </div>
-
-              {publicGoogleProfile ? (
-                <div className="space-y-3">
-                  <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-3 text-emerald-900">
-                    <div className="flex items-start gap-3">
-                      {publicGoogleProfile.avatarUrl ? (
-                        <img
-                          src={publicGoogleProfile.avatarUrl}
-                          alt={publicGoogleProfile.name}
-                          className="h-10 w-10 rounded-full border border-emerald-100 bg-white object-cover"
-                        />
-                      ) : (
-                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white text-emerald-700">
-                          <User className="h-5 w-5" />
-                        </div>
-                      )}
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-black">Conectado como: {publicGoogleProfile.name}</p>
-                        {publicGoogleProfile.email && (
-                          <p className="mt-1 flex items-center gap-1 truncate text-xs font-bold text-emerald-700">
-                            <Mail className="h-3.5 w-3.5 shrink-0" />
-                            Email: {publicGoogleProfile.email}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="h-11 rounded-2xl text-[10px] font-black uppercase tracking-widest"
-                      onClick={handlePublicGoogleLogin}
-                    >
-                      <LogIn className="mr-2 h-4 w-4" />
-                      Usar otra cuenta
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      className="h-11 rounded-2xl text-[10px] font-black uppercase tracking-widest"
-                      onClick={handleUseGuestCheckout}
-                    >
-                      <User className="mr-2 h-4 w-4" />
-                      Reservar sin cuenta
-                    </Button>
-                  </div>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  <Button
-                    type="button"
-                    className="h-11 rounded-2xl text-[10px] font-black uppercase tracking-widest"
-                    onClick={handlePublicGoogleLogin}
-                  >
-                    <LogIn className="mr-2 h-4 w-4" />
-                    Continuar con Google
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="h-11 rounded-2xl text-[10px] font-black uppercase tracking-widest"
-                    onClick={handleUseGuestCheckout}
-                  >
-                    <User className="mr-2 h-4 w-4" />
-                    Reservar sin cuenta
-                  </Button>
-                </div>
-              )}
             </section>
 
             <section className="space-y-3">
@@ -1013,6 +938,73 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
 
               <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-3 text-xs font-bold leading-relaxed text-emerald-800">
                 Transferí la seña y enviá el comprobante al complejo para confirmar el turno.
+              </div>
+              <div className="space-y-2 rounded-2xl border border-zinc-200 bg-white p-3">
+                <div>
+                  <label className="ml-1 text-xs font-semibold text-zinc-700">
+                    Comprobante de transferencia{isPublicReceiptRequired ? ' *' : ''}
+                  </label>
+                  <p className="mt-1 text-xs font-semibold leading-relaxed text-zinc-500">
+                    Subi el comprobante de transferencia para que el complejo confirme tu turno.
+                  </p>
+                </div>
+                <input
+                  id="public-receipt-upload"
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,application/pdf"
+                  className="hidden"
+                  onChange={handleFileChange}
+                />
+                {bookingData.receipt ? (
+                  <div className="flex flex-col gap-3 rounded-2xl border border-emerald-100 bg-emerald-50 p-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-emerald-600 shadow-sm">
+                        <CheckCircle2 className="h-5 w-5" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-black text-emerald-900">
+                          {bookingData.receiptFileName || 'Comprobante cargado'}
+                        </p>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-emerald-700">
+                          Listo para enviar
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <label
+                        htmlFor="public-receipt-upload"
+                        className="flex h-10 cursor-pointer items-center justify-center rounded-xl border border-emerald-200 bg-white px-3 text-[10px] font-black uppercase tracking-widest text-emerald-700 transition-colors hover:bg-emerald-50"
+                      >
+                        Cambiar
+                      </label>
+                      <button
+                        type="button"
+                        className="h-10 rounded-xl px-3 text-[10px] font-black uppercase tracking-widest text-zinc-500 transition-colors hover:bg-white hover:text-red-500"
+                        onClick={() => setBookingData(prev => ({ ...prev, receipt: null, receiptFileName: '' }))}
+                      >
+                        Quitar
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <label
+                    htmlFor="public-receipt-upload"
+                    className={cn(
+                      "flex cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed p-4 text-center transition-colors",
+                      isPublicReceiptRequired
+                        ? "border-sky-200 bg-sky-50/60 hover:bg-sky-50"
+                        : "border-zinc-200 bg-zinc-50 hover:border-sky-200 hover:bg-sky-50/60"
+                    )}
+                  >
+                    <Upload className="h-5 w-5 text-sky-600" />
+                    <span className="text-xs font-black text-zinc-900">
+                      Subir comprobante
+                    </span>
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">
+                      JPG, PNG, WEBP o PDF - max. 2MB
+                    </span>
+                  </label>
+                )}
               </div>
             </section>
 
@@ -1719,14 +1711,6 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
         title={isPublicPortalUser ? 'Reservar cancha' : 'Nueva reserva'}
         className="max-h-[90vh]"
       >
-        {bookingTimer !== null && (
-          <div className="flex items-center justify-center gap-2 bg-red-50 text-red-600 py-3 rounded-2xl border border-red-100 mb-6 animate-pulse">
-            <Timer className="w-5 h-5" />
-            <span className="font-black tracking-widest uppercase text-xs">
-              Tiempo restante: {Math.floor(bookingTimer / 60)}:{(bookingTimer % 60).toString().padStart(2, '0')}
-            </span>
-          </div>
-        )}
         <form onSubmit={handleBookingSubmit} className="space-y-6">
           <div className="p-4 bg-zinc-50 rounded-2xl border border-zinc-100 flex items-center gap-4">
             <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center shadow-sm border border-zinc-100">
@@ -1765,154 +1749,15 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
               />
             </div>
           </div>
-          
-          {isPublicPortalUser ? (
-            <div className="space-y-3">
-              <div className="bg-sky-50/50 p-4 rounded-2xl border border-sky-100 space-y-3">
-                <div>
-                  <p className="text-xs font-black text-sky-800 uppercase tracking-wider">Seña / pago</p>
-                  <p className="mt-1 text-[11px] font-medium leading-relaxed text-sky-700">
-                    Estos datos son informativos. El complejo confirma el turno cuando recibe el comprobante.
-                  </p>
-                </div>
-                {paymentPublicEnabled ? (
-                  <div className="space-y-1 text-[11px] text-sky-700">
-                    {bankDetails.bank && <p><span className="font-semibold">Banco / billetera:</span> {bankDetails.bank}</p>}
-                    {bankDetails.holder && <p><span className="font-semibold">Titular:</span> {bankDetails.holder}</p>}
-                    {bankDetails.cbu && <p><span className="font-semibold">CBU / CVU:</span> {bankDetails.cbu}</p>}
-                    {bankDetails.alias && <p><span className="font-semibold">Alias:</span> {bankDetails.alias}</p>}
-                    {bankDetails.taxId && <p><span className="font-semibold">CUIT / DNI:</span> {bankDetails.taxId}</p>}
-                    {publicMinDeposit > 0 && <p><span className="font-semibold">Monto mínimo:</span> ${publicMinDeposit}</p>}
-                    {bankDetails.instructions && <p><span className="font-semibold">Instrucciones:</span> {bankDetails.instructions}</p>}
-                  </div>
-                ) : (
-                  <p className="text-[11px] font-medium leading-relaxed text-sky-700">
-                    Este complejo todavía no cargó datos de transferencia. Coordiná el pago con el complejo antes de transferir.
-                  </p>
-                )}
-              </div>
-
-              <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-[11px] font-bold leading-relaxed text-amber-800">
-                Transferí la seña y enviá el comprobante al complejo para confirmar el turno.
-              </div>
-            </div>
-          ) : (
-            <>
-          <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-zinc-700 ml-1">Método de pago de seña</label>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => setBookingData({ ...bookingData, paymentMethod: 'transferencia' })}
-                className={cn(
-                  "flex-1 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border",
-                  bookingData.paymentMethod === 'transferencia' 
-                    ? "bg-sky-50 text-sky-600 border-sky-200" 
-                    : "bg-white text-zinc-500 border-zinc-200 hover:bg-zinc-50"
-                )}
-              >
-                Transferencia
-              </button>
-              <button
-                type="button"
-                onClick={() => setBookingData({ ...bookingData, paymentMethod: 'mercadopago' })}
-                className={cn(
-                  "flex-1 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border",
-                  bookingData.paymentMethod === 'mercadopago' 
-                    ? "bg-emerald-50 text-emerald-600 border-emerald-200" 
-                    : "bg-white text-zinc-500 border-zinc-200 hover:bg-zinc-50"
-                )}
-              >
-                Efectivo
-              </button>
-            </div>
-          </div>
-
-          {bookingData.paymentMethod === 'transferencia' ? (
-            <div className="space-y-3">
-              <div className="bg-sky-50/50 p-3 rounded-2xl border border-sky-100 space-y-2">
-                <p className="text-xs font-bold text-sky-800">Datos Bancarios</p>
-                {paymentPublicEnabled ? (
-                  <div className="space-y-1 text-[11px] text-sky-700">
-                    {bankDetails.bank && <p><span className="font-semibold">Banco / billetera:</span> {bankDetails.bank}</p>}
-                    {bankDetails.holder && <p><span className="font-semibold">Titular:</span> {bankDetails.holder}</p>}
-                    {bankDetails.cbu && <p><span className="font-semibold">CBU / CVU:</span> {bankDetails.cbu}</p>}
-                    {bankDetails.alias && <p><span className="font-semibold">Alias:</span> {bankDetails.alias}</p>}
-                    {bankDetails.taxId && <p><span className="font-semibold">CUIT / DNI:</span> {bankDetails.taxId}</p>}
-                    {bankDetails.instructions && <p><span className="font-semibold">Instrucciones:</span> {bankDetails.instructions}</p>}
-                  </div>
-                ) : (
-                  <p className="text-[11px] font-medium leading-relaxed text-sky-700">
-                    Este complejo todavía no cargó datos de transferencia. Coordiná el pago con el complejo antes de transferir.
-                  </p>
-                )}
-              </div>
-              
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-zinc-700 ml-1">Comprobante de Seña (Mín. $500)</label>
-                <div className="relative group">
-                  <input 
-                    type="file" 
-                    accept="image/*,application/pdf"
-                    onChange={handleFileChange}
-                    className="hidden"
-                    id="receipt-upload"
-                  />
-                  <label 
-                    htmlFor="receipt-upload"
-                    className={cn(
-                      "w-full px-4 py-4 border-2 border-dashed rounded-2xl flex flex-col items-center justify-center gap-1 cursor-pointer transition-all",
-                      bookingData.receipt ? "border-emerald-500 bg-emerald-50" : "border-zinc-200 hover:border-primary/40 hover:bg-primary/5"
-                    )}
-                  >
-                    {bookingData.receipt ? (
-                      <>
-                        <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                        <p className="text-[10px] font-bold text-emerald-600">¡Comprobante Cargado!</p>
-                      </>
-                    ) : (
-                      <>
-                        <Download className="w-5 h-5 text-zinc-400 group-hover:text-primary transition-colors" />
-                        <div className="text-center">
-                          <p className="text-[10px] font-bold text-zinc-900">Subir Comprobante</p>
-                          <p className="text-[9px] text-zinc-500">Imagen o PDF (Máx 2MB)</p>
-                        </div>
-                      </>
-                    )}
-                  </label>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="bg-emerald-50/50 p-4 rounded-2xl border border-emerald-100 flex items-center gap-3">
-              <div className="w-10 h-10 bg-emerald-100 rounded-full flex items-center justify-center shrink-0">
-                <Banknote className="w-5 h-5 text-emerald-600" />
-              </div>
-              <p className="text-xs font-medium text-emerald-800">
-                El pago se realiza en la cancha antes del turno
-              </p>
-            </div>
-          )}
-
-          <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-zinc-700 ml-1">Monto de la Seña ($)</label>
-            <div className="relative">
-              <DollarSign className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
-              <input 
-                type="number" 
-                placeholder="0.00"
-                className="w-full rounded-xl border border-zinc-200 bg-white py-2.5 pl-10 pr-4 text-sm font-medium text-zinc-900 placeholder:text-zinc-400 outline-none focus:ring-2 focus:ring-sky-500/20"
-                value={bookingData.depositAmount}
-                onChange={e => setBookingData(prev => ({ ...prev, depositAmount: e.target.value }))}
-              />
-            </div>
-          </div>
-
           <div className="flex items-center justify-between pt-2">
-            <div className={cn("flex items-center gap-2 text-primary", isPublicPortalUser && "invisible")}>
-              <Zap className="w-4 h-4 fill-primary" />
-              <span className="text-xs font-bold">+{isPromoHour(parseInt(bookingData.time)) ? '1.5' : '1'} Puntos</span>
-            </div>
+            {isRankingEnabled ? (
+              <div className="flex items-center gap-2 text-primary">
+                <Zap className="w-4 h-4 fill-primary" />
+                <span className="text-xs font-bold">+{isPromoHour(parseInt(bookingData.time)) ? '1.5' : '1'} Puntos</span>
+              </div>
+            ) : (
+              <div />
+            )}
             <div className="flex gap-3">
               <Button type="button" variant="ghost" disabled={isSubmittingBooking} onClick={() => setIsBookingModalOpen(false)}>
                 Cancelar
@@ -1922,8 +1767,6 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
               </Button>
             </div>
           </div>
-            </>
-          )}
         </form>
       </Modal>
 
@@ -2191,3 +2034,5 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
     </div>
   );
 }
+
+

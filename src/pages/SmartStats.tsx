@@ -93,8 +93,13 @@ const SmartStats: React.FC = () => {
     count
   }));
 
+  const getPitchDisplayName = (pitchId: string) => {
+    const name = data.pitchNames[pitchId]?.trim();
+    return name || 'Cancha eliminada';
+  };
+
   const pitchData = Object.entries(data.incomeByPitch).map(([id, income]) => ({
-    name: `Cancha ${id.replace('p', '')}`,
+    name: getPitchDisplayName(id),
     income: income as number
   }));
 
