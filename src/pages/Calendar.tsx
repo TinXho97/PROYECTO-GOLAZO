@@ -56,6 +56,7 @@ import { ShareAvailabilityModal } from '../components/ShareAvailabilityModal';
 export default function CalendarPage({ user, clientConfig, initialBookingId, onClearInitialBooking }: CalendarProps) {
   const effectiveClientId = getEffectiveClientId(user);
   const isPublicPortalUser = user.role === 'client' && user.id.startsWith('public-player:');
+  const isRankingEnabled = !clientConfig || clientConfig.features?.ranking !== false;
   const [pitches, setPitches] = useState<Pitch[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [selectedDate, setSelectedDate] = useState(new Date());
@@ -554,6 +555,10 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
         paymentMethod: 'transferencia',
         paymentUrl: ''
       }));
+      if (!isRankingEnabled) {
+        toast.success('Reserva confirmada!');
+        return;
+      }
       
       toast.success('¡Reserva confirmada!', {
         description: isPromo 

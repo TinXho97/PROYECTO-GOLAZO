@@ -61,6 +61,7 @@ const PUBLIC_INTRO_VIDEO_SRC = '/videos/golazo-intro.mp4';
 const PUBLIC_INTRO_DURATION_MS = 3500;
 const ADMIN_INTRO_DURATION_MS = 2200;
 const WORLD_CUP_2026_START = new Date('2026-06-11T00:00:00');
+const PUBLIC_CLIENT_QUERY_KEYS = ['complexId', 'clientId', 'complex'];
 const PUBLIC_CAROUSEL_ITEMS = [
   {
     title: 'Elegí complejo',
@@ -103,6 +104,34 @@ const getWorldCupCountdown = () => {
   return { hasStarted: false, days, hours, minutes };
 };
 
+const getExplicitPublicClientIdFromUrl = (clients: Client[] = []) => {
+  if (typeof window === 'undefined') return null;
+
+  const url = new URL(window.location.href);
+  for (const key of PUBLIC_CLIENT_QUERY_KEYS) {
+    const value = url.searchParams.get(key)?.trim();
+    if (!value) continue;
+
+    const matchingClient = clients.find((client) => client.id === value || client.slug === value);
+    return matchingClient?.id || value;
+  }
+
+  const pathSegment = url.pathname.split('/').filter(Boolean)[0];
+  if (!pathSegment) return null;
+
+  const matchingClient = clients.find((client) => client.id === pathSegment || client.slug === pathSegment);
+  return matchingClient?.id || null;
+};
+
+const getPublicClientUrl = (client: Client) => {
+  const url = new URL(window.location.href);
+  url.pathname = '/';
+  url.search = '';
+  url.hash = '';
+  url.searchParams.set('complexId', client.id);
+  return `${url.pathname}${url.search}${url.hash}`;
+};
+
 export default function App() {
   const pathname = window.location.pathname;
   const isSuperAdminRoute = pathname.startsWith('/panel-interno-golazo-');
@@ -126,7 +155,7 @@ export default function App() {
   const [isClientLoading, setIsClientLoading] = useState(true);
   const [publicClients, setPublicClients] = useState<Client[]>([]);
   const [isPublicClientsLoading, setIsPublicClientsLoading] = useState(true);
-  const [selectedPublicClientId, setSelectedPublicClientId] = useState<string | null>(dataService.getPublicClientSelectionId());
+  const [selectedPublicClientId, setSelectedPublicClientId] = useState<string | null>(getExplicitPublicClientIdFromUrl());
   const [showPublicAccessChoice, setShowPublicAccessChoice] = useState(false);
   const [publicAccessMode, setPublicAccessMode] = useState(dataService.getPublicAccessMode());
   const [publicSearchTerm, setPublicSearchTerm] = useState('');
@@ -138,27 +167,29 @@ export default function App() {
   const loginSplashTimerRef = useRef<number | null>(null);
 
   const loadPublicClients = async () => {
-    if (isSuperAdminRoute) return;
+    if (isSuperAdminRoute) return [];
 
     setIsPublicClientsLoading(true);
     try {
       const clients = await dataService.getPublicClients();
       setPublicClients(clients);
+      return clients;
     } catch (error) {
       console.error('Error fetching public clients catalog:', error);
       setPublicClients([]);
       toast.error('No se pudo cargar el listado de complejos.');
+      return [];
     } finally {
       setIsPublicClientsLoading(false);
     }
   };
 
-  const refreshSessionState = async () => {
+  const refreshSessionState = async (loadedPublicClients: Client[] = publicClients) => {
     setIsClientLoading(true);
 
     try {
       if (isPublicRoute) {
-        const publicClientId = dataService.getPublicClientSelectionId();
+        const publicClientId = getExplicitPublicClientIdFromUrl(loadedPublicClients);
         setUser(null);
         setSelectedClientId(null);
         setSelectedPublicClientId(publicClientId);
@@ -175,7 +206,7 @@ export default function App() {
       const currentUser = await dataService.getCurrentUser();
 
       if (!currentUser) {
-        const publicClientId = dataService.getPublicClientSelectionId();
+        const publicClientId = getExplicitPublicClientIdFromUrl(loadedPublicClients);
         setUser(null);
         setSelectedClientId(null);
         setSelectedPublicClientId(publicClientId);
@@ -245,6 +276,7 @@ export default function App() {
       const targetPath = returnTarget?.path || '/';
       if (!targetPath.startsWith('/')) return '/';
       if (targetPath.startsWith('/admin') || targetPath.startsWith('/panel-interno-golazo-') || targetPath.startsWith('/auth/callback')) return '/';
+      if (targetPath === '/' && returnTarget?.clientId) return `/?complexId=${encodeURIComponent(returnTarget.clientId)}`;
       return targetPath;
     })();
 
@@ -303,8 +335,8 @@ export default function App() {
         }
       }
 
-      await loadPublicClients();
-      await refreshSessionState();
+      const clients = await loadPublicClients();
+      await refreshSessionState(clients);
     };
 
     initApp();
@@ -409,6 +441,7 @@ export default function App() {
 
   const handleSelectPublicClient = async (client: Client) => {
     dataService.setPublicClientSelection(client.id);
+    window.history.pushState(null, '', getPublicClientUrl(client));
     setSelectedPublicClientId(client.id);
     setClientConfig(client);
     setUser(null);
@@ -429,6 +462,7 @@ export default function App() {
 
   const handleBackToClientSelector = () => {
     dataService.clearPublicClientSelection();
+    window.history.pushState(null, '', '/');
     setSelectedPublicClientId(null);
     setShowPublicAccessChoice(false);
     setPublicAccessMode(null);

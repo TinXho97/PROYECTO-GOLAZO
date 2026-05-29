@@ -59,6 +59,7 @@ interface DashboardProps {
 export default function Dashboard({ user, onNavigate, onLogout, onNotificationClick, clientConfig }: DashboardProps) {
   const isPublicPortalUser = user.role === 'client';
   const effectiveClientId = getEffectiveClientId(user);
+  const isRankingEnabled = !clientConfig || clientConfig.features?.ranking !== false;
   const [pitches, setPitches] = useState<Pitch[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [sales, setSales] = useState<Sale[]>([]);
@@ -115,7 +116,7 @@ export default function Dashboard({ user, onNavigate, onLogout, onNotificationCl
         const prods = await dataService.getProducts(clientIdForQuery);
 
         const identifier = user.role === 'client' && user.phone ? user.phone : user.id;
-        const points = await dataService.getUserPoints(identifier, clientIdForQuery);
+        const points = isRankingEnabled ? await dataService.getUserPoints(identifier, clientIdForQuery) : 0;
 
         setPitches(p);
         setBookings(b);
@@ -130,7 +131,7 @@ export default function Dashboard({ user, onNavigate, onLogout, onNotificationCl
       }
     };
     fetchData();
-  }, [effectiveClientId, isPublicPortalUser, user.id, user.phone, user.role]);
+  }, [effectiveClientId, isPublicPortalUser, isRankingEnabled, user.id, user.phone, user.role]);
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
@@ -238,11 +239,20 @@ export default function Dashboard({ user, onNavigate, onLogout, onNotificationCl
       const clientIdForQuery = effectiveClientId || undefined;
       const updatedBookings = await dataService.getBookings(clientIdForQuery);
       setBookings(updatedBookings);
-      const identifier = user.role === 'client' && formData.clientPhone ? formData.clientPhone : user.id;
-      const updatedPoints = await dataService.getUserPoints(identifier, clientIdForQuery);
-      setUserPoints(updatedPoints);
+      if (isRankingEnabled) {
+        const identifier = user.role === 'client' && formData.clientPhone ? formData.clientPhone : user.id;
+        const updatedPoints = await dataService.getUserPoints(identifier, clientIdForQuery);
+        setUserPoints(updatedPoints);
+      } else {
+        setUserPoints(0);
+      }
       setIsBookingModalOpen(false);
       resetBookingForm();
+
+      if (!isRankingEnabled) {
+        toast.success('Reserva confirmada!');
+        return;
+      }
       
       toast.success('¡Reserva confirmada!', {
         description: '¡Sigue jugando para sumar más puntos en el ranking!'
@@ -258,9 +268,13 @@ export default function Dashboard({ user, onNavigate, onLogout, onNotificationCl
         const clientIdForQuery = effectiveClientId || undefined;
         const updatedBookings = await dataService.getBookings(clientIdForQuery);
         setBookings(updatedBookings);
-        const identifier = user.role === 'client' && formData.clientPhone ? formData.clientPhone : user.id;
-        const updatedPoints = await dataService.getUserPoints(identifier, clientIdForQuery);
-        setUserPoints(updatedPoints);
+        if (isRankingEnabled) {
+          const identifier = user.role === 'client' && formData.clientPhone ? formData.clientPhone : user.id;
+          const updatedPoints = await dataService.getUserPoints(identifier, clientIdForQuery);
+          setUserPoints(updatedPoints);
+        } else {
+          setUserPoints(0);
+        }
         setIsBookingModalOpen(false);
         resetBookingForm();
       } else {
@@ -568,7 +582,7 @@ export default function Dashboard({ user, onNavigate, onLogout, onNotificationCl
             </button>
           </motion.div>
 
-          {(!clientConfig || clientConfig.features?.ranking !== false) && (
+          {isRankingEnabled && (
             <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
               <button
                 onClick={() => onNavigate && onNavigate('ranking')}
@@ -594,7 +608,7 @@ export default function Dashboard({ user, onNavigate, onLogout, onNotificationCl
         </section>
 
         <section className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-          <div className="rounded-[24px] border border-zinc-100 bg-white p-5 shadow-sm lg:col-span-2">
+          <div className={cn('rounded-[24px] border border-zinc-100 bg-white p-5 shadow-sm', isRankingEnabled ? 'lg:col-span-2' : 'lg:col-span-3')}>
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <p className="text-[10px] font-black uppercase tracking-[0.24em] text-zinc-400">Canchas disponibles</p>
@@ -611,11 +625,13 @@ export default function Dashboard({ user, onNavigate, onLogout, onNotificationCl
             </div>
           </div>
 
-          <div className="rounded-[24px] border border-zinc-100 bg-white p-5 shadow-sm">
+          {isRankingEnabled && (
+            <div className="rounded-[24px] border border-zinc-100 bg-white p-5 shadow-sm">
             <p className="text-[10px] font-black uppercase tracking-[0.24em] text-zinc-400">Tus puntos</p>
             <p className="mt-2 text-3xl font-black tracking-[-0.04em] text-zinc-900">{userPoints}</p>
             <p className="mt-2 text-sm font-bold text-zinc-500">Sumá jugando y seguí tu ranking.</p>
-          </div>
+            </div>
+          )}
         </section>
       </div>
     );
