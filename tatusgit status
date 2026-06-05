@@ -1,0 +1,10 @@
+warning: in the working copy of 'src/App.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/pages/BookingsList.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/pages/Dashboard.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/pages/Ranking.tsx', LF will be replaced by CRLF the next time Git touches it
+ src/App.tsx                | 134 [32m++++++++[m[31m-----[m
+ src/pages/BookingsList.tsx |  60 [32m+++[m[31m---[m
+ src/pages/Calendar.tsx     | 491 [32m+++++++++++++++++++++++++++++++++++++++++[m[31m----[m
+ src/pages/Dashboard.tsx    |  70 [32m+++[m[31m----[m
+ src/pages/Ranking.tsx      |  75 [32m+++[m[31m----[m
+ 5 files changed, 644 insertions(+), 186 deletions(-)

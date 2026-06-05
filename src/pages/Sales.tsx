@@ -25,6 +25,7 @@ import { toast } from 'sonner';
 import { dataService, api } from '../services/dataService';
 import { Product, Sale } from '../types';
 import { cn } from '../lib/utils';
+import { getEffectiveClientId } from '../lib/tenant';
 
 export default function SalesPage() {
   const [products, setProducts] = useState<Product[]>([]);
@@ -37,6 +38,7 @@ export default function SalesPage() {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [confirmDeleteSale, setConfirmDeleteSale] = useState<string | null>(null);
   const [user, setUser] = useState<any>(null);
+  const clientId = getEffectiveClientId(user);
   const isAdmin = user?.role === 'admin';
 
   useEffect(() => {
@@ -46,14 +48,13 @@ export default function SalesPage() {
   useEffect(() => {
     const fetchData = async () => {
       if (!user) return;
-      const clientId = user?.client_id;
       const p = await dataService.getProducts(clientId);
       const s = await dataService.getSales(clientId);
       setProducts(p);
       setSales(s);
     };
     fetchData();
-  }, [user?.client_id]);
+  }, [clientId, user]);
 
   const filteredProducts = products.filter(p => 
     p.name.toLowerCase().includes(searchTerm.toLowerCase())
@@ -64,8 +65,7 @@ export default function SalesPage() {
     if (!selectedProduct) return;
 
     try {
-      const clientId = user?.client_id;
-      await api.addSale(selectedProduct.id, quantity, paymentMethod);
+      await api.addSale(selectedProduct.id, quantity, paymentMethod, clientId || undefined);
       const updatedSales = await dataService.getSales(clientId);
       const updatedProducts = await dataService.getProducts(clientId);
       setSales(updatedSales);
@@ -86,8 +86,7 @@ export default function SalesPage() {
 
   const executeDeleteSale = async () => {
     if (!confirmDeleteSale) return;
-    const clientId = user?.client_id;
-    await api.deleteSale(confirmDeleteSale);
+    await api.deleteSale(confirmDeleteSale, clientId || undefined);
     const updatedSales = await dataService.getSales(clientId);
     const updatedProducts = await dataService.getProducts(clientId);
     setSales(updatedSales);

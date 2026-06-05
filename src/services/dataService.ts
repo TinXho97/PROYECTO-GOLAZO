@@ -100,23 +100,7 @@ const setStorage = <T>(key: string, data: T) => {
   localStorage.setItem(key, JSON.stringify(data));
 };
 
-const SUPERADMIN_CLIENT_CONTEXT_KEY = 'golazo_superadmin_client_context';
 const PUBLIC_CLIENT_SELECTION_KEY = 'golazo_public_client_selection';
-
-const getSuperadminClientContext = () => {
-  if (typeof window === 'undefined') return null;
-  return sessionStorage.getItem(SUPERADMIN_CLIENT_CONTEXT_KEY);
-};
-
-const setSuperadminClientContext = (clientId: string) => {
-  if (typeof window === 'undefined') return;
-  sessionStorage.setItem(SUPERADMIN_CLIENT_CONTEXT_KEY, clientId);
-};
-
-const clearSuperadminClientContext = () => {
-  if (typeof window === 'undefined') return;
-  sessionStorage.removeItem(SUPERADMIN_CLIENT_CONTEXT_KEY);
-};
 
 const getPublicClientSelection = () => {
   if (typeof window === 'undefined') return null;
@@ -192,13 +176,6 @@ export const dataService = {
     if (!isSupabaseConfigured()) return false;
     return await supabaseService.testConnection();
   },
-  getSelectedClientId: () => getSuperadminClientContext(),
-  setSelectedClientContext: (clientId: string) => {
-    setSuperadminClientContext(clientId);
-  },
-  clearSelectedClientContext: () => {
-    clearSuperadminClientContext();
-  },
   getPublicClientSelectionId: () => getPublicClientSelection(),
   setPublicClientSelection: (clientId: string) => {
     setPublicClientSelection(clientId);
@@ -260,7 +237,7 @@ export const dataService = {
     if (isSupabaseConfigured()) {
       const query = supabase
         .from('clients')
-        .select('id, name, complex_name, status, created_at, expires_at, ranking_reset_date, phone, address, enable_ranking, enable_sales, enable_reservations, enable_statistics, features')
+        .select('id, name, complex_name, status, created_at, expires_at, ranking_reset_date, phone, address, enable_ranking, enable_sales, enable_reservations, enable_statistics, features, settings')
         .eq('id', clientId);
       const { data, error } = await query.limit(1).single();
       if (error) {
@@ -288,6 +265,27 @@ export const dataService = {
       return data as Client;
     }
     return null;
+  },
+  updateClientSettings: async (clientId: string, settings: Record<string, unknown>) => {
+    const targetClientId = requireClientId(clientId, 'Actualizar configuracion del cliente');
+
+    if (isSupabaseConfigured()) {
+      return await supabaseService.updateClientSettings(targetClientId, settings);
+    }
+
+    const clients = getStorage<Client[]>('golazo_public_clients', []);
+    const updatedClients = clients.map((client) => {
+      if (client.id !== targetClientId) return client;
+      return {
+        ...client,
+        settings: {
+          ...(client.settings || {}),
+          ...settings,
+        },
+      };
+    });
+    setStorage('golazo_public_clients', updatedClients);
+    return updatedClients.find((client) => client.id === targetClientId) || null;
   },
   // Pitches
   getPitches: async (clientId?: string) => {
@@ -471,15 +469,13 @@ export const dataService = {
       return null;
     }
 
-    const selectedClientId = profile.role === 'superadmin' ? getSuperadminClientContext() : null;
-
     return {
       id: session.user.id,
       email: session.user.email || '',
       phone: profile?.phone || session.user.phone || '',
       name: profile?.full_name || session.user.email || 'Usuario',
       role: profile.role,
-      client_id: selectedClientId || profile.client_id || undefined
+      client_id: profile.client_id || undefined
     } as User;
   },
   login: async (identifier: string, password?: string, allowedRoles?: UserRole[]) => {
@@ -508,14 +504,12 @@ export const dataService = {
 
     if (allowedRoles && !allowedRoles.includes(user.role)) {
       await supabase.auth.signOut();
-      clearSuperadminClientContext();
       throw new Error('Este acceso no corresponde a este usuario');
     }
 
     return user;
   },
   logout: async () => {
-    clearSuperadminClientContext();
     clearPublicClientSelection();
     if (!isSupabaseConfigured()) return;
     await supabase.auth.signOut();

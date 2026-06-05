@@ -9,6 +9,7 @@ import { supabaseService } from '../services/supabaseService';
 import { dataService } from '../services/dataService';
 import { Notification, User } from '../types';
 import { cn } from '../lib/utils';
+import { getEffectiveClientId } from '../lib/tenant';
 
 interface NotificationsPanelProps {
   onNotificationClick?: (bookingId: string) => void;
@@ -70,7 +71,7 @@ export function NotificationsPanel({ onNotificationClick }: NotificationsPanelPr
     };
   }, []);
 
-  const clientId = user?.client_id;
+  const clientId = getEffectiveClientId(user);
   const readNotificationsKey = clientId ? `golazo_read_notifications:${clientId}` : null;
 
   useEffect(() => {
