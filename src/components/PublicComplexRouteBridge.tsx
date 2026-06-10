@@ -1,18 +1,18 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Check, Copy, ExternalLink, Link2, Share2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { supabase } from '../lib/supabase';
 import { dataService } from '../services/dataService';
 import type { Client, User } from '../types';
 
 const PUBLIC_COMPLEX_ROUTE = /^\/complejo\/([^/]+)\/?$/i;
 const PUBLIC_ENTRY_DATASET_KEY = 'golazoPublicEntry';
-const ROUTE_BRIDGE_MARKER = '__golazo_public_route_bridge_installed__';
 
 type PublicEntryMode = 'catalog' | 'shared';
 
 declare global {
   interface Window {
-    [ROUTE_BRIDGE_MARKER]?: boolean;
+    __golazo_public_route_bridge_installed__?: boolean;
   }
 }
 
@@ -55,8 +55,8 @@ const updateSharedPortalButtonVisibility = () => {
  * the source of truth for shared complex links.
  */
 export const preparePublicComplexRoutes = async () => {
-  if (typeof window === 'undefined' || window[ROUTE_BRIDGE_MARKER]) return;
-  window[ROUTE_BRIDGE_MARKER] = true;
+  if (typeof window === 'undefined' || window.__golazo_public_route_bridge_installed__) return;
+  window.__golazo_public_route_bridge_installed__ = true;
 
   const originalSetPublicClientSelection = dataService.setPublicClientSelection.bind(dataService);
   const originalClearPublicClientSelection = dataService.clearPublicClientSelection.bind(dataService);
@@ -75,9 +75,19 @@ export const preparePublicComplexRoutes = async () => {
     return cachedClients;
   };
 
+  const pushClientRoute = (clientId: string, clients: Client[]) => {
+    const selectedClient = clients.find((client) => client.id === clientId);
+    const slug = getClientSlug(selectedClient);
+
+    if (slug && window.location.pathname !== `/complejo/${slug}`) {
+      window.history.pushState({ golazoFromCatalog: true }, '', `/complejo/${slug}`);
+    }
+  };
+
   if (pathname === '/') {
     originalClearPublicClientSelection();
     setPublicEntryMode('catalog');
+    await loadClients();
   } else if (sharedSlug) {
     const clients = await loadClients();
     const selectedClient = clients.find((client) => getClientSlug(client) === sharedSlug);
@@ -95,11 +105,11 @@ export const preparePublicComplexRoutes = async () => {
 
   dataService.setPublicClientSelection = (clientId: string) => {
     originalSetPublicClientSelection(clientId);
-    const selectedClient = cachedClients.find((client) => client.id === clientId);
-    const slug = getClientSlug(selectedClient);
 
-    if (slug && window.location.pathname !== `/complejo/${slug}`) {
-      window.history.pushState({ golazoFromCatalog: true }, '', `/complejo/${slug}`);
+    if (cachedClients.length > 0) {
+      pushClientRoute(clientId, cachedClients);
+    } else {
+      void loadClients().then((clients) => pushClientRoute(clientId, clients));
     }
 
     setPublicEntryMode('catalog');
@@ -107,6 +117,10 @@ export const preparePublicComplexRoutes = async () => {
   };
 
   dataService.clearPublicClientSelection = () => {
+    originalClearPublicSelectionAndNavigate();
+  };
+
+  const originalClearPublicSelectionAndNavigate = () => {
     originalClearPublicClientSelection();
 
     if (readComplexSlugFromPath()) {
@@ -173,8 +187,13 @@ export const PublicComplexRouteBridge = () => {
     };
 
     void loadAdminShareLink();
+    const { data: authListener } = supabase.auth.onAuthStateChange(() => {
+      void loadAdminShareLink();
+    });
+
     return () => {
       isMounted = false;
+      authListener.subscription.unsubscribe();
     };
   }, []);
 
