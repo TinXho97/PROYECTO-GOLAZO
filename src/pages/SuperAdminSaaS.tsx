@@ -8,6 +8,7 @@ import { toast, Toaster } from 'sonner';
 import { dataService } from '../services/dataService';
 import { Modal } from '../components/Modal';
 import { ClientDetailView } from '../components/ClientDetailView';
+import { AvatarFallback } from '../components/ui/AvatarFallback';
 
 type ClientFeatureKey = 'reservas' | 'ventas' | 'ranking' | 'estadisticas';
 

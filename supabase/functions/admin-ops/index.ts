@@ -1704,4 +1704,3 @@ serve(async (req) => {
     return fail(500, 'internal_error', 'Error inesperado en admin-ops.', formatErrorDetails(error))
   }
 })
-})

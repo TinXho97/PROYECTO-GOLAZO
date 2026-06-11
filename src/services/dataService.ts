@@ -451,8 +451,6 @@ export const dataService = {
     } = await supabase.auth.getSession();
     if (sessionError || !session?.user) return null;
 
-    console.log('JWT Actual Decodificado:', session.access_token);
-
     const { data: profile, error: profileError } = await supabase
       .from('profiles')
       .select('role, client_id, full_name, phone')

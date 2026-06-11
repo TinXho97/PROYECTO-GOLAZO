@@ -31,6 +31,8 @@ import { ArgentinaLogo } from './components/ArgentinaLogo';
 import { Button } from './components/Button';
 import { Modal } from './components/Modal';
 import { ConfirmModal } from './components/ConfirmModal';
+import { ArgentinaConfettiIntro } from './components/public/ArgentinaConfettiIntro';
+import { WorldCupCountdownCard } from './components/world-cup/WorldCupCountdownCard';
 import { cn } from './lib/utils';
 import { getEffectiveClientId } from './lib/tenant';
 import { dataService } from './services/dataService';
@@ -59,7 +61,6 @@ const PUBLIC_SELECTION_BACKGROUND = 'https://iili.io/q6oJgJ2.jpg';
 const PUBLIC_INTRO_SESSION_KEY = 'golazo_public_intro_seen';
 const PUBLIC_INTRO_VIDEO_SRC = '/videos/golazo-intro.mp4';
 const PUBLIC_COMPLEX_ROUTE_PATTERN = /^\/complejo\/([^/]+)\/?$/i;
-const WORLD_CUP_2026_START = new Date('2026-06-11T00:00:00');
 const PUBLIC_CAROUSEL_ITEMS = [
   {
     title: 'Elegí complejo',
@@ -114,21 +115,6 @@ const buildPublicComplexPath = (client: Client) => {
   return slug ? `/complejo/${encodeURIComponent(slug)}` : null;
 };
 
-const getWorldCupCountdown = () => {
-  const diff = WORLD_CUP_2026_START.getTime() - Date.now();
-
-  if (diff <= 0) {
-    return { hasStarted: true, days: 0, hours: 0, minutes: 0 };
-  }
-
-  const totalMinutes = Math.floor(diff / (1000 * 60));
-  const days = Math.floor(totalMinutes / (60 * 24));
-  const hours = Math.floor((totalMinutes % (60 * 24)) / 60);
-  const minutes = totalMinutes % 60;
-
-  return { hasStarted: false, days, hours, minutes };
-};
-
 export default function App() {
   const [pathname, setPathname] = useState(() => window.location.pathname);
   const isSuperAdminRoute = pathname.startsWith('/panel-interno-golazo-');
@@ -168,7 +154,6 @@ export default function App() {
       return false;
     }
   });
-  const [publicCountdown, setPublicCountdown] = useState(getWorldCupCountdown);
   const [publicCarouselIndex, setPublicCarouselIndex] = useState(0);
 
   const loadPublicClients = async () => {
@@ -585,17 +570,6 @@ export default function App() {
   useEffect(() => {
     if (!isPublicRoute || selectedPublicClientId || user) return;
 
-    setPublicCountdown(getWorldCupCountdown());
-    const interval = window.setInterval(() => {
-      setPublicCountdown(getWorldCupCountdown());
-    }, 60000);
-
-    return () => window.clearInterval(interval);
-  }, [isPublicRoute, selectedPublicClientId, user]);
-
-  useEffect(() => {
-    if (!isPublicRoute || selectedPublicClientId || user) return;
-
     const interval = window.setInterval(() => {
       setPublicCarouselIndex((current) => (current + 1) % PUBLIC_CAROUSEL_ITEMS.length);
     }, 3000);
@@ -773,7 +747,8 @@ export default function App() {
               backgroundRepeat: 'no-repeat',
             }}
           />
-          <div className="fixed inset-0 bg-[linear-gradient(180deg,rgba(2,6,23,0.58)_0%,rgba(2,6,23,0.74)_34%,rgba(2,6,23,0.9)_100%)]" />
+          <div className="fixed inset-0 bg-[radial-gradient(circle_at_20%_0%,rgba(56,189,248,0.18),transparent_28%),radial-gradient(circle_at_86%_10%,rgba(251,191,36,0.10),transparent_24%),linear-gradient(180deg,rgba(2,6,23,0.58)_0%,rgba(2,6,23,0.74)_34%,rgba(2,6,23,0.9)_100%)]" />
+          {isPublicCatalogRoute && <ArgentinaConfettiIntro />}
 
           <AnimatePresence>
             {showPublicIntro && (
@@ -862,10 +837,10 @@ export default function App() {
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.28, ease: 'easeOut' }}
-            className="relative z-10 mx-auto flex min-h-full w-full max-w-[1180px] flex-col px-4 py-3 sm:px-6 md:px-8 md:py-4"
+            className="relative z-10 mx-auto flex min-h-full w-full max-w-[1100px] flex-col px-4 py-2.5 sm:px-6 md:px-7 md:py-3"
           >
-            <div className="mb-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_330px] lg:items-end">
-              <div className="space-y-3">
+            <div className="mb-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(300px,340px)] lg:items-start">
+              <div className="space-y-2.5">
               <div className="flex items-center justify-between gap-3">
                 <div className="inline-flex items-center gap-2 rounded-2xl border border-white/15 bg-white/10 px-3 py-2 backdrop-blur-xl">
                   <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-white text-slate-950 shadow-lg">
@@ -888,42 +863,34 @@ export default function App() {
               </div>
 
               <div className="max-w-3xl space-y-2">
-                <h1 className="text-3xl font-black leading-[0.98] tracking-[-0.04em] text-white sm:text-4xl lg:text-5xl">
+                <h1 className="text-3xl font-black leading-[0.98] tracking-[-0.04em] text-white sm:text-[2.35rem] lg:text-[2.75rem]">
                   Reservá tu cancha en minutos
                 </h1>
                 <p className="max-w-xl text-sm leading-6 text-zinc-200 md:text-base">
                   Elegí complejo, horario y jugá.
                 </p>
               </div>
+
+              <div className="grid max-w-3xl gap-2.5 sm:grid-cols-[minmax(0,1fr)_142px] sm:items-center">
+                <div className="relative">
+                  <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-300/80" />
+                  <input
+                    type="text"
+                    value={publicSearchTerm}
+                    onChange={(e) => setPublicSearchTerm(e.target.value)}
+                    placeholder="Buscar complejo"
+                    className="h-10 w-full rounded-2xl border border-sky-200/20 bg-black/25 pl-11 pr-4 text-sm text-white placeholder:text-zinc-300/60 backdrop-blur-xl outline-none transition-all focus:border-sky-200/70 focus:bg-black/35"
+                  />
+                </div>
+                <div className="rounded-2xl border border-sky-200/20 bg-white/10 px-3 py-2 backdrop-blur-xl">
+                  <p className="text-[8px] font-black uppercase tracking-[0.22em] text-zinc-300">Complejos activos</p>
+                  <p className="mt-0.5 text-xl font-black tracking-tight text-white">{filteredPublicClients.length}</p>
+                </div>
+              </div>
               </div>
 
-              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
-                <div className="rounded-2xl border border-sky-300/25 bg-slate-950/35 p-3 shadow-[0_16px_45px_rgba(2,6,23,0.22)] backdrop-blur-xl">
-                  <div className="mb-2 flex items-center justify-between gap-3">
-                    <p className="text-[9px] font-black uppercase tracking-[0.18em] text-sky-100">Rumbo al Mundial 2026</p>
-                    <div className="flex items-center gap-1 text-amber-300">
-                      <span className="text-[9px] leading-none">★</span>
-                      <span className="text-[9px] leading-none">★</span>
-                      <span className="text-[9px] leading-none">★</span>
-                    </div>
-                  </div>
-                  {publicCountdown.hasStarted ? (
-                    <p className="text-sm font-black tracking-[-0.02em] text-white">Viví cada partido en tu complejo</p>
-                  ) : (
-                    <div className="grid grid-cols-3 gap-2">
-                      {[
-                        { label: 'Días', value: publicCountdown.days },
-                        { label: 'Horas', value: publicCountdown.hours },
-                        { label: 'Min', value: publicCountdown.minutes },
-                      ].map((item) => (
-                        <div key={item.label} className="rounded-xl border border-white/10 bg-white/10 px-2 py-2 text-center">
-                          <p className="text-lg font-black leading-none tracking-[-0.04em] text-white">{item.value}</p>
-                          <p className="mt-1 text-[7px] font-black uppercase tracking-[0.18em] text-zinc-300">{item.label}</p>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
+              <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-1">
+                <WorldCupCountdownCard />
 
                 <div className="relative min-h-[96px] overflow-hidden rounded-2xl border border-amber-200/25 bg-black/25 p-3 shadow-[0_16px_45px_rgba(2,6,23,0.18)] backdrop-blur-xl">
                   <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-sky-300 via-white to-amber-300" />
@@ -949,27 +916,15 @@ export default function App() {
               </div>
             </div>
 
-            <div className="mb-3 grid max-w-3xl gap-3 sm:grid-cols-[minmax(0,1fr)_150px] sm:items-center">
-              <div className="relative">
-                <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-300/80" />
-                <input
-                  type="text"
-                  value={publicSearchTerm}
-                  onChange={(e) => setPublicSearchTerm(e.target.value)}
-                  placeholder="Buscar complejo"
-                  className="h-11 w-full rounded-2xl border border-white/15 bg-black/25 pl-11 pr-4 text-sm text-white placeholder:text-zinc-300/60 backdrop-blur-xl outline-none transition-all focus:border-emerald-300/60 focus:bg-black/35"
-                />
-              </div>
-              <div className="rounded-2xl border border-white/12 bg-white/10 px-3 py-2.5 backdrop-blur-xl">
-                <p className="text-[8px] font-black uppercase tracking-[0.22em] text-zinc-300">Complejos activos</p>
-                <p className="mt-0.5 text-xl font-black tracking-tight text-white">{filteredPublicClients.length}</p>
-              </div>
-            </div>
+            <section className="space-y-2">
+              <h2 className="text-xs font-black uppercase tracking-[0.2em] text-sky-100">
+                Complejos disponibles
+              </h2>
 
             {isPublicClientsLoading ? (
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+              <div className="grid grid-cols-[repeat(auto-fit,minmax(260px,300px))] justify-center gap-3">
                 {Array.from({ length: 6 }).map((_, index) => (
-                  <div key={index} className="h-[180px] rounded-[24px] border border-white/10 bg-white/10 animate-pulse backdrop-blur-xl" />
+                  <div key={index} className="h-[168px] rounded-[24px] border border-sky-200/15 bg-white/10 animate-pulse backdrop-blur-xl" />
                 ))}
               </div>
             ) : filteredPublicClients.length === 0 ? (
@@ -977,16 +932,17 @@ export default function App() {
                 No hay complejos activos disponibles para mostrar.
               </div>
             ) : (
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+              <div className="grid grid-cols-[repeat(auto-fit,minmax(260px,300px))] justify-center gap-3">
                 {filteredPublicClients.map((client) => (
                   <button
                     key={client.id}
                     type="button"
                     onClick={() => handleSelectPublicClient(client)}
-                    className="group relative overflow-hidden rounded-[24px] border border-white/12 bg-white/10 p-3 text-left shadow-[0_14px_42px_rgba(0,0,0,0.24)] backdrop-blur-2xl transition-all duration-300 hover:-translate-y-0.5 hover:border-emerald-300/45 hover:bg-white/14 sm:p-4"
+                    className="group relative overflow-hidden rounded-[24px] border border-sky-200/20 border-l-sky-300/55 border-r-white/20 bg-slate-950/35 p-3 text-left shadow-[0_12px_34px_rgba(2,6,23,0.25)] backdrop-blur-2xl transition-all duration-300 hover:-translate-y-0.5 hover:border-sky-200/55 hover:bg-sky-950/35 sm:p-3.5"
                   >
+                    <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-sky-300/70 via-white/70 to-amber-200/70" />
                     <div className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
-                      <div className="absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-emerald-300/14 to-transparent" />
+                      <div className="absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-sky-300/14 to-transparent" />
                       <div className="absolute -right-10 bottom-0 h-32 w-32 rounded-full bg-sky-400/12 blur-3xl" />
                     </div>
 
@@ -1010,7 +966,7 @@ export default function App() {
                           </div>
                         )}
                       </div>
-                      <div className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-black/20 px-3 py-1.5 text-[9px] font-black uppercase tracking-[0.18em] text-emerald-200 backdrop-blur-md">
+                      <div className="inline-flex items-center gap-1.5 rounded-full border border-sky-200/25 bg-sky-400/10 px-3 py-1.5 text-[9px] font-black uppercase tracking-[0.18em] text-sky-100 backdrop-blur-md">
                         Reservar
                         <ChevronRight className="w-4 h-4 transition-transform duration-300 group-hover:translate-x-1.5" />
                       </div>
@@ -1027,7 +983,7 @@ export default function App() {
                       </div>
                       <div className="mt-auto space-y-2.5">
                         <div className="flex items-start gap-2.5 rounded-2xl border border-white/10 bg-black/20 px-3 py-2.5 backdrop-blur-md">
-                          <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-emerald-300" />
+                          <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-sky-200" />
                           <div>
                             <p className="text-[8px] font-black uppercase tracking-[0.18em] text-zinc-400">Dirección</p>
                             <p className="mt-0.5 line-clamp-1 text-xs leading-5 text-zinc-100">
@@ -1040,7 +996,7 @@ export default function App() {
                           <span className="text-[9px] font-black uppercase tracking-[0.2em] text-zinc-300">
                             Reservas online
                           </span>
-                          <span className="inline-flex h-8 items-center gap-2 rounded-full bg-white px-3 text-[10px] font-black uppercase tracking-[0.14em] text-slate-900 shadow-lg transition-transform duration-300 group-hover:translate-x-1">
+                          <span className="inline-flex h-8 items-center gap-2 rounded-full bg-sky-50 px-3 text-[10px] font-black uppercase tracking-[0.14em] text-slate-900 shadow-lg shadow-sky-950/20 transition-transform duration-300 group-hover:translate-x-1">
                             Reservar
                             <ChevronRight className="h-4 w-4" />
                           </span>
@@ -1051,6 +1007,7 @@ export default function App() {
                 ))}
               </div>
             )}
+            </section>
           </motion.div>
         </div>
       );
@@ -1088,15 +1045,7 @@ export default function App() {
           animate={{ opacity: 1, scale: 1, y: 0 }}
           className="w-full max-w-sm bg-white/20 backdrop-blur-xl rounded-[40px] p-6 sm:p-8 lg:p-9 shadow-2xl border border-white/20 relative z-10"
         >
-          <div className="flex items-center justify-between mb-5">
-            <button
-              type="button"
-              onClick={() => { window.location.href = '/'; }}
-              className="inline-flex items-center gap-2 text-zinc-700 hover:text-zinc-900 transition-colors text-[10px] font-black uppercase tracking-[0.22em]"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              Volver
-            </button>
+          <div className="flex items-center justify-end mb-5">
             <span className="text-[10px] font-black text-zinc-500 uppercase tracking-[0.22em]">
               Portal Admin
             </span>
