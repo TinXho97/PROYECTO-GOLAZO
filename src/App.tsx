@@ -58,8 +58,6 @@ const PageFallback = () => (
 );
 
 const PUBLIC_SELECTION_BACKGROUND = 'https://iili.io/q6oJgJ2.jpg';
-const PUBLIC_INTRO_SESSION_KEY = 'golazo_public_intro_seen';
-const PUBLIC_INTRO_VIDEO_SRC = '/videos/golazo-intro.mp4';
 const PUBLIC_COMPLEX_ROUTE_PATTERN = /^\/complejo\/([^/]+)\/?$/i;
 const PUBLIC_CAROUSEL_ITEMS = [
   {
@@ -147,13 +145,6 @@ export default function App() {
   const [publicSearchTerm, setPublicSearchTerm] = useState('');
   const [publicGuestName, setPublicGuestName] = useState(localStorage.getItem('golazo_guest_name') || 'Jugador');
   const [publicGuestPhone, setPublicGuestPhone] = useState(localStorage.getItem('golazo_guest_phone') || '');
-  const [showPublicIntro, setShowPublicIntro] = useState(() => {
-    try {
-      return sessionStorage.getItem(PUBLIC_INTRO_SESSION_KEY) !== 'true';
-    } catch {
-      return false;
-    }
-  });
   const [publicCarouselIndex, setPublicCarouselIndex] = useState(0);
 
   const loadPublicClients = async () => {
@@ -537,35 +528,6 @@ export default function App() {
   });
   const activeCarouselItem = PUBLIC_CAROUSEL_ITEMS[publicCarouselIndex] || PUBLIC_CAROUSEL_ITEMS[0];
   const ActiveCarouselIcon = activeCarouselItem.icon;
-  const dismissPublicIntro = () => {
-    try {
-      sessionStorage.setItem(PUBLIC_INTRO_SESSION_KEY, 'true');
-    } catch {
-      // If storage is unavailable, keep the app usable and only hide the intro in memory.
-    }
-    setShowPublicIntro(false);
-  };
-
-  useEffect(() => {
-    if (!isPublicRoute || selectedPublicClientId || user || isAdminRoute || isSuperAdminRoute) {
-      setShowPublicIntro(false);
-      return;
-    }
-
-    try {
-      if (sessionStorage.getItem(PUBLIC_INTRO_SESSION_KEY) === 'true') {
-        setShowPublicIntro(false);
-        return;
-      }
-    } catch {
-      setShowPublicIntro(false);
-      return;
-    }
-
-    setShowPublicIntro(true);
-    const timer = window.setTimeout(dismissPublicIntro, 3500);
-    return () => window.clearTimeout(timer);
-  }, [isPublicRoute, selectedPublicClientId, user, isAdminRoute, isSuperAdminRoute]);
 
   useEffect(() => {
     if (!isPublicRoute || selectedPublicClientId || user) return;
@@ -748,90 +710,9 @@ export default function App() {
             }}
           />
           <div className="fixed inset-0 bg-[radial-gradient(circle_at_20%_0%,rgba(56,189,248,0.18),transparent_28%),radial-gradient(circle_at_86%_10%,rgba(251,191,36,0.10),transparent_24%),linear-gradient(180deg,rgba(2,6,23,0.58)_0%,rgba(2,6,23,0.74)_34%,rgba(2,6,23,0.9)_100%)]" />
-          {isPublicCatalogRoute && <ArgentinaConfettiIntro />}
-
-          <AnimatePresence>
-            {showPublicIntro && (
-              <motion.div
-                key="public-intro"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.22, ease: 'easeOut' }}
-                className="fixed inset-0 z-[80] flex items-center justify-center overflow-hidden bg-slate-950 px-5 text-white"
-              >
-                <video
-                  className="absolute inset-0 h-full w-full object-cover"
-                  src={PUBLIC_INTRO_VIDEO_SRC}
-                  autoPlay
-                  muted
-                  playsInline
-                  preload="auto"
-                  onEnded={dismissPublicIntro}
-                  onError={dismissPublicIntro}
-                />
-                <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(2,6,23,0.38)_0%,rgba(2,6,23,0.56)_44%,rgba(2,6,23,0.84)_100%)]" />
-                <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_34%,rgba(56,189,248,0.2),transparent_34%),radial-gradient(circle_at_50%_70%,rgba(245,158,11,0.16),transparent_28%)]" />
-                <button
-                  type="button"
-                  onClick={dismissPublicIntro}
-                  className="absolute right-4 top-4 z-10 rounded-full border border-white/15 bg-white/10 px-4 py-2 text-[10px] font-black uppercase tracking-[0.2em] text-white/85 backdrop-blur-xl transition-colors hover:bg-white/18"
-                >
-                  Saltar
-                </button>
-                <motion.div
-                  initial={{ opacity: 0, y: 18, scale: 0.94 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: -10, scale: 0.98 }}
-                  transition={{ duration: 0.36, ease: 'easeOut' }}
-                  className="relative z-10 flex w-full max-w-md flex-col items-center rounded-[32px] border border-white/15 bg-slate-950/34 px-6 py-8 text-center shadow-[0_28px_90px_rgba(2,6,23,0.44)] backdrop-blur-xl sm:px-8"
-                >
-                  <div className="mb-3 flex items-center gap-1.5 text-amber-300 drop-shadow-[0_0_14px_rgba(251,191,36,0.55)]">
-                    <span className="text-lg leading-none">★</span>
-                    <span className="text-lg leading-none">★</span>
-                    <span className="text-lg leading-none">★</span>
-                  </div>
-                  <motion.div
-                    animate={{ y: [0, -4, 0], scale: [1, 1.03, 1] }}
-                    transition={{ duration: 1.3, repeat: Infinity, ease: 'easeInOut' }}
-                    className="mb-5 flex h-20 w-20 items-center justify-center rounded-[28px] border border-white/20 bg-white/14 shadow-[0_22px_70px_rgba(14,165,233,0.25)] backdrop-blur-xl"
-                  >
-                    <Trophy className="h-11 w-11 text-amber-300" />
-                  </motion.div>
-                  <motion.p
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.08, duration: 0.28 }}
-                    className="text-5xl font-black leading-none tracking-[-0.05em] text-white sm:text-6xl"
-                  >
-                    GOLAZO
-                  </motion.p>
-                  <motion.p
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.16, duration: 0.28 }}
-                    className="mt-3 text-base font-black tracking-[-0.02em] text-sky-100 sm:text-lg"
-                  >
-                    Reservá tu cancha en minutos
-                  </motion.p>
-                  <motion.p
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.24, duration: 0.28 }}
-                    className="mt-2 max-w-xs text-sm leading-6 text-zinc-300"
-                  >
-                    Complejos, horarios y turnos en un solo lugar
-                  </motion.p>
-                  <motion.div
-                    initial={{ width: 0, opacity: 0 }}
-                    animate={{ width: 220, opacity: 1 }}
-                    transition={{ delay: 0.28, duration: 0.45, ease: 'easeOut' }}
-                    className="mt-7 h-1 rounded-full bg-gradient-to-r from-sky-300 via-white to-amber-300"
-                  />
-                </motion.div>
-              </motion.div>
-            )}
-          </AnimatePresence>
+          {isPublicCatalogRoute && (
+            <ArgentinaConfettiIntro />
+          )}
 
           <motion.div
             initial={{ opacity: 0, y: 12 }}
