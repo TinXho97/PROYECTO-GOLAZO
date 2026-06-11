@@ -4,10 +4,9 @@ import App from './App.tsx';
 import './index.css';
 import { registerServiceWorker } from './pwa/registerServiceWorker.ts';
 import { selectManifest } from './pwa/selectManifest.ts';
-import { preparePublicComplexRoutes, PublicComplexRouteBridge } from './components/PublicComplexRouteBridge.tsx';
+import { PublicComplexRouteBridge } from './components/PublicComplexRouteBridge.tsx';
 
-const bootstrap = async () => {
-  await preparePublicComplexRoutes();
+const bootstrap = () => {
   selectManifest();
 
   createRoot(document.getElementById('root')!).render(
@@ -20,4 +19,4 @@ const bootstrap = async () => {
   registerServiceWorker();
 };
 
-void bootstrap();
+bootstrap();

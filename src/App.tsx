@@ -58,6 +58,7 @@ const PageFallback = () => (
 const PUBLIC_SELECTION_BACKGROUND = 'https://iili.io/q6oJgJ2.jpg';
 const PUBLIC_INTRO_SESSION_KEY = 'golazo_public_intro_seen';
 const PUBLIC_INTRO_VIDEO_SRC = '/videos/golazo-intro.mp4';
+const PUBLIC_COMPLEX_ROUTE_PATTERN = /^\/complejo\/([^/]+)\/?$/i;
 const WORLD_CUP_2026_START = new Date('2026-06-11T00:00:00');
 const PUBLIC_CAROUSEL_ITEMS = [
   {
@@ -86,6 +87,33 @@ const PUBLIC_CAROUSEL_ITEMS = [
   },
 ];
 
+type PublicEntryMode = 'catalog' | 'shared-link';
+
+const normalizePublicSlug = (value: string) => {
+  try {
+    return decodeURIComponent(value).trim().toLowerCase();
+  } catch {
+    return value.trim().toLowerCase();
+  }
+};
+
+const getPublicComplexSlugFromPath = (pathname: string) => {
+  const match = pathname.match(PUBLIC_COMPLEX_ROUTE_PATTERN);
+  return match?.[1] ? normalizePublicSlug(match[1]) : null;
+};
+
+const getClientSlug = (client: Client | null | undefined) => client?.slug?.trim() || '';
+
+const getNormalizedClientSlug = (client: Client | null | undefined) => {
+  const slug = getClientSlug(client);
+  return slug ? normalizePublicSlug(slug) : null;
+};
+
+const buildPublicComplexPath = (client: Client) => {
+  const slug = getClientSlug(client);
+  return slug ? `/complejo/${encodeURIComponent(slug)}` : null;
+};
+
 const getWorldCupCountdown = () => {
   const diff = WORLD_CUP_2026_START.getTime() - Date.now();
 
@@ -102,10 +130,13 @@ const getWorldCupCountdown = () => {
 };
 
 export default function App() {
-  const pathname = window.location.pathname;
+  const [pathname, setPathname] = useState(() => window.location.pathname);
   const isSuperAdminRoute = pathname.startsWith('/panel-interno-golazo-');
   const isAdminRoute = pathname === '/admin' || pathname.startsWith('/admin/');
   const isPublicRoute = !isSuperAdminRoute && !isAdminRoute;
+  const publicComplexSlug = getPublicComplexSlugFromPath(pathname);
+  const isPublicComplexRoute = !!publicComplexSlug;
+  const isPublicCatalogRoute = pathname === '/';
   const [currentPage, setCurrentPage] = useState<Page>('dashboard');
   const [selectedBookingId, setSelectedBookingId] = useState<string | null>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -122,7 +153,11 @@ export default function App() {
   const [isClientLoading, setIsClientLoading] = useState(true);
   const [publicClients, setPublicClients] = useState<Client[]>([]);
   const [isPublicClientsLoading, setIsPublicClientsLoading] = useState(true);
-  const [selectedPublicClientId, setSelectedPublicClientId] = useState<string | null>(dataService.getPublicClientSelectionId());
+  const [selectedPublicClientId, setSelectedPublicClientId] = useState<string | null>(
+    isPublicComplexRoute || isPublicCatalogRoute ? null : dataService.getPublicClientSelectionId()
+  );
+  const [publicEntryMode, setPublicEntryMode] = useState<PublicEntryMode>(isPublicComplexRoute ? 'shared-link' : 'catalog');
+  const [invalidPublicSlug, setInvalidPublicSlug] = useState<string | null>(null);
   const [publicSearchTerm, setPublicSearchTerm] = useState('');
   const [publicGuestName, setPublicGuestName] = useState(localStorage.getItem('golazo_guest_name') || 'Jugador');
   const [publicGuestPhone, setPublicGuestPhone] = useState(localStorage.getItem('golazo_guest_phone') || '');
@@ -159,7 +194,9 @@ export default function App() {
       const currentUser = await dataService.getCurrentUser();
 
       if (!currentUser) {
-        const publicClientId = dataService.getPublicClientSelectionId();
+        const publicClientId = isPublicRoute && !isPublicCatalogRoute && !isPublicComplexRoute
+          ? dataService.getPublicClientSelectionId()
+          : null;
         setUser(null);
         setSelectedClientId(null);
         setSelectedPublicClientId(publicClientId);
@@ -173,17 +210,12 @@ export default function App() {
         return;
       }
 
-      if (!isSuperAdminRoute && currentUser.role === 'superadmin') {
+      if (!isSuperAdminRoute && !isPublicRoute && currentUser.role === 'superadmin') {
         await dataService.logout();
         setUser(null);
         setSelectedClientId(null);
         setClientConfig(null);
         setLoginError('Este acceso no corresponde a este usuario');
-        return;
-      }
-
-      if (isPublicRoute && currentUser.role === 'admin') {
-        window.location.href = '/admin';
         return;
       }
 
@@ -198,6 +230,15 @@ export default function App() {
 
       setUser(currentUser);
       setSelectedClientId(currentUser.client_id || null);
+
+      if (isPublicRoute) {
+        if (isPublicCatalogRoute) {
+          dataService.clearPublicClientSelection();
+          setSelectedPublicClientId(null);
+          setClientConfig(null);
+        }
+        return;
+      }
 
       // Procesar reserva pendiente si existe (Post-Login OAuth)
       if (currentUser) {
@@ -296,6 +337,69 @@ export default function App() {
     };
   }, []);
 
+  useEffect(() => {
+    const handlePopState = () => {
+      setPathname(window.location.pathname);
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  useEffect(() => {
+    if (!isPublicCatalogRoute) return;
+
+    dataService.clearPublicClientSelection();
+    setSelectedPublicClientId(null);
+    setClientConfig(null);
+    setInvalidPublicSlug(null);
+    setPublicEntryMode('catalog');
+    setCurrentPage('dashboard');
+  }, [isPublicCatalogRoute]);
+
+  useEffect(() => {
+    if (!isPublicComplexRoute || !publicComplexSlug || isPublicClientsLoading) return;
+
+    let isMounted = true;
+    const selectedClient = publicClients.find((client) => getNormalizedClientSlug(client) === publicComplexSlug) || null;
+
+    const resolvePublicClient = async () => {
+      if (!selectedClient) {
+        dataService.clearPublicClientSelection();
+        setSelectedPublicClientId(null);
+        setClientConfig(null);
+        setInvalidPublicSlug(publicComplexSlug);
+        setPublicEntryMode('shared-link');
+        setCurrentPage('dashboard');
+        return;
+      }
+
+      dataService.setPublicClientSelection(selectedClient.id);
+      setSelectedPublicClientId(selectedClient.id);
+      setInvalidPublicSlug(null);
+      setPublicEntryMode(window.history.state?.golazoFromCatalog === true ? 'catalog' : 'shared-link');
+      setCurrentPage('dashboard');
+
+      try {
+        const publicConfig = await dataService.getPublicClientConfig(selectedClient.id);
+        if (isMounted) {
+          setClientConfig(publicConfig || selectedClient);
+        }
+      } catch (error) {
+        console.error('Error loading public complex config by slug:', error);
+        if (isMounted) {
+          setClientConfig(selectedClient);
+        }
+      }
+    };
+
+    void resolvePublicClient();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [isPublicComplexRoute, publicComplexSlug, isPublicClientsLoading, publicClients]);
+
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -348,12 +452,23 @@ export default function App() {
   };
 
   const handleSelectPublicClient = async (client: Client) => {
+    const publicPath = buildPublicComplexPath(client);
+    if (!publicPath) {
+      toast.error('Este complejo todavia no tiene un link publico configurado.');
+      return;
+    }
+
     dataService.setPublicClientSelection(client.id);
     setSelectedPublicClientId(client.id);
     setClientConfig(client);
     setUser(null);
     setLoginError(null);
     setCurrentPage('dashboard');
+    setInvalidPublicSlug(null);
+    setPublicEntryMode('catalog');
+
+    window.history.pushState({ golazoFromCatalog: true }, '', publicPath);
+    setPathname(window.location.pathname);
 
     try {
       const publicConfig = await dataService.getPublicClientConfig(client.id);
@@ -371,10 +486,17 @@ export default function App() {
     setLoginPassword('');
     setLoginError(null);
     setCurrentPage('dashboard');
+    setInvalidPublicSlug(null);
+    setPublicEntryMode('catalog');
+
+    if (isPublicComplexRoute) {
+      window.history.pushState({ golazoCatalogRoot: true }, '', '/');
+      setPathname(window.location.pathname);
+    }
   };
 
   const publicPortalUser: User | null =
-    !user && selectedPublicClientId && isPublicRoute
+    selectedPublicClientId && isPublicComplexRoute && !invalidPublicSlug
       ? {
           id: `public-player:${selectedPublicClientId}`,
           name: publicGuestName,
@@ -383,7 +505,8 @@ export default function App() {
           client_id: selectedPublicClientId,
         }
       : null;
-  const activeUser = user ?? publicPortalUser;
+  const isPublicPortalActive = !!publicPortalUser && isPublicComplexRoute;
+  const activeUser = isPublicPortalActive ? publicPortalUser : user;
 
   const navItems = [
     { id: 'dashboard', label: 'Inicio', icon: Home, roles: ['admin', 'client'] },
@@ -409,7 +532,6 @@ export default function App() {
   const bgImage = PUBLIC_SELECTION_BACKGROUND;
   const selectedPublicClient = publicClients.find((client) => client.id === selectedPublicClientId) || null;
   const getClientDisplayName = (client: Client) => client.complex_name?.trim() || client.name?.trim() || 'Complejo';
-  const isPublicPortalActive = !!publicPortalUser && isPublicRoute;
   const publicPortalClientName = clientConfig?.complex_name || clientConfig?.name || (selectedPublicClient ? getClientDisplayName(selectedPublicClient) : 'Complejo');
   const publicPortalLogo = clientConfig?.logo_url || selectedPublicClient?.logo_url || customLogo;
   const getPublicNavLabel = (item: typeof navItems[number]) => {
@@ -593,8 +715,53 @@ export default function App() {
     );
   }
 
-  if (!user) {
-    if (isPublicRoute && !selectedPublicClientId) {
+  if (isPublicComplexRoute && (isPublicClientsLoading || (!selectedPublicClientId && !invalidPublicSlug))) {
+    return (
+      <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-sky-500"></div>
+      </div>
+    );
+  }
+
+  if (isPublicComplexRoute && invalidPublicSlug) {
+    return (
+      <div className="relative min-h-screen overflow-hidden bg-slate-950 px-4 text-white">
+        <div
+          className="fixed inset-0"
+          style={{
+            backgroundImage: `url(${PUBLIC_SELECTION_BACKGROUND})`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            backgroundRepeat: 'no-repeat',
+          }}
+        />
+        <div className="fixed inset-0 bg-slate-950/78 backdrop-blur-sm" />
+        <div className="relative z-10 flex min-h-screen items-center justify-center">
+          <div className="w-full max-w-md rounded-[32px] border border-white/15 bg-white/10 p-7 text-center shadow-2xl backdrop-blur-xl">
+            <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-white text-slate-950 shadow-xl">
+              <MapPin className="h-7 w-7 text-sky-600" />
+            </div>
+            <p className="text-[10px] font-black uppercase tracking-[0.24em] text-sky-100">Perfil publico</p>
+            <h1 className="mt-3 text-2xl font-black tracking-[-0.04em] text-white">El complejo no esta disponible</h1>
+            <p className="mt-3 text-sm leading-6 text-zinc-300">
+              Revisa el link o volve al inicio para elegir un complejo activo.
+            </p>
+            <Button
+              type="button"
+              onClick={handleBackToClientSelector}
+              className="mt-6 w-full rounded-2xl bg-white py-4 text-sm font-black uppercase tracking-[0.16em] text-slate-950 hover:bg-zinc-100"
+            >
+              Volver al inicio
+            </Button>
+          </div>
+        </div>
+        <Toaster position="top-center" richColors />
+      </div>
+    );
+  }
+
+  if (!user || isPublicCatalogRoute) {
+    if (isPublicCatalogRoute || (isPublicRoute && !selectedPublicClientId && !isPublicComplexRoute)) {
       return (
         <div className="relative h-screen overflow-y-auto overflow-x-hidden bg-zinc-950 text-white">
           <div
@@ -1089,14 +1256,16 @@ export default function App() {
                 ))}
               </nav>
 
-              <button
-                type="button"
-                onClick={handleBackToClientSelector}
-                className="inline-flex h-10 shrink-0 items-center gap-2 rounded-xl border border-white/15 bg-white/10 px-3 text-[9px] font-black uppercase tracking-[0.16em] text-white backdrop-blur-xl transition-all hover:bg-white/15 sm:px-4"
-              >
-                <ArrowLeft className="h-4 w-4" />
-                <span className="hidden sm:inline">Cambiar complejo</span>
-              </button>
+              {publicEntryMode === 'catalog' && (
+                <button
+                  type="button"
+                  onClick={handleBackToClientSelector}
+                  className="inline-flex h-10 shrink-0 items-center gap-2 rounded-xl border border-white/15 bg-white/10 px-3 text-[9px] font-black uppercase tracking-[0.16em] text-white backdrop-blur-xl transition-all hover:bg-white/15 sm:px-4"
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                  <span className="hidden sm:inline">Cambiar complejo</span>
+                </button>
+              )}
             </div>
           </header>
 

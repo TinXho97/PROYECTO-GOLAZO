@@ -5,136 +5,7 @@ import { supabase } from '../lib/supabase';
 import { dataService } from '../services/dataService';
 import type { Client, User } from '../types';
 
-const PUBLIC_COMPLEX_ROUTE = /^\/complejo\/([^/]+)\/?$/i;
-const PUBLIC_ENTRY_DATASET_KEY = 'golazoPublicEntry';
-
-type PublicEntryMode = 'catalog' | 'shared';
-
-declare global {
-  interface Window {
-    __golazo_public_route_bridge_installed__?: boolean;
-  }
-}
-
-const normalizeSlug = (value: string) => decodeURIComponent(value).trim().toLowerCase();
-
-const readComplexSlugFromPath = (pathname = window.location.pathname) => {
-  const match = pathname.match(PUBLIC_COMPLEX_ROUTE);
-  return match?.[1] ? normalizeSlug(match[1]) : null;
-};
-
-const setPublicEntryMode = (mode: PublicEntryMode) => {
-  document.documentElement.dataset[PUBLIC_ENTRY_DATASET_KEY] = mode;
-};
-
-const getClientSlug = (client: Client | undefined | null) => client?.slug?.trim().toLowerCase() || null;
-
-const updateSharedPortalButtonVisibility = () => {
-  const shouldHide = document.documentElement.dataset[PUBLIC_ENTRY_DATASET_KEY] === 'shared';
-
-  document.querySelectorAll<HTMLButtonElement>('button').forEach((button) => {
-    const isChangeComplexButton = button.textContent?.toLowerCase().includes('cambiar complejo');
-    if (!isChangeComplexButton) return;
-
-    if (shouldHide) {
-      button.dataset.golazoSharedHidden = 'true';
-      button.style.display = 'none';
-      return;
-    }
-
-    if (button.dataset.golazoSharedHidden === 'true') {
-      delete button.dataset.golazoSharedHidden;
-      button.style.removeProperty('display');
-    }
-  });
-};
-
-/**
- * Compatibility bridge for the current single-page shell.
- * It keeps the existing internal state working while making the public URL
- * the source of truth for shared complex links.
- */
-export const preparePublicComplexRoutes = async () => {
-  if (typeof window === 'undefined' || window.__golazo_public_route_bridge_installed__) return;
-  window.__golazo_public_route_bridge_installed__ = true;
-
-  const originalSetPublicClientSelection = dataService.setPublicClientSelection.bind(dataService);
-  const originalClearPublicClientSelection = dataService.clearPublicClientSelection.bind(dataService);
-  const pathname = window.location.pathname;
-  const sharedSlug = readComplexSlugFromPath(pathname);
-  let cachedClients: Client[] = [];
-
-  const loadClients = async () => {
-    if (cachedClients.length > 0) return cachedClients;
-    try {
-      cachedClients = await dataService.getPublicClients();
-    } catch (error) {
-      console.error('Error loading public clients for route bridge:', error);
-      cachedClients = [];
-    }
-    return cachedClients;
-  };
-
-  const pushClientRoute = (clientId: string, clients: Client[]) => {
-    const selectedClient = clients.find((client) => client.id === clientId);
-    const slug = getClientSlug(selectedClient);
-
-    if (slug && window.location.pathname !== `/complejo/${slug}`) {
-      window.history.pushState({ golazoFromCatalog: true }, '', `/complejo/${slug}`);
-    }
-  };
-
-  if (pathname === '/') {
-    originalClearPublicClientSelection();
-    setPublicEntryMode('catalog');
-    await loadClients();
-  } else if (sharedSlug) {
-    const clients = await loadClients();
-    const selectedClient = clients.find((client) => getClientSlug(client) === sharedSlug);
-
-    if (selectedClient) {
-      originalSetPublicClientSelection(selectedClient.id);
-      const cameFromCatalog = window.history.state?.golazoFromCatalog === true;
-      setPublicEntryMode(cameFromCatalog ? 'catalog' : 'shared');
-    } else {
-      originalClearPublicClientSelection();
-      window.history.replaceState({ golazoInvalidComplex: sharedSlug }, '', '/');
-      setPublicEntryMode('catalog');
-    }
-  }
-
-  dataService.setPublicClientSelection = (clientId: string) => {
-    originalSetPublicClientSelection(clientId);
-
-    if (cachedClients.length > 0) {
-      pushClientRoute(clientId, cachedClients);
-    } else {
-      void loadClients().then((clients) => pushClientRoute(clientId, clients));
-    }
-
-    setPublicEntryMode('catalog');
-    updateSharedPortalButtonVisibility();
-  };
-
-  dataService.clearPublicClientSelection = () => {
-    originalClearPublicSelectionAndNavigate();
-  };
-
-  const originalClearPublicSelectionAndNavigate = () => {
-    originalClearPublicClientSelection();
-
-    if (readComplexSlugFromPath()) {
-      window.history.pushState({ golazoCatalogRoot: true }, '', '/');
-    }
-
-    setPublicEntryMode('catalog');
-    updateSharedPortalButtonVisibility();
-  };
-
-  window.addEventListener('popstate', () => {
-    window.location.reload();
-  });
-};
+const isAdminPath = (pathname: string) => pathname === '/admin' || pathname.startsWith('/admin/');
 
 const copyText = async (value: string) => {
   if (navigator.clipboard?.writeText) {
@@ -152,16 +23,20 @@ const copyText = async (value: string) => {
   textarea.remove();
 };
 
+const getClientSlug = (client: Client | undefined | null) => client?.slug?.trim() || '';
+
 export const PublicComplexRouteBridge = () => {
+  const [pathname, setPathname] = useState(() => window.location.pathname);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [adminClient, setAdminClient] = useState<Client | null>(null);
+  const [hasLoadedAdminClient, setHasLoadedAdminClient] = useState(false);
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
-    updateSharedPortalButtonVisibility();
-    const observer = new MutationObserver(updateSharedPortalButtonVisibility);
-    observer.observe(document.body, { childList: true, subtree: true });
-    return () => observer.disconnect();
+    const handlePopState = () => setPathname(window.location.pathname);
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
   useEffect(() => {
@@ -175,14 +50,20 @@ export const PublicComplexRouteBridge = () => {
 
         if (user?.role !== 'admin' || !user.client_id) {
           setAdminClient(null);
+          setHasLoadedAdminClient(true);
           return;
         }
 
         const publicClients = await dataService.getPublicClients();
         if (!isMounted) return;
         setAdminClient(publicClients.find((client) => client.id === user.client_id) || null);
+        setHasLoadedAdminClient(true);
       } catch (error) {
         console.error('Error loading admin public share link:', error);
+        if (isMounted) {
+          setAdminClient(null);
+          setHasLoadedAdminClient(true);
+        }
       }
     };
 
@@ -199,16 +80,21 @@ export const PublicComplexRouteBridge = () => {
 
   const publicUrl = useMemo(() => {
     const slug = getClientSlug(adminClient);
-    return slug ? `${window.location.origin}/complejo/${slug}` : null;
+    return slug ? `${window.location.origin}/complejo/${encodeURIComponent(slug)}` : null;
   }, [adminClient]);
 
-  if (currentUser?.role !== 'admin' || !publicUrl) return null;
+  if (!isAdminPath(pathname) || currentUser?.role !== 'admin' || !hasLoadedAdminClient) return null;
 
   const handleCopy = async () => {
+    if (!publicUrl) {
+      toast.error('Este complejo todavia no tiene un link publico configurado.');
+      return;
+    }
+
     try {
       await copyText(publicUrl);
       setCopied(true);
-      toast.success('Link público copiado');
+      toast.success('Link publico copiado');
       window.setTimeout(() => setCopied(false), 1800);
     } catch (error) {
       console.error('Error copying public link:', error);
@@ -217,6 +103,11 @@ export const PublicComplexRouteBridge = () => {
   };
 
   const handleShare = async () => {
+    if (!publicUrl) {
+      toast.error('Este complejo todavia no tiene un link publico configurado.');
+      return;
+    }
+
     if (!navigator.share) {
       await handleCopy();
       return;
@@ -225,7 +116,7 @@ export const PublicComplexRouteBridge = () => {
     try {
       await navigator.share({
         title: adminClient?.complex_name || adminClient?.name || 'Reservas Golazo',
-        text: 'Reservá tu cancha desde nuestro perfil público.',
+        text: 'Reserva tu cancha desde nuestro perfil publico.',
         url: publicUrl,
       });
     } catch (error) {
@@ -243,25 +134,38 @@ export const PublicComplexRouteBridge = () => {
           <Link2 className="h-5 w-5" />
         </div>
         <div className="min-w-0 flex-1">
-          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-sky-700">Link público del complejo</p>
-          <p className="mt-1 truncate text-xs font-bold text-slate-700">{publicUrl}</p>
-          <p className="mt-1 text-[11px] leading-4 text-slate-500">Compartilo con tus clientes para que reserven directamente en tu cancha.</p>
+          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-sky-700">Link publico del complejo</p>
+          <p className="mt-1 truncate text-xs font-bold text-slate-700">
+            {publicUrl || 'Slug publico pendiente'}
+          </p>
+          <p className="mt-1 text-[11px] leading-4 text-slate-500">
+            {publicUrl
+              ? 'Compartilo con tus clientes para que reserven directamente en tu cancha.'
+              : 'Configurá un slug publico antes de copiar o compartir este perfil.'}
+          </p>
         </div>
       </div>
 
       <div className="mt-3 grid grid-cols-3 gap-2">
         <button type="button" onClick={handleCopy} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-slate-900 px-3 text-[10px] font-black uppercase tracking-[0.14em] text-white transition hover:bg-slate-800">
           {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-          {copied ? 'Copiado' : 'Copiar'}
+          {copied ? 'Copiado' : 'Copiar link'}
         </button>
         <button type="button" onClick={handleShare} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-sky-200 bg-sky-50 px-3 text-[10px] font-black uppercase tracking-[0.14em] text-sky-800 transition hover:bg-sky-100">
           <Share2 className="h-4 w-4" />
           Compartir
         </button>
-        <a href={publicUrl} target="_blank" rel="noreferrer" className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-zinc-200 bg-white px-3 text-[10px] font-black uppercase tracking-[0.14em] text-zinc-700 transition hover:bg-zinc-50">
-          <ExternalLink className="h-4 w-4" />
-          Abrir
-        </a>
+        {publicUrl ? (
+          <a href={publicUrl} target="_blank" rel="noreferrer" className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-zinc-200 bg-white px-3 text-[10px] font-black uppercase tracking-[0.14em] text-zinc-700 transition hover:bg-zinc-50">
+            <ExternalLink className="h-4 w-4" />
+            Abrir perfil
+          </a>
+        ) : (
+          <button type="button" disabled className="inline-flex h-10 cursor-not-allowed items-center justify-center gap-2 rounded-xl border border-zinc-200 bg-zinc-100 px-3 text-[10px] font-black uppercase tracking-[0.14em] text-zinc-400">
+            <ExternalLink className="h-4 w-4" />
+            Abrir perfil
+          </button>
+        )}
       </div>
     </aside>
   );
