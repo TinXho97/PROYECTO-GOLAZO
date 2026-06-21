@@ -55,9 +55,10 @@ interface DashboardProps {
   onLogout?: () => void;
   onNotificationClick?: (bookingId: string) => void;
   clientConfig?: Client | null;
+  canChangeComplex?: boolean;
 }
 
-export default function Dashboard({ user, onNavigate, onLogout, onNotificationClick, clientConfig }: DashboardProps) {
+export default function Dashboard({ user, onNavigate, onLogout, onNotificationClick, clientConfig, canChangeComplex = false }: DashboardProps) {
   const isPublicPortalUser = user.role === 'client';
   const effectiveClientId = getEffectiveClientId(user);
   const [pitches, setPitches] = useState<Pitch[]>([]);
@@ -589,9 +590,10 @@ export default function Dashboard({ user, onNavigate, onLogout, onNotificationCl
             </motion.div>
           )}
 
+          {canChangeComplex && (
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}>
             <button
-              onClick={() => onLogout && onLogout()}
+              onClick={() => onLogout?.()}
               className="group relative min-h-32 w-full overflow-hidden rounded-[24px] border border-emerald-100 bg-emerald-50 p-5 text-left shadow-sm transition-all hover:-translate-y-1 hover:bg-emerald-100 lg:min-h-36"
             >
               <User className="mb-3 h-7 w-7 text-emerald-600" />
@@ -599,6 +601,7 @@ export default function Dashboard({ user, onNavigate, onLogout, onNotificationCl
               <p className="mt-1 text-xs font-bold text-emerald-700/80">Volver al selector público</p>
             </button>
           </motion.div>
+          )}
         </section>
 
         <section className="grid grid-cols-1 gap-4 lg:grid-cols-3">

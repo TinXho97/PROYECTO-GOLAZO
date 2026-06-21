@@ -86,7 +86,7 @@ const PUBLIC_CAROUSEL_ITEMS = [
   },
 ];
 
-type PublicEntryMode = 'catalog' | 'shared-link';
+type PublicComplexEntryMode = 'catalog' | 'shared-link';
 
 const normalizePublicSlug = (value: string) => {
   try {
@@ -140,7 +140,7 @@ export default function App() {
   const [selectedPublicClientId, setSelectedPublicClientId] = useState<string | null>(
     isPublicComplexRoute || isPublicCatalogRoute ? null : dataService.getPublicClientSelectionId()
   );
-  const [publicEntryMode, setPublicEntryMode] = useState<PublicEntryMode>(isPublicComplexRoute ? 'shared-link' : 'catalog');
+  const [publicEntryMode, setPublicEntryMode] = useState<PublicComplexEntryMode>(isPublicComplexRoute ? 'shared-link' : 'catalog');
   const [invalidPublicSlug, setInvalidPublicSlug] = useState<string | null>(null);
   const [publicSearchTerm, setPublicSearchTerm] = useState('');
   const [publicGuestName, setPublicGuestName] = useState(localStorage.getItem('golazo_guest_name') || 'Jugador');
@@ -175,6 +175,8 @@ export default function App() {
           : null;
         setUser(null);
         setSelectedClientId(null);
+        if (getPublicComplexSlugFromPath(window.location.pathname)) return;
+
         setSelectedPublicClientId(publicClientId);
 
         if (publicClientId && isPublicRoute) {
@@ -350,11 +352,22 @@ export default function App() {
         return;
       }
 
+      const historyState = window.history.state;
+      const cameFromCatalog = historyState?.golazoFromCatalog === true;
+
       dataService.setPublicClientSelection(selectedClient.id);
       setSelectedPublicClientId(selectedClient.id);
       setInvalidPublicSlug(null);
-      setPublicEntryMode(window.history.state?.golazoFromCatalog === true ? 'catalog' : 'shared-link');
+      setPublicEntryMode(cameFromCatalog ? 'catalog' : 'shared-link');
       setCurrentPage('dashboard');
+
+      if (cameFromCatalog) {
+        const nextHistoryState = historyState && typeof historyState === 'object'
+          ? { ...historyState }
+          : {};
+        delete nextHistoryState.golazoFromCatalog;
+        window.history.replaceState(nextHistoryState, '');
+      }
 
       try {
         const publicConfig = await dataService.getPublicClientConfig(selectedClient.id);
@@ -997,6 +1010,7 @@ export default function App() {
         setCurrentPage('calendar');
       }}
       clientConfig={clientConfig}
+      canChangeComplex={publicEntryMode === 'catalog'}
     />
   );
 

@@ -20,7 +20,12 @@ import {
   Search,
   Upload,
   Image as ImageIcon,
-  LogOut
+  LogOut,
+  Link2,
+  Copy,
+  Check,
+  ExternalLink,
+  Share2
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -36,6 +41,29 @@ import { cn } from '../lib/utils';
 import { getEffectiveClientId } from '../lib/tenant';
 import { toast } from 'sonner';
 import { AvatarFallback } from '../components/ui/AvatarFallback';
+const copyText = async (value: string) => {
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(value);
+      return;
+    } catch {
+      // Fall through to the legacy copy path when browser permissions reject the API.
+    }
+  }
+
+  const textarea = document.createElement('textarea');
+  textarea.value = value;
+  textarea.style.position = 'fixed';
+  textarea.style.opacity = '0';
+  document.body.appendChild(textarea);
+  try {
+    textarea.select();
+    if (!document.execCommand('copy')) throw new Error('Copy command was rejected');
+  } finally {
+    textarea.remove();
+  }
+};
+
 
 interface AdminProps {
   onLogout: () => void;
@@ -56,6 +84,9 @@ export default function Admin({ onLogout }: AdminProps) {
   const [customLogo, setCustomLogo] = useState<string | null>(localStorage.getItem('golazo_custom_logo'));
   const [clientConfig, setClientConfig] = useState<Client | null>(null);
   const [isSavingPaymentSettings, setIsSavingPaymentSettings] = useState(false);
+  const [publicClient, setPublicClient] = useState<Client | null>(null);
+  const [isShareLinkModalOpen, setIsShareLinkModalOpen] = useState(false);
+  const [hasCopiedPublicLink, setHasCopiedPublicLink] = useState(false);
   
   const [activeTab, setActiveTab] = useState<'general' | 'canchas' | 'productos' | 'sistema'>('general');
   const [supabaseStatus, setSupabaseStatus] = useState<'checking' | 'connected' | 'disconnected'>('checking');
@@ -121,10 +152,17 @@ export default function Admin({ onLogout }: AdminProps) {
       const pr = await dataService.getProducts(clientId);
       const logs = await dataService.getAuditLogs(clientId);
       const config = clientId ? await dataService.getClientConfig(clientId) : null;
+      const publicConfig = clientId
+        ? await dataService.getPublicClientConfig(clientId).catch((error) => {
+            console.error('Error fetching public client link config:', error);
+            return null;
+          })
+        : null;
       setPitches(pi);
       setProducts(pr);
       setAuditLogs(logs);
       setClientConfig(config);
+      setPublicClient(publicConfig);
       setPaymentPublicForm({
         ...defaultPaymentPublicForm,
         ...(config?.settings?.payment_public || {}),
@@ -140,10 +178,17 @@ export default function Admin({ onLogout }: AdminProps) {
     const pr = await dataService.getProducts(clientId);
     const logs = await dataService.getAuditLogs(clientId);
     const config = clientId ? await dataService.getClientConfig(clientId) : null;
+    const publicConfig = clientId
+      ? await dataService.getPublicClientConfig(clientId).catch((error) => {
+          console.error('Error refreshing public client link config:', error);
+          return null;
+        })
+      : null;
     setPitches(pi);
     setProducts(pr);
     setAuditLogs(logs);
     setClientConfig(config);
+    setPublicClient(publicConfig);
     setPaymentPublicForm({
       ...defaultPaymentPublicForm,
       ...(config?.settings?.payment_public || {}),
@@ -336,6 +381,57 @@ export default function Admin({ onLogout }: AdminProps) {
       refreshData();
     } catch (error) {
       toast.error('Error al actualizar el stock');
+    }
+  };
+
+  const publicSlug = publicClient?.slug?.trim() || '';
+  const publicUrl = publicSlug
+    ? `${window.location.origin}/complejo/${encodeURIComponent(publicSlug)}`
+    : null;
+
+  const handleOpenShareLink = () => {
+    setHasCopiedPublicLink(false);
+    setIsShareLinkModalOpen(true);
+  };
+
+  const handleCopyPublicLink = async () => {
+    if (!publicUrl) {
+      toast.error('Este complejo todavía no tiene link público configurado.');
+      return;
+    }
+
+    try {
+      await copyText(publicUrl);
+      setHasCopiedPublicLink(true);
+      toast.success('Link público copiado');
+    } catch (error) {
+      console.error('Error copying public complex link:', error);
+      toast.error('No se pudo copiar el link público');
+    }
+  };
+
+  const handleSharePublicLink = async () => {
+    if (!publicUrl) {
+      toast.error('Este complejo todavía no tiene link público configurado.');
+      return;
+    }
+
+    if (!navigator.share) {
+      await handleCopyPublicLink();
+      return;
+    }
+
+    try {
+      await navigator.share({
+        title: publicClient?.complex_name || publicClient?.name || 'Reservas Golazo',
+        text: 'Reservá tu cancha desde nuestro perfil público.',
+        url: publicUrl,
+      });
+    } catch (error) {
+      if ((error as Error)?.name !== 'AbortError') {
+        console.error('Error sharing public complex link:', error);
+        toast.error('No se pudo compartir el link público');
+      }
     }
   };
 
@@ -651,9 +747,33 @@ export default function Admin({ onLogout }: AdminProps) {
                   </div>
 
                   <div className="space-y-8">
+                    <Card className="border border-sky-100 shadow-xl shadow-sky-100/40 rounded-[40px] overflow-hidden bg-sky-50">
+                      <CardContent className="p-8">
+                        <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-sky-600 text-white shadow-lg shadow-sky-600/20">
+                          <Link2 className="h-7 w-7" />
+                        </div>
+                        <h3 className="mt-6 text-xl font-black uppercase tracking-tight text-zinc-900">
+                          Compartir link de reservas
+                        </h3>
+                        <p className="mt-2 text-sm font-medium leading-6 text-zinc-600">
+                          {publicUrl
+                            ? 'Compartí el perfil público exclusivo de este complejo.'
+                            : 'Este complejo todavía no tiene link público configurado.'}
+                        </p>
+                        <Button
+                          type="button"
+                          onClick={handleOpenShareLink}
+                          className="mt-6 w-full rounded-2xl py-4 text-xs font-black uppercase tracking-widest"
+                        >
+                          <Share2 className="mr-2 h-4 w-4" />
+                          Compartir link de reservas
+                        </Button>
+                      </CardContent>
+                    </Card>
+
                     {/* Status Card */}
-                    <Card className="border-none shadow-2xl shadow-sky-600/20 rounded-[40px] overflow-hidden bg-zinc-900 text-white h-full">
-                      <CardContent className="p-10 flex flex-col h-full justify-between gap-12">
+                    <Card className="border-none shadow-2xl shadow-sky-600/20 rounded-[40px] overflow-hidden bg-zinc-900 text-white">
+                      <CardContent className="p-10 flex flex-col justify-between gap-12">
                         <div className="space-y-6">
                           <div className="w-16 h-16 bg-white/10 rounded-3xl flex items-center justify-center backdrop-blur-xl border border-white/10">
                             <Activity className="w-8 h-8 text-sky-400" />
@@ -1412,6 +1532,82 @@ export default function Admin({ onLogout }: AdminProps) {
           </div>
         </div>
       </Modal>
+      <Modal
+        isOpen={isShareLinkModalOpen}
+        onClose={() => {
+          setIsShareLinkModalOpen(false);
+          setHasCopiedPublicLink(false);
+        }}
+        title="Compartir reservas"
+      >
+        <div className="space-y-5">
+          <div className="flex items-start gap-4">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-sky-100 text-sky-700">
+              <Link2 className="h-6 w-6" />
+            </div>
+            <div>
+              <p className="font-black text-zinc-900">Perfil público del complejo</p>
+              <p className="mt-1 text-sm leading-6 text-zinc-500">
+                Compartí este acceso para que tus clientes reserven directamente.
+              </p>
+            </div>
+          </div>
+
+          {publicUrl ? (
+            <div className="break-all rounded-2xl border border-zinc-200 bg-zinc-50 p-4 text-sm font-bold text-zinc-700">
+              {publicUrl}
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold leading-6 text-amber-800">
+              Este complejo todavía no tiene link público configurado.
+            </div>
+          )}
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Button
+              type="button"
+              onClick={handleCopyPublicLink}
+              disabled={!publicUrl}
+              className="rounded-2xl py-4 text-xs font-black uppercase tracking-widest"
+            >
+              {hasCopiedPublicLink ? <Check className="mr-2 h-4 w-4" /> : <Copy className="mr-2 h-4 w-4" />}
+              {hasCopiedPublicLink ? 'Copiado' : 'Copiar link'}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleSharePublicLink}
+              disabled={!publicUrl}
+              className="rounded-2xl py-4 text-xs font-black uppercase tracking-widest"
+            >
+              <Share2 className="mr-2 h-4 w-4" />
+              Compartir
+            </Button>
+          </div>
+
+          {publicUrl ? (
+            <a
+              href={publicUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-zinc-200 bg-white px-4 py-4 text-xs font-black uppercase tracking-widest text-zinc-700 transition hover:bg-zinc-50"
+            >
+              <ExternalLink className="h-4 w-4" />
+              Abrir perfil público
+            </a>
+          ) : (
+            <button
+              type="button"
+              disabled
+              className="inline-flex w-full cursor-not-allowed items-center justify-center gap-2 rounded-2xl border border-zinc-200 bg-zinc-100 px-4 py-4 text-xs font-black uppercase tracking-widest text-zinc-400"
+            >
+              <ExternalLink className="h-4 w-4" />
+              Abrir perfil público
+            </button>
+          )}
+        </div>
+      </Modal>
+
       {/* Confirm Delete Modal */}
       <ConfirmModal
         isOpen={!!confirmDelete}
