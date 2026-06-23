@@ -1156,11 +1156,11 @@ export default function App() {
   }
 
   return (
-    <div className="h-screen flex flex-col lg:flex-row bg-zinc-50 text-zinc-900 overflow-hidden">
+    <div className="h-screen flex flex-col lg:flex-row bg-[#F6F8FB] text-[#081A33] overflow-hidden">
       {/* Sidebar / Desktop Nav */}
-      <aside className="z-40 hidden lg:flex flex-col shrink-0 fixed left-0 top-0 h-screen w-56 bg-slate-900 border-r border-slate-800 shadow-xl transition-all duration-300">
-        <div className="p-4 flex flex-col items-center gap-2">
-          <div className="relative group block w-24">
+      <aside className="z-40 hidden lg:flex flex-col shrink-0 fixed left-0 top-0 h-screen w-56 bg-[#081A33] border-r border-[#0F2747] shadow-[18px_0_45px_rgba(8,26,51,0.18)] transition-all duration-300">
+        <div className="p-4 flex flex-col items-center gap-2 border-b border-white/10">
+          <div className="relative group block w-20">
             {activeUser.role === 'admin' && (
               <input 
                 type="file" 
@@ -1173,77 +1173,68 @@ export default function App() {
             <div 
               onClick={() => setIsLogoModalOpen(true)}
               className={cn(
-                "w-24 h-24 rounded-[32px] border-2 flex flex-col items-center justify-center transition-all overflow-hidden bg-white shadow-2xl relative group/logo cursor-pointer",
+                "w-20 h-20 rounded-[24px] border flex flex-col items-center justify-center transition-all overflow-hidden bg-white shadow-lg shadow-black/20 relative group/logo cursor-pointer",
                 customLogo 
                   ? "border-transparent" 
-                  : "border-sky-400/30 hover:border-sky-500"
+                  : "border-sky-200/70 hover:border-[#0EA5E9]"
               )}
             >
               {customLogo ? (
-                <img src={customLogo} alt="Logo" className="w-full h-full object-contain p-2" />
+                <img src={customLogo} alt="Logo" className="w-full h-full object-contain p-1.5" />
               ) : (
-                <div className="flex flex-col items-center justify-center p-2">
-                  <ArgentinaLogo size="md" showText={false} className="scale-110" />
-                  <p className="text-[7px] font-black text-sky-600 uppercase tracking-widest text-center mt-1">
+                <div className="flex flex-col items-center justify-center p-1.5">
+                  <ArgentinaLogo size="sm" showText={false} className="scale-105" />
+                  <p className="text-[6px] font-black text-sky-600 uppercase tracking-widest text-center mt-0.5">
                     {activeUser.role === 'admin' ? 'CONFIGURAR' : 'GOLAZO'}
                   </p>
                 </div>
               )}
             </div>
           </div>
-          <div className="text-center mt-2 px-2">
-            <h3 className="text-white font-black text-[10px] uppercase tracking-tighter leading-tight">
+          <div className="text-center mt-3 px-2 w-full min-w-0">
+            <h3 className="truncate text-white font-black text-sm leading-tight">
               {clientConfig?.name || 'Complejo'}
             </h3>
-            <p className="text-sky-400 font-bold text-[8px] uppercase tracking-[0.2em] mt-0.5">
-              GOLAZO <span className="text-zinc-500 font-medium">by SUR Byte'S</span>
+            <p className="text-[#0EA5E9] font-semibold text-[10px] tracking-wide mt-1">
+              GOLAZO <span className="text-slate-500">by SurByte</span>
             </p>
           </div>
         </div>
 
-        <nav className="flex-1 px-3 space-y-1.5">
+        <nav className="flex-1 px-3 py-4 space-y-1.5">
           {filteredNavItems.map((item) => (
             <button
               key={item.id}
               onClick={() => setCurrentPage(item.id as Page)}
               className={cn(
-                "w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl font-bold transition-all shrink-0 border-2 relative overflow-hidden group",
+                "w-full flex items-center gap-3 px-3.5 py-3 rounded-2xl font-bold transition-all shrink-0 border relative overflow-hidden group text-sm",
                 currentPage === item.id 
-                  ? "text-white border-sky-400 shadow-lg" 
-                  : "text-slate-400 hover:bg-slate-800 hover:text-white border-transparent hover:border-slate-700"
+                  ? "text-white bg-white/10 border-white/10 shadow-[0_14px_28px_rgba(0,0,0,0.16)]"
+                  : "text-slate-300 hover:bg-white/[0.06] hover:text-white border-transparent hover:border-white/10"
               )}
             >
               {currentPage === item.id && (
-                <div className="absolute inset-0 opacity-30 pointer-events-none" style={{ background: 'var(--bg-flag-ar)' }} />
-              )}
-              {currentPage === item.id && (
-                <div className="w-3 h-2.5 rounded-[2px] overflow-hidden flex flex-col shadow-sm shrink-0 relative z-10">
-                  <div className="h-1/3 bg-[#74acdf]" />
-                  <div className="h-1/3 bg-white flex items-center justify-center">
-                    <div className="w-0.5 h-0.5 rounded-full bg-yellow-400" />
-                  </div>
-                  <div className="h-1/3 bg-[#74acdf]" />
-                </div>
+                <span className="absolute left-0 top-2 bottom-2 w-1 rounded-r-full bg-[#0EA5E9]" />
               )}
               <item.icon className={cn(
-                "w-4.5 h-4.5 relative z-10",
-                currentPage === item.id ? "text-white" : "text-slate-500 group-hover:text-white"
+                "w-5 h-5 relative z-10",
+                currentPage === item.id ? "text-[#7DD3FC]" : "text-slate-400 group-hover:text-[#DDF3FF]"
               )} />
-              <span className="relative z-10 uppercase tracking-tighter text-xs">{item.label}</span>
+              <span className="relative z-10 truncate tracking-[-0.01em]">{item.label}</span>
             </button>
           ))}
         </nav>
 
-        <div className="mt-auto p-4 border-t border-slate-800 shrink-0 bg-inherit">
+        <div className="mt-auto p-4 border-t border-white/10 shrink-0 bg-[#07172d]">
           {activeUser.role !== 'admin' ? (
             <button 
               onClick={() => setIsLogoutModalOpen(true)}
-              className="w-full px-4 py-3 rounded-2xl hover:bg-slate-800 transition-all group flex items-center justify-center"
+              className="w-full px-4 py-3 rounded-2xl hover:bg-white/[0.06] transition-all group flex items-center justify-center"
             >
               <ArgentinaLogo size="sm" className="transition-all" />
             </button>
           ) : (
-            <div className="px-4 py-3 flex items-center justify-center">
+            <div className="px-4 py-3 flex items-center justify-center opacity-90">
               <ArgentinaLogo size="sm" />
             </div>
           )}
@@ -1251,37 +1242,37 @@ export default function App() {
       </aside>
 
       {/* Mobile Nav */}
-      <header className="lg:hidden fixed top-0 left-0 right-0 border-b px-6 py-4 flex items-center justify-between z-40 bg-sky-50 border-sky-100 shadow-lg">
+      <header className="lg:hidden fixed top-0 left-0 right-0 border-b px-5 py-4 flex items-center justify-between z-40 bg-white/95 border-sky-100 shadow-[0_14px_35px_rgba(8,26,51,0.10)] backdrop-blur">
         <div className="flex items-center gap-3">
           {customLogo ? (
             <div className="flex items-center gap-3">
-              <img src={customLogo} alt="Logo" className="w-10 h-10 object-cover rounded-xl border border-zinc-100 shadow-sm" />
+              <img src={customLogo} alt="Logo" className="w-10 h-10 object-cover rounded-2xl border border-sky-100 shadow-sm" />
               <div className="flex flex-col">
-                <span className="text-[8px] font-black text-zinc-400 uppercase tracking-widest leading-none mb-1">
+                <span className="text-[8px] font-black text-[#64748B] uppercase tracking-widest leading-none mb-1">
                   {clientConfig?.name || 'Complejo'}
                 </span>
-                <span className="text-lg font-black tracking-tighter text-zinc-900 leading-none">GOLAZO</span>
-                <span className="text-[6px] text-zinc-500 font-medium uppercase tracking-widest mt-0.5">by SUR Byte'S</span>
+                <span className="text-lg font-black tracking-tighter text-[#0F2747] leading-none">GOLAZO</span>
+                <span className="text-[7px] text-[#64748B] font-semibold uppercase tracking-widest mt-0.5">by SurByte</span>
               </div>
             </div>
           ) : (
             <div className="flex items-center gap-3">
               <ArgentinaLogo size="md" />
               <div className="flex flex-col">
-                <span className="text-[8px] font-black text-zinc-400 uppercase tracking-widest leading-none mb-1">
+                <span className="text-[8px] font-black text-[#64748B] uppercase tracking-widest leading-none mb-1">
                   {clientConfig?.name || 'Complejo'}
                 </span>
-                <span className="text-lg font-black tracking-tighter text-zinc-900 leading-none">GOLAZO</span>
-                <span className="text-[6px] text-zinc-500 font-medium uppercase tracking-widest mt-0.5">by SUR Byte'S</span>
+                <span className="text-lg font-black tracking-tighter text-[#0F2747] leading-none">GOLAZO</span>
+                <span className="text-[7px] text-[#64748B] font-semibold uppercase tracking-widest mt-0.5">by SurByte</span>
               </div>
             </div>
           )}
         </div>
         <button 
           onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-          className="p-2 hover:bg-zinc-100 rounded-xl transition-colors"
+          className="p-2.5 hover:bg-[#DDF3FF] rounded-2xl transition-colors text-[#0F2747]"
         >
-          {isMobileMenuOpen ? <X className="w-6 h-6 text-zinc-900" /> : <Menu className="w-6 h-6 text-zinc-900" />}
+          {isMobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
         </button>
       </header>
 
@@ -1299,7 +1290,7 @@ export default function App() {
               initial={{ opacity: 0, y: -20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
-              className="lg:hidden fixed inset-x-4 top-[80px] z-50 p-6 space-y-4 rounded-[32px] shadow-2xl border bg-sky-50 border-sky-200 max-h-[calc(100vh-120px)] overflow-y-auto scrollbar-thin scrollbar-thumb-zinc-200"
+              className="lg:hidden fixed inset-x-4 top-[80px] z-50 p-4 space-y-3 rounded-[24px] shadow-2xl border bg-white border-sky-100 max-h-[calc(100vh-120px)] overflow-y-auto scrollbar-thin scrollbar-thumb-zinc-200"
             >
             {filteredNavItems.map((item) => (
               <button
@@ -1309,32 +1300,23 @@ export default function App() {
                   setIsMobileMenuOpen(false);
                 }}
                 className={cn(
-                  "w-full flex items-center gap-3 px-6 py-4 rounded-2xl font-bold text-lg transition-all relative overflow-hidden",
+                  "w-full flex items-center gap-3 px-5 py-4 rounded-2xl font-bold text-base transition-all relative overflow-hidden border",
                   currentPage === item.id 
-                    ? "text-zinc-900 shadow-lg shadow-sky-500/20 border-2 border-sky-400" 
-                    : "text-zinc-500 hover:bg-zinc-100"
+                    ? "text-[#0F2747] shadow-lg shadow-sky-500/15 border-sky-200 bg-[#F6FBFF]"
+                    : "text-[#64748B] hover:bg-[#F6F8FB] border-transparent"
                 )}
               >
                 {currentPage === item.id && (
-                  <div className="absolute inset-0 opacity-30 pointer-events-none" style={{ background: 'var(--bg-flag-ar)' }} />
+                  <span className="absolute left-0 top-3 bottom-3 w-1 rounded-r-full bg-[#0EA5E9]" />
                 )}
-                {currentPage === item.id && (
-                  <div className="w-5 h-4 rounded-[2px] overflow-hidden flex flex-col shadow-sm shrink-0 relative z-10">
-                    <div className="h-1/3 bg-[#74acdf]" />
-                    <div className="h-1/3 bg-white flex items-center justify-center">
-                      <div className="w-0.5 h-0.5 rounded-full bg-yellow-400" />
-                    </div>
-                    <div className="h-1/3 bg-[#74acdf]" />
-                  </div>
-                )}
-                <item.icon className={cn("w-6 h-6 relative z-10", currentPage === item.id ? "text-zinc-900" : "text-zinc-400")} />
-                <span className="relative z-10 uppercase tracking-tighter">{item.label}</span>
+                <item.icon className={cn("w-5 h-5 relative z-10", currentPage === item.id ? "text-[#0EA5E9]" : "text-slate-400")} />
+                <span className="relative z-10">{item.label}</span>
               </button>
             ))}
-            <div className="pt-4 border-t border-zinc-200 space-y-2">
+            <div className="pt-3 border-t border-slate-100 space-y-2">
               <Button 
                 variant="ghost" 
-                className="w-full justify-start gap-4 py-4 text-red-500"
+                className="w-full justify-start gap-4 py-4 text-[#EF4444]"
                 onClick={handleLogout}
               >
                 <LogOut className="w-6 h-6" />
@@ -1347,7 +1329,7 @@ export default function App() {
     </AnimatePresence>
 
       {/* Main Content */}
-      <main className="flex-1 lg:ml-56 pt-24 lg:pt-0 p-4 sm:p-6 lg:p-8 w-full relative h-screen overflow-y-auto custom-scrollbar">
+      <main className="flex-1 lg:ml-56 pt-24 lg:pt-0 p-4 sm:p-6 lg:p-7 xl:p-8 w-full relative h-screen overflow-y-auto custom-scrollbar bg-[#F6F8FB]">
         <div className="max-w-[1400px] mx-auto w-full">
           <motion.div
             key={currentPage}

@@ -37,12 +37,14 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { domToPng } from 'modern-screenshot';
 import { Button } from '../components/Button';
-import { Card, CardContent, CardHeader } from '../components/Card';
 import { Modal } from '../components/Modal';
-import { Badge } from '../components/Badge';
 import ArgentinaCountdown from '../components/ArgentinaCountdown';
 import { ArgentinaLogo } from '../components/ArgentinaLogo';
 import { NotificationsPanel } from '../components/NotificationsPanel';
+import { AdminPageHeader } from '../components/admin/AdminPageHeader';
+import { AdminMetricCard } from '../components/admin/AdminMetricCard';
+import { AdminSectionCard } from '../components/admin/AdminSectionCard';
+import { AdminEmptyState } from '../components/admin/AdminEmptyState';
 import { dataService, api } from '../services/dataService';
 import { Pitch, Booking, User as UserType, Sale, Product, Client } from '../types';
 import { supabase } from '../lib/supabase';
@@ -633,247 +635,271 @@ export default function Dashboard({ user, onNavigate, onLogout, onNotificationCl
   }
 
   return (
-    <div className="space-y-12 pb-20 max-w-7xl mx-auto">
+    <div className="mx-auto max-w-7xl space-y-6 pb-16">
       {/* 1. HEADER INTELIGENTE */}
-      <header className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 bg-white p-8 rounded-[32px] shadow-sm border border-zinc-100">
-        <div className="space-y-3">
-          <div className="flex items-center gap-3">
-            <h1 className="text-4xl sm:text-5xl font-black text-zinc-900 tracking-tighter uppercase italic">Resumen del día</h1>
-            <Badge variant="neutral" className={cn("px-3 py-1 rounded-xl font-black text-xs uppercase tracking-widest border", generalStatus.color)}>
-              {generalStatus.text}
-            </Badge>
+      <AdminPageHeader
+        title="Resumen del día"
+        meta="Panel operativo"
+        icon={<Activity className="h-6 w-6" />}
+        badge={
+          <span className={cn("inline-flex items-center rounded-full border px-3 py-1 text-xs font-black tracking-wide", generalStatus.color)}>
+            {generalStatus.text}
+          </span>
+        }
+        subtitle={
+          <div className="flex items-center gap-2 text-[#64748B]">
+            <CalendarIcon className="h-5 w-5 text-[#0EA5E9]" />
+            <span className="text-base font-semibold capitalize sm:text-lg">
+              {format(new Date(), "EEEE d 'de' MMMM, yyyy", { locale: es })}
+            </span>
           </div>
-          <div className="flex items-center gap-2 text-zinc-500 font-medium">
-            <CalendarIcon className="w-5 h-5" />
-            <span className="text-lg capitalize">{format(new Date(), "EEEE d 'de' MMMM, yyyy", { locale: es })}</span>
-          </div>
-        </div>
-        
-        <div className="flex items-center gap-4">
-          <div className="hidden md:block mr-4">
-            <NotificationsPanel onNotificationClick={async (bookingId) => {
-              if (onNotificationClick) {
-                onNotificationClick(bookingId);
-              } else {
-                let booking = bookings.find(b => b.id === bookingId);
-                if (!booking) {
-                  const latestBookings = await dataService.getBookings(effectiveClientId);
-                  setBookings(latestBookings);
-                  booking = latestBookings.find(b => b.id === bookingId);
-                }
-                if (booking) {
-                  setSelectedBooking(booking);
-                  setIsBookingDetailModalOpen(true);
+        }
+        actions={
+          <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center">
+            <div className="hidden md:block sm:mr-1">
+              <NotificationsPanel onNotificationClick={async (bookingId) => {
+                if (onNotificationClick) {
+                  onNotificationClick(bookingId);
                 } else {
-                  toast.error('No se pudo encontrar la reserva');
+                  let booking = bookings.find(b => b.id === bookingId);
+                  if (!booking) {
+                    const latestBookings = await dataService.getBookings(effectiveClientId);
+                    setBookings(latestBookings);
+                    booking = latestBookings.find(b => b.id === bookingId);
+                  }
+                  if (booking) {
+                    setSelectedBooking(booking);
+                    setIsBookingDetailModalOpen(true);
+                  } else {
+                    toast.error('No se pudo encontrar la reserva');
+                  }
                 }
-              }
-            }} />
+              }} />
+            </div>
+            {(!clientConfig || clientConfig.features?.reservas !== false) && (
+              <Button
+                onClick={() => onNavigate && onNavigate('calendar')}
+                className="rounded-2xl bg-[#0EA5E9] px-5 py-5 text-sm font-black tracking-wide text-white shadow-lg shadow-sky-500/25 hover:-translate-y-0.5 hover:bg-sky-500 sm:px-6"
+              >
+                <Plus className="h-5 w-5" />
+                Nueva reserva
+              </Button>
+            )}
+            {(!clientConfig || clientConfig.features?.ventas !== false) && (
+              <Button
+                variant="outline"
+                onClick={() => onNavigate && onNavigate('sales')}
+                className="rounded-2xl border-slate-200 bg-white px-5 py-5 text-sm font-black tracking-wide text-[#0F2747] shadow-sm hover:-translate-y-0.5 hover:border-sky-200 hover:bg-[#F6FBFF] sm:px-6"
+              >
+                <ShoppingBag className="h-5 w-5" />
+                Nueva venta
+              </Button>
+            )}
           </div>
-          {(!clientConfig || clientConfig.features?.reservas !== false) && (
-            <Button 
-              onClick={() => onNavigate && onNavigate('calendar')}
-              className="rounded-2xl py-6 px-6 font-black uppercase tracking-widest text-xs shadow-lg shadow-sky-500/20 hover:scale-105 transition-transform"
-            >
-              <Plus className="w-5 h-5 mr-2" />
-              Nueva Reserva
-            </Button>
-          )}
-          {(!clientConfig || clientConfig.features?.ventas !== false) && (
-            <Button 
-              variant="outline"
-              onClick={() => onNavigate && onNavigate('sales')}
-              className="rounded-2xl py-6 px-6 font-black uppercase tracking-widest text-xs border-zinc-200 hover:bg-zinc-50 hover:scale-105 transition-transform"
-            >
-              <ShoppingBag className="w-5 h-5 mr-2" />
-              Nueva Venta
-            </Button>
-          )}
-        </div>
-      </header>
+        }
+      />
 
       {/* 2. MÉTRICAS CLAVE */}
-      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {[
-          (!clientConfig || clientConfig.features?.reservas !== false) && { label: 'Turnos del día', value: todayBookings.length, icon: CalendarIcon, color: 'text-blue-500', bg: 'bg-blue-50' },
-          (!clientConfig || clientConfig.features?.ventas !== false) && { label: 'Ingresos del día', value: `$${todayTotalIncome}`, icon: DollarSign, color: 'text-emerald-500', bg: 'bg-emerald-50' },
-          (!clientConfig || clientConfig.features?.ventas !== false) && { label: 'Ventas del día', value: todaySales.length, icon: ShoppingBag, color: 'text-purple-500', bg: 'bg-purple-50' },
-          (!clientConfig || clientConfig.features?.reservas !== false) && { label: 'Ocupación', value: `${occupancyPercentage}%`, icon: Activity, color: 'text-orange-500', bg: 'bg-orange-50' },
+          (!clientConfig || clientConfig.features?.reservas !== false) && { label: 'Turnos del día', value: todayBookings.length, icon: CalendarIcon, tone: 'blue', helperText: 'Reservas confirmadas' },
+          (!clientConfig || clientConfig.features?.ventas !== false) && { label: 'Ingresos del día', value: `$${todayTotalIncome}`, icon: DollarSign, tone: 'green', helperText: 'Reservas y ventas' },
+          (!clientConfig || clientConfig.features?.ventas !== false) && { label: 'Ventas del día', value: todaySales.length, icon: ShoppingBag, tone: 'purple', helperText: 'Operaciones registradas' },
+          (!clientConfig || clientConfig.features?.reservas !== false) && { label: 'Ocupación', value: `${occupancyPercentage}%`, icon: Activity, tone: 'orange', helperText: 'Uso estimado de canchas' },
         ].filter(Boolean).map((stat: any, i) => (
           <motion.div
             key={stat.label}
-            initial={{ opacity: 0, y: 20 }}
+            initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: i * 0.1 }}
+            transition={{ delay: i * 0.08 }}
           >
-            <Card className="border-none shadow-sm bg-white rounded-[32px] p-8 hover:shadow-md transition-shadow">
-              <div className="flex flex-col gap-6">
-                <div className={cn("w-14 h-14 rounded-2xl flex items-center justify-center", stat.bg, stat.color)}>
-                  <stat.icon className="w-7 h-7" />
-                </div>
-                <div>
-                  <p className="text-zinc-400 font-bold text-sm uppercase tracking-widest mb-2">{stat.label}</p>
-                  <h3 className="text-5xl font-black text-zinc-900 tracking-tighter italic">{stat.value}</h3>
-                </div>
-              </div>
-            </Card>
+            <AdminMetricCard
+              label={stat.label}
+              value={stat.value}
+              icon={stat.icon}
+              tone={stat.tone}
+              helperText={stat.helperText}
+            />
           </motion.div>
         ))}
       </section>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         {/* 3. ZONA OPERATIVA */}
-        <section className="lg:col-span-2 space-y-6">
-          <h2 className="text-2xl font-black text-zinc-900 tracking-tight uppercase italic flex items-center gap-3 px-2">
-            <Zap className="w-6 h-6 text-sky-500" />
-            Próximas Acciones
-          </h2>
-          
-          <div className="grid grid-cols-1 gap-4">
-            {/* Próxima Reserva */}
-            {(!clientConfig || clientConfig.features?.reservas !== false) && (
-              <div className="bg-white p-6 rounded-[24px] shadow-sm border border-zinc-100 flex items-center justify-between group hover:border-sky-200 transition-colors">
-                <div className="flex items-center gap-5">
-                  <div className="w-12 h-12 rounded-full bg-sky-50 flex items-center justify-center text-sky-500">
-                    <Clock className="w-6 h-6" />
-                  </div>
-                  <div>
-                    <p className="text-xs font-bold text-zinc-400 uppercase tracking-widest mb-1">Próxima Reserva</p>
-                    {nextBooking ? (
-                      <div className="flex items-center gap-2">
-                        <span className="text-lg font-black text-zinc-900">{format(nextBooking.startTime, 'HH:mm')}</span>
-                        <span className="text-zinc-300">•</span>
-                        <span className="font-medium text-zinc-600">{pitches.find(p => p.id === nextBooking.pitchId)?.name}</span>
-                        <span className="text-zinc-300">•</span>
-                        <span className="font-medium text-zinc-600">{nextBooking.clientName}</span>
+        <section className="lg:col-span-2">
+          <AdminSectionCard
+            title="Próximas acciones"
+            eyebrow="Operación"
+            icon={<Zap className="h-5 w-5" />}
+          >
+            <div className="grid grid-cols-1 gap-3">
+              {/* Próxima Reserva */}
+              {(!clientConfig || clientConfig.features?.reservas !== false) && (
+                <div className="rounded-[22px] border border-slate-200/70 bg-white p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:border-sky-200 hover:shadow-md sm:p-5">
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex min-w-0 items-start gap-4">
+                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#DDF3FF] text-[#0EA5E9]">
+                        <Clock className="h-5 w-5" />
                       </div>
-                    ) : (
-                      <p className="text-lg font-medium text-zinc-500">No hay reservas próximas</p>
+                      <div className="min-w-0">
+                        <p className="text-xs font-extrabold uppercase tracking-[0.18em] text-[#64748B]">Próxima reserva</p>
+                        {nextBooking ? (
+                          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
+                            <span className="text-lg font-black text-[#081A33]">{format(nextBooking.startTime, 'HH:mm')}</span>
+                            <span className="text-slate-300">•</span>
+                            <span className="font-semibold text-[#64748B]">{pitches.find(p => p.id === nextBooking.pitchId)?.name}</span>
+                            <span className="text-slate-300">•</span>
+                            <span className="font-semibold text-[#64748B]">{nextBooking.clientName}</span>
+                          </div>
+                        ) : (
+                          <AdminEmptyState
+                            className="mt-3"
+                            icon={<Clock className="h-5 w-5" />}
+                            title="Sin reservas próximas"
+                            description="Los próximos turnos confirmados aparecerán acá."
+                          />
+                        )}
+                      </div>
+                    </div>
+                    {nextBooking && (
+                      <Button variant="ghost" className="rounded-xl text-[#0EA5E9] hover:bg-[#DDF3FF] hover:text-[#0F2747]" onClick={() => {
+                        setSelectedBooking(nextBooking);
+                        setIsBookingDetailModalOpen(true);
+                      }}>
+                        Ver detalle
+                      </Button>
                     )}
                   </div>
                 </div>
-                {nextBooking && (
-                  <Button variant="ghost" className="rounded-xl" onClick={() => {
-                    setSelectedBooking(nextBooking);
-                    setIsBookingDetailModalOpen(true);
-                  }}>
-                    Ver detalle
-                  </Button>
-                )}
-              </div>
-            )}
+              )}
 
-            {/* Stock Bajo */}
-            {(!clientConfig || clientConfig.features?.ventas !== false) && (
-              <div className="bg-white p-6 rounded-[24px] shadow-sm border border-zinc-100 flex items-center justify-between group hover:border-orange-200 transition-colors">
-                <div className="flex items-center gap-5">
-                  <div className="w-12 h-12 rounded-full bg-orange-50 flex items-center justify-center text-orange-500">
-                    <Package className="w-6 h-6" />
-                  </div>
-                  <div>
-                    <p className="text-xs font-bold text-zinc-400 uppercase tracking-widest mb-1">Alertas de Stock</p>
-                    {lowStockProducts.length > 0 ? (
-                      <div className="flex items-center gap-2">
-                        <span className="text-lg font-black text-orange-600">{lowStockProducts.length} productos</span>
-                        <span className="font-medium text-zinc-600">por debajo del mínimo</span>
+              {/* Stock Bajo */}
+              {(!clientConfig || clientConfig.features?.ventas !== false) && (
+                <div className="rounded-[22px] border border-slate-200/70 bg-white p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:border-red-200 hover:shadow-md sm:p-5">
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex min-w-0 items-start gap-4">
+                      <div className={cn("flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl", lowStockProducts.length > 0 ? "bg-red-50 text-[#EF4444]" : "bg-emerald-50 text-[#10B981]")}>
+                        <Package className="h-5 w-5" />
                       </div>
-                    ) : (
-                      <p className="text-lg font-medium text-zinc-500">Stock en niveles normales</p>
+                      <div className="min-w-0">
+                        <p className="text-xs font-extrabold uppercase tracking-[0.18em] text-[#64748B]">Alertas de stock</p>
+                        {lowStockProducts.length > 0 ? (
+                          <div className="mt-1 flex flex-wrap items-center gap-2">
+                            <span className="text-lg font-black text-[#EF4444]">{lowStockProducts.length} productos</span>
+                            <span className="font-semibold text-[#64748B]">por debajo del mínimo</span>
+                          </div>
+                        ) : (
+                          <AdminEmptyState
+                            className="mt-3 border-emerald-100 bg-emerald-50/60"
+                            icon={<CheckCircle2 className="h-5 w-5" />}
+                            title="Stock en niveles normales"
+                            description="Sin reposiciones urgentes por ahora."
+                          />
+                        )}
+                      </div>
+                    </div>
+                    {lowStockProducts.length > 0 && (
+                      <Button variant="ghost" className="rounded-xl text-[#EF4444] hover:bg-red-50 hover:text-red-700" onClick={() => onNavigate && onNavigate('admin')}>
+                        Reponer
+                      </Button>
                     )}
                   </div>
                 </div>
-                {lowStockProducts.length > 0 && (
-                  <Button variant="ghost" className="rounded-xl text-orange-600 hover:text-orange-700 hover:bg-orange-50" onClick={() => onNavigate && onNavigate('admin')}>
-                    Reponer
-                  </Button>
-                )}
-              </div>
-            )}
+              )}
 
-            {/* Última Venta */}
-            {(!clientConfig || clientConfig.features?.ventas !== false) && (
-              <div className="bg-white p-6 rounded-[24px] shadow-sm border border-zinc-100 flex items-center justify-between group hover:border-emerald-200 transition-colors">
-                <div className="flex items-center gap-5">
-                  <div className="w-12 h-12 rounded-full bg-emerald-50 flex items-center justify-center text-emerald-500">
-                    <DollarSign className="w-6 h-6" />
-                  </div>
-                  <div>
-                    <p className="text-xs font-bold text-zinc-400 uppercase tracking-widest mb-1">Última Venta</p>
-                    {lastSale ? (
-                      <div className="flex items-center gap-2">
-                        <span className="text-lg font-black text-emerald-600">${lastSale.totalPrice}</span>
-                        <span className="text-zinc-300">•</span>
-                        <span className="font-medium text-zinc-600">{formatDistanceToNow(new Date(lastSale.date), { addSuffix: true, locale: es })}</span>
+              {/* Última Venta */}
+              {(!clientConfig || clientConfig.features?.ventas !== false) && (
+                <div className="rounded-[22px] border border-slate-200/70 bg-white p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:border-emerald-200 hover:shadow-md sm:p-5">
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex min-w-0 items-start gap-4">
+                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-emerald-50 text-[#10B981]">
+                        <DollarSign className="h-5 w-5" />
                       </div>
-                    ) : (
-                      <p className="text-lg font-medium text-zinc-500">No hay ventas recientes</p>
+                      <div className="min-w-0">
+                        <p className="text-xs font-extrabold uppercase tracking-[0.18em] text-[#64748B]">Última venta</p>
+                        {lastSale ? (
+                          <div className="mt-1 flex flex-wrap items-center gap-2">
+                            <span className="text-lg font-black text-[#10B981]">${lastSale.totalPrice}</span>
+                            <span className="text-slate-300">•</span>
+                            <span className="font-semibold text-[#64748B]">{formatDistanceToNow(new Date(lastSale.date), { addSuffix: true, locale: es })}</span>
+                          </div>
+                        ) : (
+                          <AdminEmptyState
+                            className="mt-3"
+                            icon={<ShoppingBag className="h-5 w-5" />}
+                            title="Sin ventas recientes"
+                            description="Las próximas ventas del día aparecerán acá."
+                          />
+                        )}
+                      </div>
+                    </div>
+                    {lastSale && (
+                      <Button variant="ghost" className="rounded-xl text-[#0EA5E9] hover:bg-[#DDF3FF] hover:text-[#0F2747]" onClick={() => onNavigate && onNavigate('sales')}>
+                        Ver ventas
+                      </Button>
                     )}
                   </div>
                 </div>
-                {lastSale && (
-                  <Button variant="ghost" className="rounded-xl" onClick={() => onNavigate && onNavigate('sales')}>
-                    Ver ventas
-                  </Button>
-                )}
-              </div>
-            )}
-          </div>
+              )}
+            </div>
+          </AdminSectionCard>
         </section>
 
         {/* 4. SECCIÓN SECUNDARIA */}
-        <section className="space-y-6">
-          <h2 className="text-2xl font-black text-zinc-900 tracking-tight uppercase italic flex items-center gap-3 px-2">
-            <LayoutGrid className="w-6 h-6 text-sky-500" />
-            Accesos Rápidos
-          </h2>
+        <section>
+          <AdminSectionCard
+            title="Accesos rápidos"
+            eyebrow="Atajos"
+            icon={<LayoutGrid className="h-5 w-5" />}
+          >
+            <div className="grid grid-cols-1 gap-3">
+              {(!clientConfig || clientConfig.features?.reservas !== false) && (
+                <button
+                  onClick={() => onNavigate && onNavigate('calendar')}
+                  className="group flex w-full items-center gap-4 rounded-[22px] border border-slate-200/70 bg-white p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-sky-200 hover:bg-[#F6FBFF] hover:shadow-md"
+                >
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#DDF3FF] text-[#0EA5E9] transition-transform group-hover:scale-105">
+                    <CalendarIcon className="h-5 w-5" />
+                  </div>
+                  <div className="min-w-0">
+                    <h3 className="font-black text-[#0F2747]">Ir a Reservas</h3>
+                    <p className="text-sm font-semibold text-[#64748B]">Gestionar turnos de canchas</p>
+                  </div>
+                  <ChevronRight className="ml-auto h-5 w-5 shrink-0 text-slate-300 transition-colors group-hover:text-[#0EA5E9]" />
+                </button>
+              )}
           
-          <div className="grid grid-cols-1 gap-4">
-            {(!clientConfig || clientConfig.features?.reservas !== false) && (
-              <button 
-                onClick={() => onNavigate && onNavigate('calendar')}
-                className="w-full flex items-center gap-4 p-5 bg-white rounded-[24px] border border-zinc-100 hover:border-sky-200 hover:shadow-md transition-all group"
-              >
-                <div className="w-10 h-10 rounded-xl bg-sky-50 text-sky-500 flex items-center justify-center group-hover:scale-110 transition-transform">
-                  <CalendarIcon className="w-5 h-5" />
-                </div>
-                <div className="text-left">
-                  <h3 className="font-bold text-zinc-900">Ir a Reservas</h3>
-                  <p className="text-xs text-zinc-500">Gestionar turnos de canchas</p>
-                </div>
-                <ChevronRight className="w-5 h-5 text-zinc-300 ml-auto group-hover:text-sky-500 transition-colors" />
-              </button>
-            )}
+              {(!clientConfig || clientConfig.features?.ventas !== false) && (
+                <button
+                  onClick={() => onNavigate && onNavigate('sales')}
+                  className="group flex w-full items-center gap-4 rounded-[22px] border border-slate-200/70 bg-white p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-violet-200 hover:bg-violet-50/40 hover:shadow-md"
+                >
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-violet-50 text-violet-600 transition-transform group-hover:scale-105">
+                    <ShoppingBag className="h-5 w-5" />
+                  </div>
+                  <div className="min-w-0">
+                    <h3 className="font-black text-[#0F2747]">Ir a Ventas</h3>
+                    <p className="text-sm font-semibold text-[#64748B]">Kiosco y productos</p>
+                  </div>
+                  <ChevronRight className="ml-auto h-5 w-5 shrink-0 text-slate-300 transition-colors group-hover:text-violet-600" />
+                </button>
+              )}
 
-            {(!clientConfig || clientConfig.features?.ventas !== false) && (
               <button 
-                onClick={() => onNavigate && onNavigate('sales')}
-                className="w-full flex items-center gap-4 p-5 bg-white rounded-[24px] border border-zinc-100 hover:border-purple-200 hover:shadow-md transition-all group"
+                onClick={() => onNavigate && onNavigate('admin')}
+                className="group flex w-full items-center gap-4 rounded-[22px] border border-slate-200/70 bg-white p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-slate-300 hover:bg-slate-50 hover:shadow-md"
               >
-                <div className="w-10 h-10 rounded-xl bg-purple-50 text-purple-500 flex items-center justify-center group-hover:scale-110 transition-transform">
-                  <ShoppingBag className="w-5 h-5" />
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-slate-100 text-[#0F2747] transition-transform group-hover:scale-105">
+                  <Settings className="h-5 w-5" />
                 </div>
-                <div className="text-left">
-                  <h3 className="font-bold text-zinc-900">Ir a Ventas</h3>
-                  <p className="text-xs text-zinc-500">Kiosco y productos</p>
+                <div className="min-w-0">
+                  <h3 className="font-black text-[#0F2747]">Configuración</h3>
+                  <p className="text-sm font-semibold text-[#64748B]">Ajustes del sistema</p>
                 </div>
-                <ChevronRight className="w-5 h-5 text-zinc-300 ml-auto group-hover:text-purple-500 transition-colors" />
+                <ChevronRight className="ml-auto h-5 w-5 shrink-0 text-slate-300 transition-colors group-hover:text-[#0F2747]" />
               </button>
-            )}
-
-            <button 
-              onClick={() => onNavigate && onNavigate('admin')}
-              className="w-full flex items-center gap-4 p-5 bg-white rounded-[24px] border border-zinc-100 hover:border-zinc-300 hover:shadow-md transition-all group"
-            >
-              <div className="w-10 h-10 rounded-xl bg-zinc-100 text-zinc-600 flex items-center justify-center group-hover:scale-110 transition-transform">
-                <Settings className="w-5 h-5" />
-              </div>
-              <div className="text-left">
-                <h3 className="font-bold text-zinc-900">Configuración</h3>
-                <p className="text-xs text-zinc-500">Ajustes del sistema</p>
-              </div>
-              <ChevronRight className="w-5 h-5 text-zinc-300 ml-auto group-hover:text-zinc-900 transition-colors" />
-            </button>
-          </div>
+            </div>
+          </AdminSectionCard>
         </section>
       </div>
 
