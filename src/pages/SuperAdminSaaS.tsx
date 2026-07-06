@@ -290,7 +290,6 @@ export default function SuperAdminSaaS() {
         apikey: getSupabaseAnonKey(),
         Authorization: `Bearer ${session.access_token}`,
         'Content-Type': 'application/json',
-        'x-superadmin-password': import.meta.env.VITE_SUPERADMIN_PASSWORD || '',
       },
       cache: 'no-store',
       body: JSON.stringify({ action, payload }),
@@ -300,7 +299,7 @@ export default function SuperAdminSaaS() {
 
     if (!response.ok) {
       if (response.status === 403) {
-        console.error('[admin-ops] Permisos Insuficientes (403): La contraseña de superadmin (x-superadmin-password) o el token son inválidos o no coinciden con los secrets del backend.');
+        console.error('[admin-ops] Permisos Insuficientes (403): El token no pertenece a un usuario con perfil superadmin válido.');
       } else if (response.status === 404) {
         console.error('[admin-ops] No Encontrado (404): La Edge Function "admin-ops" no ha sido desplegada en Supabase.');
       } else if (response.status >= 500) {

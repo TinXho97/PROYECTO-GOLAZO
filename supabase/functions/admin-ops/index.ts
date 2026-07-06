@@ -3,7 +3,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3'
 
 export const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-superadmin-password',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 }
 
@@ -469,20 +469,15 @@ const requireSuperadmin = async (req: Request, context: RequestLogContext) => {
   }
 
   if (!profile?.role) {
-    const metadataRole =
-      (typeof user.app_metadata?.role === 'string' ? user.app_metadata.role : null) ??
-      (typeof user.user_metadata?.role === 'string' ? user.user_metadata.role : null)
-
     logWarn(context, 'profile missing for authenticated user', {
       userId: user.id,
-      metadataRole,
     })
     return {
       error: fail(
         401,
         'profile_missing',
         'El usuario autenticado no tiene perfil válido en public.profiles.',
-        { user_id: user.id, metadata_role: metadataRole },
+        { user_id: user.id },
       ),
     }
   }
