@@ -1,4 +1,6 @@
 -- SQL Schema for Golazo App (Supabase)
+-- ADVERTENCIA: Archivo legacy/no autoritativo. No aplicar en producción sin revisar migraciones actuales.
+-- Este snapshot conserva políticas RLS permisivas de una etapa anterior y no representa la fuente de verdad de seguridad para producción.
 
 -- Enable pgcrypto for gen_random_uuid() if needed
 -- CREATE EXTENSION IF NOT EXISTS pgcrypto;

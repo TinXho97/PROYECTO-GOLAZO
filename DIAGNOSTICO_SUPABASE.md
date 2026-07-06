@@ -1,5 +1,7 @@
 # Diagnóstico: por qué la app cae a LocalStorage en vez de Supabase
 
+> **Advertencia:** Documento histórico/desactualizado. No usar como guía de seguridad actual. Se conserva como contexto de diagnóstico; la autorización vigente de SuperAdmin depende de un JWT válido de Supabase y de `public.profiles.role === "superadmin"`.
+
 ## Hallazgos clave
 
 1. La app **está diseñada para fallback automático** a LocalStorage si Supabase no está bien configurado o no responde.
@@ -26,27 +28,27 @@
 1. Crear/actualizar `.env`:
    - `VITE_SUPABASE_URL=https://<tu-project-ref>.supabase.co`
    - `VITE_SUPABASE_ANON_KEY=<anon_key_real>`
-   - `VITE_SUPERADMIN_PASSWORD=<misma_clave_que_edge_function>`
 2. Reiniciar Vite (`npm run dev`) para que tome variables.
 3. Revisar que no haya AdBlock/proxy bloqueando peticiones a Supabase.
 4. Confirmar que el proyecto de Supabase no esté pausado.
 
 ## Correcciones concretas para Super Admin
 
-1. **Password del Super Admin sincronizada**
-   - En frontend se envía `x-superadmin-password` desde `VITE_SUPERADMIN_PASSWORD`.
-   - En backend (`admin-ops`) se valida contra `SUPERADMIN_PASSWORD`.
-   - Deben ser exactamente iguales.
+1. **Autorización SuperAdmin vigente**
+   - En frontend se envía el JWT de Supabase en `Authorization: Bearer ...`, junto con la `apikey` anon y `Content-Type: application/json`.
+   - En backend (`admin-ops`) se valida el JWT y luego se consulta `public.profiles`.
+   - El acceso se concede solo si `profiles.role === "superadmin"`.
+   - No se debe configurar ni exponer una contraseña SuperAdmin en variables `VITE_*`.
 
 2. **Deploy de función Edge**
    - Desplegar `admin-ops` y configurar secrets en Supabase:
-     - `SUPERADMIN_PASSWORD`
      - `SUPABASE_URL`
+     - `SUPABASE_ANON_KEY`
      - `SUPABASE_SERVICE_ROLE_KEY`
 
-3. **Usuario con rol `superadmin` en Auth**
-   - El login de Super Admin exige `user_metadata.role === "superadmin"`.
-   - Si el usuario no tiene ese metadata, aunque exista en Auth no va a entrar.
+3. **Usuario con perfil `superadmin`**
+   - El login de Super Admin exige una fila válida en `public.profiles` con `role === "superadmin"`.
+   - No usar `user_metadata.role` ni `app_metadata.role` como fuente de autorización crítica.
 
 4. **Corregido bug en panel SaaS**
    - Se corrigió la carga de clientes para usar `data.clients` correctamente.

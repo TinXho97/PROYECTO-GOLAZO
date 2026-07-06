@@ -11,9 +11,9 @@ Aplicación intuitiva y de alto rendimiento para la reserva y gestión multi-ten
 
 ## 🏗️ Arquitectura y Experiencia de Usuario (UX)
 
-El proyecto utiliza una arquitectura estrictamente SaaS y Multi-tenant, garantizando consistencia, seguridad y rendimiento a escala:
+El proyecto utiliza una arquitectura SaaS y Multi-tenant, con Supabase como fuente de verdad para producción y controles de seguridad respaldados por RLS:
 
-* **SaaS Estricto (Zero Fallback):** La aplicación requiere conexión obligatoria a Supabase. Se ha eliminado por completo el fallback a `localStorage` para evitar la fragmentación de datos (Split-brain). En caso de pérdida de conexión, el sistema lanza errores controlados que bloquean la mutación de estado.
+* **Supabase como fuente de verdad:** En producción, los datos autoritativos viven en Supabase. Las escrituras críticas sin configuración válida de Supabase están bloqueadas con errores controlados. El código todavía conserva persistencias locales limitadas o legacy (preferencias de interfaz, datos temporales y fallbacks históricos) que serán depuradas en una etapa posterior; por eso no debe interpretarse como ausencia total de `localStorage` ni como operación offline de negocio.
 * **Procesamiento de Datos Aislado:** La lógica compleja de procesamiento de analíticas y métricas avanzadas ha sido extraída a `src/services/analyticsProcessing.ts`. Al utilizar funciones puras, se asegura un alto rendimiento y se facilita el unit testing aislado de la capa de componentes.
 * **Zero Layout Shift:** Implementación de **Skeleton Loaders** integrados con Framer Motion y Tailwind. Esto garantiza que la carga de datos asíncrona mantenga la estructura visual intacta, eliminando los saltos de interfaz y brindando una sensación de carga instantánea.
 
@@ -29,7 +29,6 @@ El proyecto utiliza una arquitectura estrictamente SaaS y Multi-tenant, garantiz
    ```env
    VITE_SUPABASE_URL=https://<tu-proyecto>.supabase.co
    VITE_SUPABASE_ANON_KEY=<tu-anon-key>
-   VITE_SUPERADMIN_PASSWORD=<clave-superadmin>
    ```
 3. Iniciar el servidor de desarrollo:
    ```bash
@@ -45,9 +44,9 @@ Para que la lógica Multi-tenant y el panel de Super Admin operen correctamente,
    supabase functions deploy admin-ops
    ```
 2. **Configuración de Secrets en Supabase:**
-   Deberás configurar los secretos del entorno en tu dashboard de Supabase para que la función asuma el rol de servicio:
-   * `SUPERADMIN_PASSWORD` (Debe coincidir con tu `VITE_SUPERADMIN_PASSWORD`)
+   Deberás configurar los secretos del entorno en tu dashboard de Supabase para que la función valide el JWT del usuario y use el rol de servicio solo después de autorizarlo:
    * `SUPABASE_URL`
+   * `SUPABASE_ANON_KEY`
    * `SUPABASE_SERVICE_ROLE_KEY`
 
 ### ⚠️ Advertencia de Seguridad (Roles y Permisos)
