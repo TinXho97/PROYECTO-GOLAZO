@@ -13,6 +13,7 @@ export interface BookingFormData {
   time: string;
   clientName: string;
   clientPhone: string;
+  notes: string;
   receipt: string | null;
   depositAmount: string;
   paymentMethod: 'transferencia' | 'mercadopago';
