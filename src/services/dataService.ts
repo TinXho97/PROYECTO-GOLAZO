@@ -1,7 +1,5 @@
 import { Pitch, Booking, Product, Sale, User, UserRole, AuditLog, AuditLogFilters, AuditLogInput, BookingStatus, Client } from '../types';
-import { addHours, startOfDay, endOfDay, isSameDay } from 'date-fns';
 import { supabaseService } from './supabaseService';
-import { getPublicPortalClientById } from './publicPortalClients';
 
 import { supabase, getSupabaseDiagnostics } from '../lib/supabase';
 
@@ -16,89 +14,6 @@ export interface PendingBookingData {
   depositAmount: string;
   timestamp: number;
 }
-
-// Initial Mock Data (Fallback)
-const MOCK_PITCHES: Pitch[] = [
-  { id: 'p1', name: 'Cancha 1', type: 'F5', price: 1500, active: true },
-  { id: 'p2', name: 'Cancha 2', type: 'F5', price: 1500, active: true },
-  { id: 'p3', name: 'Cancha 3', type: 'F7', price: 2200, active: true },
-];
-
-const MOCK_PRODUCTS: Product[] = [
-  { id: 'pr1', name: 'Agua Mineral 500ml', price: 200, category: 'bebida', stock: 50, min_stock: 10, active: true },
-  { id: 'pr2', name: 'Gatorade 500ml', price: 350, category: 'bebida', stock: 30, min_stock: 5, active: true },
-  { id: 'pr3', name: 'Coca Cola 500ml', price: 300, category: 'bebida', stock: 40, min_stock: 10, active: true },
-  { id: 'pr4', name: 'Cerveza 1L', price: 800, category: 'bebida', stock: 20, min_stock: 5, active: true },
-];
-
-const MOCK_BOOKINGS: Booking[] = [
-  {
-    id: 'b1',
-    pitchId: 'p1',
-    userId: 'cliente@gmail.com',
-    clientName: 'Juan Pérez',
-    clientPhone: '1122334455',
-    startTime: new Date(new Date().setHours(new Date().getHours() - 2)),
-    endTime: new Date(new Date().setHours(new Date().getHours() - 1)),
-    status: 'confirmed',
-    createdAt: new Date(),
-    depositAmount: 500,
-    isPaid: true
-  },
-  {
-    id: 'b2',
-    pitchId: 'p2',
-    userId: 'cliente@gmail.com',
-    clientName: 'María García',
-    clientPhone: '1199887766',
-    startTime: new Date(new Date().setHours(new Date().getHours() + 1)),
-    endTime: new Date(new Date().setHours(new Date().getHours() + 2)),
-    status: 'pending',
-    createdAt: new Date(),
-    depositAmount: 500,
-    isPaid: false
-  },
-  {
-    id: 'b3',
-    pitchId: 'p3',
-    userId: 'cliente2@gmail.com',
-    clientName: 'Roberto Gómez',
-    clientPhone: '1155667788',
-    startTime: new Date(new Date().setHours(new Date().getHours() + 4)),
-    endTime: new Date(new Date().setHours(new Date().getHours() + 5)),
-    status: 'confirmed',
-    createdAt: new Date(),
-    depositAmount: 500,
-    isPaid: true
-  }
-];
-
-// Helper to get from localStorage or use mock
-const getStorage = <T>(key: string, initial: T): T => {
-  const stored = localStorage.getItem(key);
-  if (!stored) return initial;
-  try {
-    const parsed = JSON.parse(stored);
-    if (Array.isArray(parsed)) {
-      // Convert date strings back to Date objects
-      return parsed.map((item: any) => {
-        const newItem = { ...item };
-        if (newItem.startTime) newItem.startTime = new Date(newItem.startTime);
-        if (newItem.endTime) newItem.endTime = new Date(newItem.endTime);
-        if (newItem.createdAt) newItem.createdAt = new Date(newItem.createdAt);
-        if (newItem.date) newItem.date = new Date(newItem.date);
-        return newItem;
-      }) as unknown as T;
-    }
-    return parsed as T;
-  } catch {
-    return initial;
-  }
-};
-
-const setStorage = <T>(key: string, data: T) => {
-  localStorage.setItem(key, JSON.stringify(data));
-};
 
 const PUBLIC_CLIENT_SELECTION_KEY = 'golazo_public_client_selection';
 
@@ -138,6 +53,10 @@ const isSupabaseConfigured = () => {
   return diagnostics.hasUrl && diagnostics.hasKey;
 };
 
+const requireSupabaseForBusinessData = (operation: string): never => {
+  throw new Error(`${operation}: Supabase no esta configurado. No se usan datos locales o mock para informacion de negocio.`);
+};
+
 const resolveAuditFilters = (filters?: string | AuditLogFilters) => {
   if (typeof filters === 'string') {
     return {
@@ -151,24 +70,6 @@ const resolveAuditFilters = (filters?: string | AuditLogFilters) => {
     limit: filters?.limit ?? 100,
   };
 };
-
-const ensureAuditText = (value: unknown, fallback = ''): string => {
-  if (typeof value === 'string') return value;
-  if (value == null) return fallback;
-  try {
-    return JSON.stringify(value);
-  } catch {
-    return String(value);
-  }
-};
-
-const normalizeStoredAuditLog = (log: AuditLog): AuditLog => ({
-  ...log,
-  timestamp: new Date(log.timestamp),
-  details: ensureAuditText(log.details, ensureAuditText(log.description)),
-  description: ensureAuditText(log.description, ensureAuditText(log.details)),
-  metadata: log.metadata && typeof log.metadata === 'object' ? log.metadata : null,
-});
 
 export const dataService = {
   isSupabaseConfigured,
@@ -214,9 +115,7 @@ export const dataService = {
       return clients as Client[];
     }
 
-    const clients = getStorage<Client[]>('golazo_public_clients', []);
-    const now = new Date();
-    return clients.filter((client) => client.status === 'active' && (!client.expires_at || new Date(client.expires_at) >= now));
+    return requireSupabaseForBusinessData('Listar complejos publicos');
   },
   getPublicClientConfig: async (clientId?: string) => {
     if (!clientId) {
@@ -227,8 +126,7 @@ export const dataService = {
       return await supabaseService.getPublicClientConfig(clientId);
     }
 
-    const clients = getStorage<Client[]>('golazo_public_clients', []);
-    return clients.find((client) => client.id === clientId) || null;
+    return requireSupabaseForBusinessData('Consultar configuracion publica del complejo');
   },
   getClientConfig: async (clientId?: string) => {
     if (!clientId) {
@@ -254,17 +152,18 @@ export const dataService = {
           .single();
 
         if (fallbackError) {
-          if (fallbackError.code !== 'PGRST116') {
-            console.error('Error fetching client config fallback:', fallbackError);
+          if (fallbackError.code === 'PGRST116') {
+            return null;
           }
-          return getPublicPortalClientById(clientId);
+          console.error('Error fetching client config fallback:', fallbackError);
+          throw fallbackError;
         }
 
         return fallbackData as Client;
       }
       return data as Client;
     }
-    return null;
+    return requireSupabaseForBusinessData('Consultar configuracion del cliente');
   },
   updateClientSettings: async (clientId: string, settings: Record<string, unknown>) => {
     const targetClientId = requireClientId(clientId, 'Actualizar configuracion del cliente');
@@ -273,19 +172,7 @@ export const dataService = {
       return await supabaseService.updateClientSettings(targetClientId, settings);
     }
 
-    const clients = getStorage<Client[]>('golazo_public_clients', []);
-    const updatedClients = clients.map((client) => {
-      if (client.id !== targetClientId) return client;
-      return {
-        ...client,
-        settings: {
-          ...(client.settings || {}),
-          ...settings,
-        },
-      };
-    });
-    setStorage('golazo_public_clients', updatedClients);
-    return updatedClients.find((client) => client.id === targetClientId) || null;
+    return requireSupabaseForBusinessData('Actualizar configuracion del cliente');
   },
   // Pitches
   getPitches: async (clientId?: string) => {
@@ -294,11 +181,10 @@ export const dataService = {
         return await supabaseService.getPitches(clientId);
       } catch (error) {
         console.error('Error fetching pitches:', error);
-        return [];
+        throw error;
       }
     }
-    return getStorage<Pitch[]>('golazo_pitches', MOCK_PITCHES)
-      .filter((pitch) => pitch.active && (!clientId || pitch.client_id === clientId));
+    return requireSupabaseForBusinessData('Listar canchas');
   },
   getPublicPitches: async (clientId?: string) => {
     if (isSupabaseConfigured()) {
@@ -306,12 +192,11 @@ export const dataService = {
         return await supabaseService.getPublicPitches(clientId);
       } catch (error) {
         console.error('Error fetching public pitches:', error);
-        return [];
+        throw error;
       }
     }
 
-    const pitches = getStorage<Pitch[]>('golazo_pitches', MOCK_PITCHES);
-    return clientId ? pitches.filter((pitch) => pitch.client_id === clientId && pitch.active !== false) : pitches;
+    return requireSupabaseForBusinessData('Listar canchas publicas');
   },
   savePitches: async (pitches: Pitch[]) => {
     if (!isSupabaseConfigured()) {
@@ -336,14 +221,7 @@ export const dataService = {
     if (isSupabaseConfigured()) {
       return await supabaseService.uploadPitchImage(file, pitchId, clientId);
     }
-    // Fallback for local storage: convert to base64
-    return new Promise<string>((resolve) => {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        resolve(reader.result as string);
-      };
-      reader.readAsDataURL(file);
-    });
+    return requireSupabaseForBusinessData('Subir imagen de cancha');
   },
   
   // Bookings
@@ -353,15 +231,10 @@ export const dataService = {
         return await supabaseService.hasCompletedBookings(identifier, clientId);
       } catch (error) {
         console.error('Error checking completed bookings:', error);
-        return false;
+        throw error;
       }
     }
-    const bookings = getStorage<Booking[]>('golazo_bookings', MOCK_BOOKINGS);
-    return bookings.some(b => 
-      (!clientId || b.client_id === clientId) && 
-      b.status === 'completed' && 
-      (b.userId === identifier || b.clientPhone === identifier || b.playerId === identifier)
-    );
+    return requireSupabaseForBusinessData('Consultar reservas completadas');
   },
 
   getBookings: async (clientId?: string, startDate?: string, endDate?: string) => {
@@ -370,32 +243,10 @@ export const dataService = {
         return await supabaseService.getBookings(clientId, startDate, endDate);
       } catch (error) {
         console.error('Error fetching bookings:', error);
-        return [];
+        throw error;
       }
     }
-    const bookings = getStorage<Booking[]>('golazo_bookings', MOCK_BOOKINGS);
-    const now = new Date();
-    let hasChanges = false;
-
-    const updatedBookings = bookings.map(b => {
-      if ((b.status === 'confirmed' || b.status === 'pending') && b.endTime < now) {
-        hasChanges = true;
-        return { ...b, status: 'completed' as const };
-      }
-      return b;
-    });
-
-    if (hasChanges) {
-      dataService.saveBookings(updatedBookings);
-    }
-
-    return updatedBookings.filter(b => {
-      let match = true;
-      if (clientId && b.client_id !== clientId) match = false;
-      if (startDate && b.startTime < new Date(startDate)) match = false;
-      if (endDate && b.startTime > new Date(endDate)) match = false;
-      return match;
-    });
+    return requireSupabaseForBusinessData('Listar reservas');
   },
   saveBookings: async (bookings: Booking[]) => {
     if (!isSupabaseConfigured()) {
@@ -410,10 +261,10 @@ export const dataService = {
         return await supabaseService.getProducts(clientId);
       } catch (error) {
         console.error('Error fetching products:', error);
-        return [];
+        throw error;
       }
     }
-    return getStorage<Product[]>('golazo_products', MOCK_PRODUCTS);
+    return requireSupabaseForBusinessData('Listar productos');
   },
   saveProducts: async (products: Product[]) => {
     if (!isSupabaseConfigured()) {
@@ -428,14 +279,10 @@ export const dataService = {
         return await supabaseService.getSales(clientId);
       } catch (error) {
         console.error('Error fetching sales:', error);
-        return [];
+        throw error;
       }
     }
-    const sales = getStorage<Sale[]>('golazo_sales', []);
-    return sales.map(s => ({
-      ...s,
-      totalPrice: typeof s.totalPrice === 'object' && s.totalPrice !== null ? Number((s.totalPrice as any).total) || 0 : Number(s.totalPrice) || 0,
-    }));
+    return requireSupabaseForBusinessData('Listar ventas');
   },
   saveSales: async (sales: Sale[]) => {
     if (!isSupabaseConfigured()) {
@@ -589,15 +436,10 @@ export const dataService = {
         return await supabaseService.getAuditLogs(resolvedFilters);
       } catch (error) {
         console.error('Error fetching audit logs:', error);
-        return [];
+        throw error;
       }
     }
-    const logs = getStorage<AuditLog[]>('golazo_audit_logs', []);
-    return logs
-      .map(normalizeStoredAuditLog)
-      .filter((log) => !resolvedFilters.clientId || log.client_id === resolvedFilters.clientId)
-      .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
-      .slice(0, resolvedFilters.limit);
+    return requireSupabaseForBusinessData('Listar auditoria');
   },
   saveAuditLogs: async (logs: AuditLog[]) => {
     if (!isSupabaseConfigured()) {
@@ -648,15 +490,17 @@ export const dataService = {
         return new Set(slots.map(s => `${s.slot_date}-${s.slot_hour}-${s.pitch_id}`));
       } catch (error) {
         console.error('Error fetching deactivated slots:', error);
-        return new Set<string>();
+        throw error;
       }
     }
-    return new Set<string>();
+    return requireSupabaseForBusinessData('Listar horarios bloqueados');
   },
   toggleDeactivatedSlot: async (pitchId: string, date: string, hour: number, clientId?: string) => {
     if (isSupabaseConfigured()) {
       await supabaseService.toggleDeactivatedSlot(pitchId, date, hour, clientId);
+      return;
     }
+    requireSupabaseForBusinessData('Actualizar horario bloqueado');
   }
 };
 
