@@ -36,6 +36,11 @@ import { Card, CardContent, CardHeader } from '../components/Card';
 import { Badge } from '../components/Badge';
 import { Modal } from '../components/Modal';
 import { ConfirmModal } from '../components/ConfirmModal';
+import { AdminPageHeader } from '../components/admin/AdminPageHeader';
+import { AdminActionButton } from '../components/admin/AdminActionButton';
+import { AdminEmptyState } from '../components/admin/AdminEmptyState';
+import { AdminCalendarSlot, type AdminCalendarSlotStatus } from '../components/admin/AdminCalendarSlot';
+import { AdminStatusBadge } from '../components/admin/AdminStatusBadge';
 import { dataService, api } from '../services/dataService';
 import { Pitch, Booking, Client, User as UserType } from '../types';
 import { cn } from '../lib/utils';
@@ -228,7 +233,7 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
   const [isManagementMode, setIsManagementMode] = useState(false);
   const [deactivatedSlots, setDeactivatedSlots] = useState<Set<string>>(new Set());
   
-  const getSlotStatus = (date: Date, hour: number, pitchId: string) => {
+  const getSlotStatus = (date: Date, hour: number, pitchId: string): AdminCalendarSlotStatus => {
     const slotKey = `${format(date, 'yyyy-MM-dd')}-${hour}-${pitchId}`;
     if (deactivatedSlots.has(slotKey)) return 'deactivated';
 
@@ -432,14 +437,30 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
       return;
     }
 
+    const [selectedHour, selectedMinute = 0] = bookingData.time
+      .split(':')
+      .map((value) => Number(value));
+
+    if (
+      !Number.isInteger(selectedHour) ||
+      selectedHour < 0 ||
+      selectedHour > 23 ||
+      !Number.isInteger(selectedMinute) ||
+      selectedMinute < 0 ||
+      selectedMinute > 59
+    ) {
+      toast.error('Horario de reserva inválido.');
+      return;
+    }
+
     const startTime = new Date(bookingData.date);
-    startTime.setHours(h, m, 0, 0);
+    startTime.setHours(selectedHour, selectedMinute, 0, 0);
     const endTime = addHours(startTime, 1);
 
     try {
       setIsSubmittingBooking(true);
       setBookingError(null);
-      const isPromo = h >= 10 && h <= 16;
+      const isPromo = isPromoHour(selectedHour);
       const points = isPromo ? 1.5 : 1;
       const clientId = effectiveClientId;
 
@@ -879,7 +900,476 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
   }
 
   return (
-    <div className={cn("w-full space-y-6", isPublicPortalUser && "pb-2")}>
+    <div className={cn("w-full space-y-6", isPublicPortalUser && "pb-2", isAdminUser && "space-y-5 pb-16")}>
+      {isAdminUser ? (
+        <>
+          <AdminPageHeader
+            title="Agenda de turnos"
+            meta="Calendario"
+            icon={<CalendarIcon className="h-5 w-5" />}
+            subtitle="Actualizado en tiempo real"
+            className="bg-[#F8FBFF]"
+            badge={
+              isManagementMode ? (
+                <AdminStatusBadge tone="warning">Modo gestión activo</AdminStatusBadge>
+              ) : (
+                <AdminStatusBadge tone="success">Operativo</AdminStatusBadge>
+              )
+            }
+            actions={
+              <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center">
+                <div className="inline-flex rounded-[16px] border border-[#DDE7F0] bg-white p-1 shadow-sm">
+                  <button
+                    type="button"
+                    onClick={() => setView('day')}
+                    className={cn(
+                      "rounded-[13px] px-4 py-2 text-sm font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0EA5E9]/30",
+                      view === 'day' ? "bg-[#DDF3FF] text-[#0284C7]" : "text-[#64748B] hover:bg-slate-50 hover:text-[#0F2747]"
+                    )}
+                  >
+                    Día
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setView('week')}
+                    className={cn(
+                      "rounded-[13px] px-4 py-2 text-sm font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0EA5E9]/30",
+                      view === 'week' ? "bg-[#DDF3FF] text-[#0284C7]" : "text-[#64748B] hover:bg-slate-50 hover:text-[#0F2747]"
+                    )}
+                  >
+                    Semana
+                  </button>
+                </div>
+
+                <AdminActionButton
+                  variant={isManagementMode ? 'secondary' : 'ghost'}
+                  size="md"
+                  className={cn(isManagementMode && "border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100")}
+                  onClick={() => setIsManagementMode(!isManagementMode)}
+                >
+                  <Settings className="h-[18px] w-[18px]" />
+                  Gestionar horarios
+                </AdminActionButton>
+
+                <AdminActionButton
+                  size="md"
+                  onClick={() => {
+                    if (!hasVisiblePitches) {
+                      toast.error(emptyPitchesMessage);
+                      return;
+                    }
+
+                    const firstAvailableSlot = findFirstAvailableSlot();
+                    if (!firstAvailableSlot) {
+                      toast.error('No hay horarios disponibles para la fecha seleccionada.');
+                      return;
+                    }
+
+                    openBookingModal(firstAvailableSlot.pitch, selectedDate, firstAvailableSlot.time);
+                  }}
+                >
+                  <Plus className="h-[18px] w-[18px]" />
+                  Nueva reserva
+                </AdminActionButton>
+              </div>
+            }
+          />
+
+          <section className="rounded-[20px] border border-[#DDE7F0] bg-[#F8FBFF] p-3 shadow-[0_8px_20px_rgba(8,26,51,0.04)]">
+            <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                <div className="flex items-center rounded-[16px] border border-[#DDE7F0] bg-white p-1 shadow-sm">
+                  <button
+                    type="button"
+                    className="flex h-10 w-10 items-center justify-center rounded-[13px] text-[#64748B] transition hover:bg-[#F6FBFF] hover:text-[#0F2747] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0EA5E9]/30"
+                    onClick={() => setSelectedDate(d => addDays(d, view === 'day' ? -1 : -7))}
+                  >
+                    <ChevronLeft className="h-5 w-5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsCalendarOpen(!isCalendarOpen)}
+                    className="relative flex h-10 min-w-[190px] items-center justify-center gap-2 rounded-[13px] px-4 text-sm font-semibold text-[#0F2747] transition hover:bg-[#F6FBFF] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0EA5E9]/30"
+                  >
+                    <CalendarIcon className="h-4 w-4 text-[#0EA5E9]" />
+                    {view === 'day'
+                      ? format(selectedDate, "d 'de' MMMM", { locale: es })
+                      : `${format(days[0], "d MMM", { locale: es })} - ${format(days[6], "d MMM", { locale: es })}`}
+
+                    <AnimatePresence>
+                      {isCalendarOpen && (
+                        <motion.div
+                          initial={{ opacity: 0, y: 10, scale: 0.98 }}
+                          animate={{ opacity: 1, y: 0, scale: 1 }}
+                          exit={{ opacity: 0, y: 10, scale: 0.98 }}
+                          className="absolute left-1/2 top-full z-50 mt-3 -translate-x-1/2 rounded-[22px] border border-[#DDE7F0] bg-white p-4 shadow-[0_22px_48px_rgba(8,26,51,0.14)]"
+                        >
+                          <DayPicker
+                            mode="single"
+                            selected={selectedDate}
+                            onSelect={(date) => {
+                              if (date) setSelectedDate(date);
+                              setIsCalendarOpen(false);
+                            }}
+                            locale={es}
+                            className="rdp-custom"
+                          />
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </button>
+                  <button
+                    type="button"
+                    className="flex h-10 w-10 items-center justify-center rounded-[13px] text-[#64748B] transition hover:bg-[#F6FBFF] hover:text-[#0F2747] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0EA5E9]/30"
+                    onClick={() => setSelectedDate(d => addDays(d, view === 'day' ? 1 : 7))}
+                  >
+                    <ChevronRight className="h-5 w-5" />
+                  </button>
+                </div>
+
+                <AdminActionButton variant="secondary" size="md" onClick={() => setSelectedDate(new Date())}>
+                  Hoy
+                </AdminActionButton>
+              </div>
+
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                <label className="relative block min-w-[240px]">
+                  <span className="sr-only">Filtrar por cancha</span>
+                  <Filter className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#64748B]" />
+                  <select
+                    className="h-11 w-full appearance-none rounded-[15px] border border-[#DDE7F0] bg-white pl-10 pr-9 text-sm font-semibold text-[#0F2747] outline-none transition focus:border-[#0EA5E9] focus:ring-2 focus:ring-[#0EA5E9]/15"
+                    value={filterPitch}
+                    onChange={e => setFilterPitch(e.target.value)}
+                  >
+                    <option value="all">Todas las canchas</option>
+                    {pitches.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  </select>
+                </label>
+
+                <AdminActionButton
+                  variant="secondary"
+                  size="md"
+                  onClick={() => {
+                    if (filterPitch !== 'all') {
+                      setSharePitchId(filterPitch);
+                    } else {
+                      setSharePitchId(pitches[0]?.id || null);
+                    }
+                  }}
+                >
+                  <Share2 className="h-[18px] w-[18px]" />
+                  Compartir disponibilidad
+                </AdminActionButton>
+              </div>
+            </div>
+          </section>
+
+          <div className="space-y-4">
+            <div className="hidden md:block">
+              <section className="overflow-hidden rounded-[22px] border border-[#DDE7F0] bg-[#F8FBFF] shadow-[0_10px_26px_rgba(8,26,51,0.05)]">
+                {shouldShowEmptyPitches ? (
+                  <div className="p-5">
+                    <AdminEmptyState
+                      icon={<AlertCircle className="h-5 w-5" />}
+                      title="No hay canchas para mostrar"
+                      description={emptyPitchesMessage}
+                    />
+                  </div>
+                ) : (
+                  <div className="w-full overflow-x-auto custom-scrollbar">
+                    <div className={cn("min-w-[940px]", "lg:min-w-full")}>
+                      <div
+                        className="grid border-b border-[#DDE7F0] bg-white"
+                        style={{
+                          gridTemplateColumns: view === 'day'
+                            ? `96px repeat(${filteredPitches.length}, minmax(150px, 1fr))`
+                            : `96px repeat(7, minmax(130px, 1fr))`
+                        }}
+                      >
+                        <div className="flex items-center justify-center border-r border-[#DDE7F0] px-3 py-3">
+                          <span className="text-xs font-semibold text-[#64748B]">Hora</span>
+                        </div>
+                        {view === 'day' ? (
+                          filteredPitches.map(pitch => (
+                            <div key={pitch.id} className="relative border-r border-[#DDE7F0] px-4 py-3 text-left last:border-r-0">
+                              <p className="text-xs font-semibold text-[#0EA5E9]">{pitch.type}</p>
+                              <p className="mt-0.5 truncate text-sm font-bold text-[#0F2747]">{pitch.name}</p>
+                              <button
+                                type="button"
+                                onClick={() => setSharePitchId(pitch.id)}
+                                className="absolute right-3 top-3 rounded-xl border border-slate-200 bg-white p-1.5 text-[#64748B] opacity-0 transition hover:bg-[#F6FBFF] hover:text-[#0EA5E9] group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0EA5E9]/30"
+                                title="Compartir disponibilidad"
+                              >
+                                <Share2 className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          ))
+                        ) : (
+                          days.map(day => (
+                            <div key={day.toISOString()} className="border-r border-[#DDE7F0] px-4 py-3 text-left last:border-r-0">
+                              <p className="text-xs font-semibold capitalize text-[#0EA5E9]">{format(day, 'EEE', { locale: es })}</p>
+                              <p className="mt-0.5 text-sm font-bold text-[#0F2747]">{format(day, 'd MMM', { locale: es })}</p>
+                            </div>
+                          ))
+                        )}
+                      </div>
+
+                      <div className="divide-y divide-[#DDE7F0]">
+                        {hours.map(hour => (
+                          <div
+                            key={hour}
+                            className="grid min-h-[68px]"
+                            style={{
+                              gridTemplateColumns: view === 'day'
+                                ? `96px repeat(${filteredPitches.length}, minmax(150px, 1fr))`
+                                : `96px repeat(7, minmax(130px, 1fr))`
+                            }}
+                          >
+                            <div className={cn(
+                              "sticky left-0 z-20 flex items-center justify-center border-r border-[#DDE7F0] bg-white px-3 py-3",
+                              isSameDay(selectedDate, currentTime) && currentTime.getHours() === hour && "bg-[#F6FBFF]"
+                            )}>
+                              <div className="text-center">
+                                <p className={cn(
+                                  "text-sm font-bold",
+                                  isSameDay(selectedDate, currentTime) && currentTime.getHours() === hour ? "text-[#0EA5E9]" : "text-[#0F2747]"
+                                )}>
+                                  {formatSlotTime(hour)}
+                                </p>
+                                {isPromoHour(hour) && <p className="mt-0.5 text-[10px] font-semibold text-amber-600">Promo</p>}
+                              </div>
+                            </div>
+
+                            {view === 'day' ? (
+                              filteredPitches.map(pitch => {
+                                const status = getSlotStatus(selectedDate, hour, pitch.id);
+                                const booking = bookings.find(b =>
+                                  b.pitchId === pitch.id &&
+                                  isSameDay(b.startTime, selectedDate) &&
+                                  b.startTime.getHours() === hour &&
+                                  b.status === 'confirmed'
+                                );
+                                const isOccupied = status === 'occupied' || status === 'partial';
+                                const isPast = status === 'past';
+                                const canSeeDetails = user.role === 'admin' || booking?.userId === user.id;
+
+                                return (
+                                  <div key={pitch.id} className="border-r border-[#DDE7F0] bg-white p-2 last:border-r-0">
+                                    <AdminCalendarSlot
+                                      status={status}
+                                      booking={booking}
+                                      primaryLabel={pitch.name}
+                                      secondaryLabel={booking ? format(booking.endTime, 'HH:mm') + ' hs' : isPromoHour(hour) ? 'Horario promo' : undefined}
+                                      isManagementMode={isManagementMode}
+                                      isPromo={isPromoHour(hour)}
+                                      canSeeDetails={canSeeDetails}
+                                      onClick={() => {
+                                        if (isManagementMode) {
+                                          const slotKey = `${format(selectedDate, 'yyyy-MM-dd')}-${hour}-${pitch.id}`;
+                                          setDeactivatedSlots(prev => {
+                                            const next = new Set(prev);
+                                            if (next.has(slotKey)) next.delete(slotKey);
+                                            else next.add(slotKey);
+                                            return next;
+                                          });
+                                          toast.info(deactivatedSlots.has(slotKey) ? 'Horario activado' : 'Horario desactivado');
+                                          return;
+                                        }
+
+                                        if (isOccupied) {
+                                          if (canSeeDetails && booking) setSelectedBooking(booking);
+                                        } else if (!isPast && status !== 'deactivated') {
+                                          openBookingModal(pitch, selectedDate, formatSlotTime(hour));
+                                        }
+                                      }}
+                                    />
+                                  </div>
+                                );
+                              })
+                            ) : (
+                              days.map(day => {
+                                const targetPitch = filteredPitches[0] || pitches[0];
+                                if (!targetPitch) return null;
+
+                                const status = getSlotStatus(day, hour, targetPitch.id);
+                                const booking = bookings.find(b =>
+                                  b.pitchId === targetPitch.id &&
+                                  isSameDay(b.startTime, day) &&
+                                  b.startTime.getHours() === hour &&
+                                  b.status === 'confirmed'
+                                );
+                                const isOccupied = status === 'occupied' || status === 'partial';
+                                const isPast = status === 'past';
+                                const canSeeDetails = user.role === 'admin' || booking?.userId === user.id;
+
+                                return (
+                                  <div key={day.toISOString()} className="border-r border-[#DDE7F0] bg-white p-2 last:border-r-0">
+                                    <AdminCalendarSlot
+                                      status={status}
+                                      booking={booking}
+                                      primaryLabel={format(day, 'EEE d', { locale: es })}
+                                      secondaryLabel={targetPitch.name}
+                                      isManagementMode={isManagementMode}
+                                      isPromo={isPromoHour(hour)}
+                                      canSeeDetails={canSeeDetails}
+                                      onClick={() => {
+                                        if (isManagementMode) {
+                                          const slotKey = `${format(day, 'yyyy-MM-dd')}-${hour}-${targetPitch.id}`;
+                                          setDeactivatedSlots(prev => {
+                                            const next = new Set(prev);
+                                            if (next.has(slotKey)) next.delete(slotKey);
+                                            else next.add(slotKey);
+                                            return next;
+                                          });
+                                          return;
+                                        }
+
+                                        if (isOccupied) {
+                                          if (canSeeDetails && booking) setSelectedBooking(booking);
+                                        } else if (!isPast && status !== 'deactivated') {
+                                          openBookingModal(targetPitch, day, formatSlotTime(hour));
+                                        }
+                                      }}
+                                    />
+                                  </div>
+                                );
+                              })
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </section>
+            </div>
+
+            <div className="space-y-4 md:hidden">
+              <div className="flex items-center justify-between rounded-[20px] border border-[#DDE7F0] bg-[#F8FBFF] px-4 py-3">
+                <h3 className="text-lg font-bold text-[#0F2747]">{view === 'day' ? 'Agenda del día' : 'Agenda semanal'}</h3>
+                <AdminStatusBadge tone="info">En vivo</AdminStatusBadge>
+              </div>
+
+              {shouldShowEmptyPitches ? (
+                <AdminEmptyState
+                  icon={<AlertCircle className="h-5 w-5" />}
+                  title="No hay canchas para mostrar"
+                  description={emptyPitchesMessage}
+                />
+              ) : (
+                <div className="space-y-4">
+                  {hours.map(hour => (
+                    <div key={hour} className="space-y-2">
+                      <div className="flex items-center gap-3 px-1">
+                        <span className="text-sm font-bold text-[#0F2747]">{formatSlotTime(hour)} hs</span>
+                        {isPromoHour(hour) && <AdminStatusBadge tone="gold">Promo</AdminStatusBadge>}
+                        <div className="h-px flex-1 bg-[#DDE7F0]" />
+                      </div>
+                      <div className="grid grid-cols-1 gap-2">
+                        {view === 'day' ? (
+                          filteredPitches.map(pitch => {
+                            const status = getSlotStatus(selectedDate, hour, pitch.id);
+                            const booking = bookings.find(b =>
+                              b.pitchId === pitch.id &&
+                              isSameDay(b.startTime, selectedDate) &&
+                              b.startTime.getHours() === hour &&
+                              b.status === 'confirmed'
+                            );
+                            const isOccupied = status === 'occupied' || status === 'partial';
+                            const isPast = status === 'past';
+                            const isAvailable = status === 'available';
+                            const canSeeDetails = user.role === 'admin' || booking?.userId === user.id;
+
+                            return (
+                              <AdminCalendarSlot
+                                key={pitch.id}
+                                status={status}
+                                booking={booking}
+                                primaryLabel={pitch.name}
+                                secondaryLabel={pitch.type}
+                                isManagementMode={isManagementMode}
+                                isPromo={isPromoHour(hour)}
+                                canSeeDetails={canSeeDetails}
+                                layout="mobile"
+                                onClick={() => {
+                                  if (isManagementMode) {
+                                    const slotKey = `${format(selectedDate, 'yyyy-MM-dd')}-${hour}-${pitch.id}`;
+                                    setDeactivatedSlots(prev => {
+                                      const next = new Set(prev);
+                                      if (next.has(slotKey)) next.delete(slotKey);
+                                      else next.add(slotKey);
+                                      return next;
+                                    });
+                                    return;
+                                  }
+                                  if (isOccupied) {
+                                    if (canSeeDetails && booking) setSelectedBooking(booking);
+                                  } else if (!isPast && isAvailable) {
+                                    openBookingModal(pitch, selectedDate, formatSlotTime(hour));
+                                  }
+                                }}
+                              />
+                            );
+                          })
+                        ) : (
+                          days.map(day => {
+                            const targetPitch = filteredPitches[0] || pitches[0];
+                            if (!targetPitch) return null;
+
+                            const status = getSlotStatus(day, hour, targetPitch.id);
+                            const booking = bookings.find(b =>
+                              b.pitchId === targetPitch.id &&
+                              isSameDay(b.startTime, day) &&
+                              b.startTime.getHours() === hour &&
+                              b.status === 'confirmed'
+                            );
+                            const isOccupied = status === 'occupied' || status === 'partial';
+                            const isPast = status === 'past';
+                            const isAvailable = status === 'available';
+                            const canSeeDetails = user.role === 'admin' || booking?.userId === user.id;
+
+                            return (
+                              <AdminCalendarSlot
+                                key={day.toISOString()}
+                                status={status}
+                                booking={booking}
+                                primaryLabel={format(day, 'EEE d MMM', { locale: es })}
+                                secondaryLabel={targetPitch.name}
+                                isManagementMode={isManagementMode}
+                                isPromo={isPromoHour(hour)}
+                                canSeeDetails={canSeeDetails}
+                                layout="mobile"
+                                onClick={() => {
+                                  if (isManagementMode) {
+                                    const slotKey = `${format(day, 'yyyy-MM-dd')}-${hour}-${targetPitch.id}`;
+                                    setDeactivatedSlots(prev => {
+                                      const next = new Set(prev);
+                                      if (next.has(slotKey)) next.delete(slotKey);
+                                      else next.add(slotKey);
+                                      return next;
+                                    });
+                                    return;
+                                  }
+                                  if (isOccupied) {
+                                    if (canSeeDetails && booking) setSelectedBooking(booking);
+                                  } else if (!isPast && isAvailable) {
+                                    openBookingModal(targetPitch, day, formatSlotTime(hour));
+                                  }
+                                }}
+                              />
+                            );
+                          })
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </>
+      ) : (
+        <>
       {/* Header: Editorial & Professional */}
       <header className={cn(
         "flex flex-col lg:flex-row lg:items-center justify-between gap-8 pb-4",
@@ -1543,6 +2033,8 @@ export default function CalendarPage({ user, clientConfig, initialBookingId, onC
           )}
         </div>
       </div>
+        </>
+      )}
 
       {/* Booking Modal */}
       <Modal

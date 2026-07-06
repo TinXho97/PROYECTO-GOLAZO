@@ -41,6 +41,11 @@ import { cn } from '../lib/utils';
 import { getEffectiveClientId } from '../lib/tenant';
 import { toast } from 'sonner';
 import { AvatarFallback } from '../components/ui/AvatarFallback';
+import { AdminPageHeader } from '../components/admin/AdminPageHeader';
+import { AdminMetricCard } from '../components/admin/AdminMetricCard';
+import { AdminActionButton } from '../components/admin/AdminActionButton';
+import { AdminStatusBadge } from '../components/admin/AdminStatusBadge';
+import { AdminTabs } from '../components/admin/AdminTabs';
 const copyText = async (value: string) => {
   if (navigator.clipboard?.writeText) {
     try {
@@ -443,72 +448,43 @@ export default function Admin({ onLogout }: AdminProps) {
   ] as const;
 
   return (
-    <div className="space-y-6 pb-20">
-      {/* Header Section - Premium SaaS Style */}
-      <div className="bg-white rounded-[32px] p-8 shadow-sm border border-zinc-100 relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-64 h-64 bg-sky-500/5 blur-[100px] rounded-full -translate-y-1/2 translate-x-1/2" />
-        
-        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-8">
-          <div className="space-y-2">
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 bg-zinc-900 rounded-2xl flex items-center justify-center shadow-xl shadow-zinc-900/20">
-                <Settings className="w-6 h-6 text-sky-400" />
-              </div>
-              <div>
-                <h1 className="text-3xl font-black text-zinc-900 tracking-tighter uppercase leading-none">Configuración</h1>
-                <p className="text-zinc-500 font-bold text-[10px] uppercase tracking-[0.2em] mt-1">Panel de Control Maestro</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <div className={cn(
-              "flex items-center gap-2 px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest",
-              supabaseStatus === 'connected' ? "bg-emerald-50 text-emerald-600 border border-emerald-100" : 
-              supabaseStatus === 'checking' ? "bg-zinc-50 text-zinc-400 border border-zinc-100" :
-              "bg-amber-50 text-amber-600 border border-amber-100"
-            )}>
-              <div className={cn(
-                "w-2 h-2 rounded-full", 
-                supabaseStatus === 'connected' ? "bg-emerald-500 animate-pulse" : 
-                supabaseStatus === 'checking' ? "bg-zinc-300 animate-pulse" :
-                "bg-amber-500"
-              )} />
-              {supabaseStatus === 'connected' ? 'Supabase Conectado' : 
-               supabaseStatus === 'checking' ? 'Verificando Supabase...' :
-               'Modo Local (Sin Supabase)'}
-            </div>
-            <Button 
-              variant="danger" 
-              onClick={() => setIsLogoutConfirmOpen(true)}
-              className="h-12 px-6 rounded-2xl bg-red-50 text-red-600 hover:bg-red-100 border-none shadow-none text-[10px] font-black uppercase tracking-widest"
-            >
-              <LogOut className="w-4 h-4 mr-2" />
-              Cerrar Sesión
-            </Button>
-          </div>
-        </div>
-
-        {/* Navigation Tabs - Modern Pill Style */}
-        <div className="mt-10 flex flex-wrap gap-2 p-1.5 bg-zinc-50 rounded-[24px] border border-zinc-100">
-          {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
+    <div className="space-y-5 pb-20">
+      <AdminPageHeader
+        title="Configuración"
+        meta="Panel de control maestro"
+        icon={<Settings className="h-6 w-6" />}
+        subtitle="Ajustá identidad, canchas, productos, pagos públicos y registros del complejo."
+        badge={
+          <AdminStatusBadge
+            tone={supabaseStatus === 'connected' ? 'success' : supabaseStatus === 'checking' ? 'neutral' : 'warning'}
+            className="gap-2"
+          >
+            <span
               className={cn(
-                "flex items-center gap-2.5 px-6 py-3.5 rounded-xl font-black text-[11px] transition-all whitespace-nowrap uppercase tracking-widest flex-1 sm:flex-none justify-center",
-                activeTab === tab.id 
-                  ? "bg-white text-sky-600 shadow-lg shadow-zinc-200/50 ring-1 ring-zinc-200" 
-                  : "text-zinc-400 hover:text-zinc-600 hover:bg-zinc-100"
+                'h-2 w-2 rounded-full',
+                supabaseStatus === 'connected' ? 'bg-[#10B981] animate-pulse' :
+                supabaseStatus === 'checking' ? 'bg-slate-300 animate-pulse' :
+                'bg-amber-500'
               )}
-            >
-              <tab.icon className={cn("w-4 h-4", activeTab === tab.id ? "text-sky-500" : "text-zinc-400")} />
-              {tab.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
+            />
+            {supabaseStatus === 'connected' ? 'Supabase conectado' :
+             supabaseStatus === 'checking' ? 'Verificando Supabase...' :
+             'Modo local'}
+          </AdminStatusBadge>
+        }
+        actions={
+          <AdminActionButton
+            variant="danger"
+            onClick={() => setIsLogoutConfirmOpen(true)}
+            className="w-full sm:w-auto"
+          >
+            <LogOut className="h-4 w-4" />
+            Cerrar sesión
+          </AdminActionButton>
+        }
+      >
+        <AdminTabs tabs={tabs} activeTab={activeTab} onChange={(tab) => setActiveTab(tab as typeof activeTab)} />
+      </AdminPageHeader>
       <div className="w-full">
         <main className="min-w-0">
           <AnimatePresence mode="wait">
@@ -523,29 +499,29 @@ export default function Admin({ onLogout }: AdminProps) {
                 <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
                   <div className="xl:col-span-2 space-y-8">
                     {/* Visual Identity Card */}
-                    <Card className="border-none shadow-xl shadow-zinc-200/30 rounded-[40px] overflow-hidden bg-white border border-zinc-100">
-                      <CardHeader className="p-10 pb-4">
+                    <Card className="border-none shadow-[0_16px_38px_rgba(8,26,51,0.07)] rounded-[24px] overflow-hidden bg-white border border-zinc-100">
+                      <CardHeader className="p-8 pb-4">
                         <div className="flex items-center justify-between">
                           <div className="space-y-1">
-                            <h3 className="text-xl font-black text-zinc-900 flex items-center gap-3 tracking-tight uppercase">
+                            <h3 className="text-xl font-extrabold text-zinc-900 flex items-center gap-3 tracking-tight">
                               <ImageIcon className="w-6 h-6 text-sky-500" />
                               Identidad Visual
                             </h3>
                             <p className="text-zinc-500 text-xs font-medium">Personaliza la apariencia de tu marca</p>
                           </div>
-                          <Badge variant="neutral" className="bg-zinc-100 text-zinc-500 border-none px-3 py-1 text-[9px] font-black tracking-widest">BRANDING</Badge>
+                          <Badge variant="neutral" className="border-none bg-zinc-100 px-3 py-1 text-[10px] font-semibold text-zinc-500">Branding</Badge>
                         </div>
                       </CardHeader>
-                      <CardContent className="p-10 pt-6">
-                        <div className="flex flex-col md:flex-row items-center gap-12">
+                      <CardContent className="p-6 pt-5">
+                        <div className="flex flex-col md:flex-row items-center gap-8">
                           <div className="relative group shrink-0">
                             <div className={cn(
-                              "w-48 h-48 rounded-[48px] border-2 border-dashed flex flex-col items-center justify-center transition-all overflow-hidden bg-zinc-50 relative shadow-inner",
+                              "w-40 h-40 rounded-[22px] border-2 border-dashed flex flex-col items-center justify-center transition-all overflow-hidden bg-zinc-50 relative shadow-inner",
                               customLogo ? "border-transparent" : "border-zinc-200 hover:border-sky-500/50 hover:bg-sky-50"
                             )}>
                               {customLogo ? (
                                 <>
-                                <AvatarFallback src={customLogo} name="Complejo" className="w-full h-full rounded-[48px] bg-transparent object-contain p-6" />
+                                <AvatarFallback src={customLogo} name="Complejo" className="w-full h-full rounded-[24px] bg-transparent object-contain p-6" />
                                   <div className="absolute inset-0 bg-zinc-900/60 opacity-0 group-hover:opacity-100 transition-all duration-300 flex items-center justify-center gap-3 backdrop-blur-sm">
                                     <label className="cursor-pointer">
                                       <input type="file" className="hidden" onChange={handleLogoUpload} accept="image/*" />
@@ -567,14 +543,14 @@ export default function Admin({ onLogout }: AdminProps) {
                                   <div className="w-16 h-16 bg-white rounded-3xl flex items-center justify-center shadow-sm border border-zinc-100 group-hover:shadow-lg group-hover:scale-110 transition-all">
                                     <Upload className="w-8 h-8" />
                                   </div>
-                                  <p className="text-[10px] font-black uppercase tracking-[0.2em]">Subir Logo</p>
+                                  <p className="text-xs font-bold">Subir Logo</p>
                                 </label>
                               )}
                             </div>
                           </div>
                           <div className="flex-1 space-y-6 text-center md:text-left">
                             <div className="space-y-2">
-                              <h4 className="text-lg font-black text-zinc-900 uppercase tracking-tight">Logo del Complejo</h4>
+                              <h4 className="text-lg font-extrabold text-zinc-900 tracking-tight">Logo del Complejo</h4>
                               <p className="text-sm text-zinc-500 font-medium leading-relaxed">
                                 Este logo es el corazón de tu identidad visual. Aparecerá en el panel lateral, comprobantes de reserva y en tu página pública de reservas.
                               </p>
@@ -582,11 +558,11 @@ export default function Admin({ onLogout }: AdminProps) {
                             
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                               <div className="p-4 bg-zinc-50 rounded-2xl border border-zinc-100 space-y-1">
-                                <p className="text-[9px] font-black text-zinc-400 uppercase tracking-widest">Recomendado</p>
+                                <p className="text-[10px] font-semibold text-zinc-500 tracking-wide">Recomendado</p>
                                 <p className="text-xs font-bold text-zinc-700">PNG/JPG Cuadrado</p>
                               </div>
                               <div className="p-4 bg-zinc-50 rounded-2xl border border-zinc-100 space-y-1">
-                                <p className="text-[9px] font-black text-zinc-400 uppercase tracking-widest">Tamaño Máx</p>
+                                <p className="text-[10px] font-semibold text-zinc-500 tracking-wide">Tamaño Máx</p>
                                 <p className="text-xs font-bold text-zinc-700">2MB por archivo</p>
                               </div>
                             </div>
@@ -594,7 +570,7 @@ export default function Admin({ onLogout }: AdminProps) {
                             <div className="flex flex-wrap justify-center md:justify-start gap-4 pt-4">
                               <Button 
                                 variant="primary" 
-                                className="rounded-2xl h-14 px-8 text-xs font-black shadow-xl shadow-sky-500/20 uppercase tracking-widest"
+                                className="rounded-2xl h-12 px-6 text-xs font-extrabold shadow-lg shadow-sky-500/15 tracking-wide"
                                 onClick={() => document.querySelector<HTMLInputElement>('input[type="file"]')?.click()}
                               >
                                 {customLogo ? 'CAMBIAR IMAGEN' : 'SUBIR ARCHIVO'}
@@ -602,7 +578,7 @@ export default function Admin({ onLogout }: AdminProps) {
                               {customLogo && (
                                 <Button 
                                   variant="outline" 
-                                  className="rounded-2xl h-14 px-8 border-zinc-200 text-zinc-500 text-xs font-black uppercase tracking-widest hover:bg-red-50 hover:text-red-600 hover:border-red-100"
+                                  className="rounded-2xl h-12 px-6 border-zinc-200 text-zinc-500 text-xs font-extrabold tracking-wide hover:bg-red-50 hover:text-red-600 hover:border-red-100"
                                   onClick={removeLogo}
                                 >
                                   ELIMINAR
@@ -614,11 +590,11 @@ export default function Admin({ onLogout }: AdminProps) {
                       </CardContent>
                     </Card>
 
-                    <Card className="border border-sky-100 shadow-xl shadow-zinc-200/30 rounded-[36px] overflow-hidden bg-white">
+                    <Card className="border border-sky-100 shadow-[0_16px_38px_rgba(8,26,51,0.07)] rounded-[24px] overflow-hidden bg-white">
                       <CardHeader className="p-8 pb-4">
                         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                           <div className="space-y-1">
-                            <h3 className="text-xl font-black text-zinc-900 flex items-center gap-3 tracking-tight uppercase">
+                            <h3 className="text-xl font-extrabold text-zinc-900 flex items-center gap-3 tracking-tight">
                               <DollarSign className="w-6 h-6 text-sky-500" />
                               Datos de pago para reservas públicas
                             </h3>
@@ -633,7 +609,7 @@ export default function Admin({ onLogout }: AdminProps) {
                               checked={paymentPublicForm.enabled}
                               onChange={(e) => setPaymentPublicForm((prev) => ({ ...prev, enabled: e.target.checked }))}
                             />
-                            <span className="text-[10px] font-black uppercase tracking-widest text-zinc-700">Activo</span>
+                            <span className="text-xs font-bold text-zinc-700">Activo</span>
                           </label>
                         </div>
                       </CardHeader>
@@ -714,7 +690,7 @@ export default function Admin({ onLogout }: AdminProps) {
                             <Button
                               type="submit"
                               disabled={isSavingPaymentSettings}
-                              className="h-12 rounded-2xl px-6 text-xs font-black uppercase tracking-widest shadow-lg shadow-sky-500/20"
+                              className="h-12 rounded-2xl px-6 text-xs font-extrabold tracking-wide shadow-lg shadow-sky-500/20"
                             >
                               {isSavingPaymentSettings ? 'Guardando...' : 'Guardar datos de pago'}
                             </Button>
@@ -723,36 +699,31 @@ export default function Admin({ onLogout }: AdminProps) {
                       </CardContent>
                     </Card>
 
-                    {/* Quick Stats / Info Grid */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                      <div className="p-8 bg-white rounded-[40px] border border-zinc-100 shadow-xl shadow-zinc-200/20 flex items-center gap-6">
-                        <div className="w-16 h-16 bg-emerald-50 rounded-3xl flex items-center justify-center shrink-0">
-                          <LayoutGrid className="w-8 h-8 text-emerald-500" />
-                        </div>
-                        <div>
-                          <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Canchas</p>
-                          <h4 className="text-2xl font-black text-zinc-900">{pitches.length} Activas</h4>
-                        </div>
-                      </div>
-                      <div className="p-8 bg-white rounded-[40px] border border-zinc-100 shadow-xl shadow-zinc-200/20 flex items-center gap-6">
-                        <div className="w-16 h-16 bg-amber-50 rounded-3xl flex items-center justify-center shrink-0">
-                          <Package className="w-8 h-8 text-amber-500" />
-                        </div>
-                        <div>
-                          <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Productos</p>
-                          <h4 className="text-2xl font-black text-zinc-900">{products.length} Items</h4>
-                        </div>
-                      </div>
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                      <AdminMetricCard
+                        label="Canchas"
+                        value={`${pitches.length} activas`}
+                        icon={LayoutGrid}
+                        tone="green"
+                        helperText="Espacios disponibles"
+                      />
+                      <AdminMetricCard
+                        label="Productos"
+                        value={`${products.length} items`}
+                        icon={Package}
+                        tone="blue"
+                        helperText="Inventario cargado"
+                      />
                     </div>
                   </div>
 
                   <div className="space-y-8">
-                    <Card className="border border-sky-100 shadow-xl shadow-sky-100/40 rounded-[40px] overflow-hidden bg-sky-50">
+                    <Card className="border border-sky-100 shadow-xl shadow-sky-100/40 rounded-[24px] overflow-hidden bg-sky-50">
                       <CardContent className="p-8">
                         <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-sky-600 text-white shadow-lg shadow-sky-600/20">
                           <Link2 className="h-7 w-7" />
                         </div>
-                        <h3 className="mt-6 text-xl font-black uppercase tracking-tight text-zinc-900">
+                        <h3 className="mt-6 text-xl font-extrabold tracking-tight text-zinc-900">
                           Compartir link de reservas
                         </h3>
                         <p className="mt-2 text-sm font-medium leading-6 text-zinc-600">
@@ -763,7 +734,7 @@ export default function Admin({ onLogout }: AdminProps) {
                         <Button
                           type="button"
                           onClick={handleOpenShareLink}
-                          className="mt-6 w-full rounded-2xl py-4 text-xs font-black uppercase tracking-widest"
+                          className="mt-6 w-full rounded-2xl py-4 text-xs font-extrabold tracking-wide"
                         >
                           <Share2 className="mr-2 h-4 w-4" />
                           Compartir link de reservas
@@ -772,14 +743,14 @@ export default function Admin({ onLogout }: AdminProps) {
                     </Card>
 
                     {/* Status Card */}
-                    <Card className="border-none shadow-2xl shadow-sky-600/20 rounded-[40px] overflow-hidden bg-zinc-900 text-white">
-                      <CardContent className="p-10 flex flex-col justify-between gap-12">
+                    <Card className="border-none shadow-[0_18px_44px_rgba(8,26,51,0.18)] rounded-[24px] overflow-hidden bg-zinc-900 text-white">
+                      <CardContent className="p-8 flex flex-col justify-between gap-8">
                         <div className="space-y-6">
                           <div className="w-16 h-16 bg-white/10 rounded-3xl flex items-center justify-center backdrop-blur-xl border border-white/10">
                             <Activity className="w-8 h-8 text-sky-400" />
                           </div>
                           <div className="space-y-2">
-                            <h3 className="text-2xl font-black tracking-tight uppercase">Estado del Sistema</h3>
+                            <h3 className="text-2xl font-extrabold tracking-tight">Estado del Sistema</h3>
                             <p className="text-zinc-400 text-sm font-medium leading-relaxed">
                               Tu complejo está operando al 100%. Todos los servicios están activos y sincronizados.
                             </p>
@@ -796,7 +767,7 @@ export default function Admin({ onLogout }: AdminProps) {
                             />
                           </div>
                           <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-3 text-[11px] font-black uppercase tracking-[0.2em]">
+                            <div className="flex items-center gap-3 text-xs font-bold">
                               <div className="w-3 h-3 bg-emerald-400 rounded-full animate-pulse shadow-[0_0_12px_rgba(52,211,153,0.6)]" />
                               Online y Operativo
                             </div>
@@ -813,19 +784,19 @@ export default function Admin({ onLogout }: AdminProps) {
                 <div className="space-y-6">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 px-4 py-2 bg-white rounded-[24px] border border-zinc-100 shadow-sm">
                     <div className="space-y-0.5">
-                      <h2 className="text-lg font-black text-zinc-900 tracking-tight uppercase">Gestión de Canchas</h2>
-                      <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Espacios de juego disponibles</p>
+                      <h2 className="text-lg font-extrabold text-zinc-900 tracking-tight">Gestión de Canchas</h2>
+                      <p className="text-[10px] text-zinc-500 font-bold tracking-wide">Espacios de juego disponibles</p>
                     </div>
                     <div className="flex items-center gap-2">
                       <Button 
                         variant={isDeleteMode ? 'danger' : 'outline'} 
                         onClick={() => setIsDeleteMode(!isDeleteMode)}
-                        className="gap-2 px-4 py-2.5 rounded-xl border-zinc-200 text-[9px] font-black uppercase tracking-widest"
+                        className="gap-2 px-4 py-2.5 rounded-xl border-zinc-200 text-xs font-bold"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                         {isDeleteMode ? 'CANCELAR' : 'MODO BORRAR'}
                       </Button>
-                      <Button onClick={() => setIsPitchModalOpen(true)} className="gap-2 px-4 py-2.5 rounded-xl shadow-lg shadow-sky-500/20 text-[9px] font-black uppercase tracking-widest">
+                      <Button onClick={() => setIsPitchModalOpen(true)} className="gap-2 px-4 py-2.5 rounded-xl shadow-lg shadow-sky-500/20 text-xs font-bold">
                         <Plus className="w-3.5 h-3.5" />
                         NUEVA CANCHA
                       </Button>
@@ -837,7 +808,7 @@ export default function Admin({ onLogout }: AdminProps) {
                         <Card className="border-none shadow-sm hover:shadow-xl transition-all group bg-white rounded-[28px] overflow-hidden border border-transparent hover:border-sky-100">
                           <CardContent className="p-6">
                             <div className="flex items-start justify-between mb-6">
-                              <div className="w-12 h-12 bg-zinc-50 rounded-xl flex items-center justify-center text-zinc-400 group-hover:bg-sky-50 group-hover:text-sky-600 transition-all font-black text-lg border border-zinc-100 shadow-sm">
+                              <div className="w-12 h-12 bg-zinc-50 rounded-xl flex items-center justify-center text-zinc-400 group-hover:bg-sky-50 group-hover:text-sky-600 transition-all font-extrabold text-lg border border-zinc-100 shadow-sm">
                                 {pitch.type}
                               </div>
                               <div className="flex items-center gap-1">
@@ -875,9 +846,9 @@ export default function Admin({ onLogout }: AdminProps) {
                             
                             <div className="space-y-4">
                               <div>
-                                <h4 className="font-black text-base text-zinc-900 group-hover:text-sky-600 transition-colors uppercase tracking-tight">{pitch.name}</h4>
+                                <h4 className="font-extrabold text-base text-zinc-900 group-hover:text-sky-600 transition-colors tracking-tight">{pitch.name}</h4>
                                 <div className="flex items-center gap-2 mt-1">
-                                  <Badge variant={pitch.active ? 'success' : 'neutral'} className="text-[8px] px-2 py-0.5 font-black tracking-widest uppercase">
+                                  <Badge variant={pitch.active ? 'success' : 'neutral'} className="text-[8px] px-2 py-0.5 font-extrabold tracking-wide">
                                     {pitch.active ? 'ACTIVA' : 'INACTIVA'}
                                   </Badge>
                                 </div>
@@ -886,10 +857,10 @@ export default function Admin({ onLogout }: AdminProps) {
                               <div className="pt-4 border-t border-zinc-50 flex items-center justify-between">
                                 <div className="flex items-center gap-1.5 text-zinc-400">
                                   <DollarSign className="w-3.5 h-3.5" />
-                                  <span className="text-sm font-black text-zinc-900">${pitch.price}</span>
-                                  <span className="text-[9px] font-bold uppercase tracking-tighter">/ hora</span>
+                                  <span className="text-sm font-extrabold text-zinc-900">${pitch.price}</span>
+                                  <span className="text-[9px] font-bold tracking-tighter">/ hora</span>
                                 </div>
-                                <div className="flex items-center gap-1 text-[9px] font-black text-zinc-300 uppercase tracking-widest">
+                                <div className="flex items-center gap-1 text-[9px] font-extrabold text-zinc-300 tracking-wide">
                                   ID: {pitch.id.slice(0, 4)}
                                 </div>
                               </div>
@@ -906,14 +877,14 @@ export default function Admin({ onLogout }: AdminProps) {
                 <div className="space-y-6">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 px-4 py-2 bg-white rounded-[24px] border border-zinc-100 shadow-sm">
                     <div className="space-y-0.5">
-                      <h2 className="text-lg font-black text-zinc-900 tracking-tight uppercase">Gestión de Productos</h2>
-                      <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Inventario de buffet y tienda</p>
+                      <h2 className="text-lg font-extrabold text-zinc-900 tracking-tight">Gestión de Productos</h2>
+                      <p className="text-[10px] text-zinc-500 font-bold tracking-wide">Inventario de buffet y tienda</p>
                     </div>
                     <div className="flex items-center gap-2">
                       <Button 
                         variant={isDeleteMode ? 'danger' : 'outline'} 
                         onClick={() => setIsDeleteMode(!isDeleteMode)}
-                        className="gap-2 px-4 py-2.5 rounded-xl border-zinc-200 text-[9px] font-black uppercase tracking-widest"
+                        className="gap-2 px-4 py-2.5 rounded-xl border-zinc-200 text-xs font-bold"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                         {isDeleteMode ? 'CANCELAR' : 'MODO BORRAR'}
@@ -921,7 +892,7 @@ export default function Admin({ onLogout }: AdminProps) {
                       <Button 
                         variant="outline"
                         onClick={() => setIsBulkStockModalOpen(true)} 
-                        className="gap-2 px-4 py-2.5 rounded-xl border-zinc-200 text-[9px] font-black uppercase tracking-widest"
+                        className="gap-2 px-4 py-2.5 rounded-xl border-zinc-200 text-xs font-bold"
                       >
                         <Package className="w-3.5 h-3.5" />
                         CARGA RÁPIDA DE STOCK
@@ -932,7 +903,7 @@ export default function Admin({ onLogout }: AdminProps) {
                           setProductForm(defaultProductForm);
                           setIsProductModalOpen(true);
                         }}
-                        className="gap-2 px-4 py-2.5 rounded-xl shadow-lg shadow-sky-500/20 text-[9px] font-black uppercase tracking-widest"
+                        className="gap-2 px-4 py-2.5 rounded-xl shadow-lg shadow-sky-500/20 text-xs font-bold"
                       >
                         <Plus className="w-3.5 h-3.5" />
                         NUEVO PRODUCTO
@@ -983,8 +954,8 @@ export default function Admin({ onLogout }: AdminProps) {
                             
                             <div className="space-y-3 flex-1 flex flex-col">
                               <div>
-                                <h4 className="font-black text-sm text-zinc-900 group-hover:text-sky-600 transition-colors truncate uppercase tracking-tight">{product.name}</h4>
-                                <Badge variant="neutral" className="text-[7px] px-2 py-0.5 font-black tracking-widest mt-1 uppercase">
+                                <h4 className="font-extrabold text-sm text-zinc-900 group-hover:text-sky-600 transition-colors truncate tracking-tight">{product.name}</h4>
+                                <Badge variant="neutral" className="mt-1 px-2 py-0.5 text-[8px] font-semibold">
                                   {product.category}
                                 </Badge>
                               </div>
@@ -992,9 +963,9 @@ export default function Admin({ onLogout }: AdminProps) {
                               <div className="mt-auto pt-4 space-y-3">
                                 <div className="flex items-center justify-between bg-zinc-50 p-2.5 rounded-xl border border-zinc-100">
                                   <div className="flex flex-col">
-                                    <span className="text-[9px] font-black text-zinc-400 uppercase tracking-widest">Stock Actual</span>
+                                    <span className="text-[10px] font-semibold text-zinc-500 tracking-wide">Stock Actual</span>
                                     <span className={cn(
-                                      "text-lg font-black leading-none mt-0.5",
+                                      "text-lg font-extrabold leading-none mt-0.5",
                                       product.stock <= 0 ? "text-red-500" : 
                                       product.stock <= (product.min_stock ?? 5) ? "text-amber-500" : "text-emerald-500"
                                     )}>
@@ -1009,7 +980,7 @@ export default function Admin({ onLogout }: AdminProps) {
                                       setStockUpdateQuantity(0);
                                       setIsStockModalOpen(true);
                                     }}
-                                    className="h-8 px-3 rounded-lg text-[9px] font-black uppercase tracking-widest border-zinc-200"
+                                    className="h-8 px-3 rounded-lg text-xs font-bold border-zinc-200"
                                   >
                                     Ajustar
                                   </Button>
@@ -1017,9 +988,9 @@ export default function Admin({ onLogout }: AdminProps) {
 
                                 <div className="pt-3 border-t border-zinc-50 flex items-center justify-between">
                                   <div className="flex items-center gap-1">
-                                    <span className="text-sm font-black text-zinc-900">${product.price}</span>
+                                    <span className="text-sm font-extrabold text-zinc-900">${product.price}</span>
                                   </div>
-                                  <div className="text-[8px] font-bold text-zinc-300 uppercase tracking-tighter">
+                                  <div className="text-[8px] font-bold text-zinc-300 tracking-tighter">
                                     #{product.id.slice(0, 4)}
                                   </div>
                                 </div>
@@ -1037,18 +1008,18 @@ export default function Admin({ onLogout }: AdminProps) {
                 <div className="space-y-8">
                   <div className="flex items-center justify-between">
                     <div className="space-y-1">
-                      <h2 className="text-2xl font-black text-zinc-900 tracking-tight uppercase">Configuración del Sistema</h2>
+                      <h2 className="text-2xl font-extrabold text-zinc-900 tracking-tight">Configuración del Sistema</h2>
                       <p className="text-zinc-500 font-medium text-xs">Mantenimiento, seguridad y registros de actividad</p>
                     </div>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <Card className="border-none shadow-sm rounded-[40px] overflow-hidden bg-white group hover:shadow-xl transition-all">
+                    <Card className="border-none shadow-sm rounded-[24px] overflow-hidden bg-white group hover:shadow-xl transition-all">
                       <CardHeader className="p-8 pb-4">
                         <div className="w-14 h-14 bg-zinc-100 rounded-2xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
                           <History className="w-7 h-7 text-zinc-900" />
                         </div>
-                        <h3 className="text-xl font-black text-zinc-900 tracking-tight">Logs de Auditoría</h3>
+                        <h3 className="text-xl font-extrabold text-zinc-900 tracking-tight">Logs de Auditoría</h3>
                       </CardHeader>
                       <CardContent className="p-8 pt-0 space-y-6">
                         <p className="text-sm text-zinc-500 font-medium leading-relaxed">
@@ -1056,7 +1027,7 @@ export default function Admin({ onLogout }: AdminProps) {
                         </p>
                         <Button 
                           variant="outline" 
-                          className="w-full py-6 border-zinc-200 text-zinc-900 hover:bg-zinc-50 gap-3 rounded-2xl font-black text-xs uppercase tracking-widest"
+                          className="w-full py-6 border-zinc-200 text-zinc-900 hover:bg-zinc-50 gap-3 rounded-2xl font-extrabold text-xs tracking-wide"
                           onClick={async () => {
                             const logs = await dataService.getAuditLogs({ clientId: effectiveClientId || undefined, limit: 200 });
                             setAuditLogs(logs);
@@ -1069,12 +1040,12 @@ export default function Admin({ onLogout }: AdminProps) {
                       </CardContent>
                     </Card>
 
-                    <Card className="border-none shadow-sm rounded-[40px] overflow-hidden bg-zinc-900 text-white group hover:shadow-xl transition-all">
+                    <Card className="border-none shadow-sm rounded-[24px] overflow-hidden bg-zinc-900 text-white group hover:shadow-xl transition-all">
                       <CardHeader className="p-8 pb-4">
                         <div className="w-14 h-14 bg-white/10 rounded-2xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
                           <ShieldCheck className="w-7 h-7 text-sky-400" />
                         </div>
-                        <h3 className="text-xl font-black tracking-tight">Seguridad de Cuenta</h3>
+                        <h3 className="text-xl font-extrabold tracking-tight">Seguridad de Cuenta</h3>
                       </CardHeader>
                       <CardContent className="p-8 pt-0 space-y-6">
                         <p className="text-sm text-zinc-400 font-medium leading-relaxed">
@@ -1082,7 +1053,7 @@ export default function Admin({ onLogout }: AdminProps) {
                         </p>
                         <Button 
                           variant="danger" 
-                          className="w-full py-6 shadow-xl shadow-red-500/20 gap-3 rounded-2xl font-black text-xs uppercase tracking-widest"
+                          className="w-full py-6 shadow-xl shadow-red-500/20 gap-3 rounded-2xl font-extrabold text-xs tracking-wide"
                           onClick={() => setIsLogoutConfirmOpen(true)}
                         >
                           <LogOut className="w-5 h-5" />
@@ -1113,10 +1084,10 @@ export default function Admin({ onLogout }: AdminProps) {
               <div key={log.id} className="p-4 bg-zinc-50 rounded-2xl border border-zinc-100 space-y-3">
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex flex-wrap items-center gap-2">
-                    <Badge variant="neutral" className="text-[10px] font-black uppercase tracking-widest">
+                    <Badge variant="neutral" className="text-xs font-bold">
                       {log.entity || 'sistema'}
                     </Badge>
-                    <Badge variant="neutral" className="text-[10px] font-black uppercase tracking-widest bg-white">
+                    <Badge variant="neutral" className="text-xs font-bold bg-white">
                       {log.action}
                     </Badge>
                   </div>
@@ -1126,7 +1097,7 @@ export default function Admin({ onLogout }: AdminProps) {
                   </div>
                 </div>
                 <p className="text-sm font-bold text-zinc-900">{log.description || log.details}</p>
-                <div className="flex flex-wrap items-center gap-2 text-[10px] font-black text-zinc-400 uppercase tracking-widest">
+                <div className="flex flex-wrap items-center gap-2 text-[10px] font-semibold text-zinc-500 tracking-wide">
                   <div className="flex items-center gap-2">
                     <UserIcon className="w-3 h-3" />
                     Realizado por: {log.user}
@@ -1141,7 +1112,7 @@ export default function Admin({ onLogout }: AdminProps) {
                   <div className="p-3 bg-white rounded-xl border border-zinc-200 text-[11px] text-zinc-500 font-medium space-y-1">
                     {Object.entries(log.metadata).slice(0, 4).map(([key, value]) => (
                       <div key={key} className="flex items-start justify-between gap-3">
-                        <span className="uppercase tracking-wider text-zinc-400 font-black">{key}</span>
+                        <span className="tracking-wide text-zinc-400 font-extrabold">{key}</span>
                         <span className="text-right break-all">
                           {typeof value === 'object' ? JSON.stringify(value) : String(value)}
                         </span>
@@ -1176,7 +1147,7 @@ export default function Admin({ onLogout }: AdminProps) {
         <form onSubmit={handleSavePitch} className="space-y-6">
           <div className="space-y-4">
             <div className="space-y-2">
-              <label className="text-xs font-black text-zinc-500 uppercase tracking-widest ml-1 flex items-center gap-2">
+              <label className="text-xs font-semibold text-zinc-500 tracking-wide ml-1 flex items-center gap-2">
                 <LayoutGrid className="w-3 h-3" />
                 Nombre de la cancha
               </label>
@@ -1192,7 +1163,7 @@ export default function Admin({ onLogout }: AdminProps) {
  
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <label className="text-xs font-black text-zinc-500 uppercase tracking-widest ml-1 flex items-center gap-2">
+                <label className="text-xs font-semibold text-zinc-500 tracking-wide ml-1 flex items-center gap-2">
                   <Activity className="w-3 h-3" />
                   Tipo
                 </label>
@@ -1207,7 +1178,7 @@ export default function Admin({ onLogout }: AdminProps) {
                 </select>
               </div>
               <div className="space-y-2">
-                <label className="text-xs font-black text-zinc-500 uppercase tracking-widest ml-1 flex items-center gap-2">
+                <label className="text-xs font-semibold text-zinc-500 tracking-wide ml-1 flex items-center gap-2">
                   <DollarSign className="w-3 h-3" />
                   Precio
                 </label>
@@ -1236,7 +1207,7 @@ export default function Admin({ onLogout }: AdminProps) {
             </div>
           </div>
 
-          <Button type="submit" className="w-full py-5 text-lg font-black tracking-tight shadow-xl shadow-sky-500/20">
+          <Button type="submit" className="w-full py-5 text-lg font-extrabold tracking-tight shadow-lg shadow-sky-500/15">
             {editingPitch ? 'ACTUALIZAR CANCHA' : 'CREAR CANCHA'}
           </Button>
         </form>
@@ -1255,7 +1226,7 @@ export default function Admin({ onLogout }: AdminProps) {
         <form onSubmit={handleSaveProduct} className="space-y-6">
           <div className="space-y-4">
             <div className="space-y-2">
-              <label className="text-xs font-black text-zinc-500 uppercase tracking-widest ml-1 flex items-center gap-2">
+              <label className="text-xs font-semibold text-zinc-500 tracking-wide ml-1 flex items-center gap-2">
                 <Package className="w-3 h-3" />
                 Nombre del Producto
               </label>
@@ -1271,7 +1242,7 @@ export default function Admin({ onLogout }: AdminProps) {
  
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <label className="text-xs font-black text-zinc-500 uppercase tracking-widest ml-1 flex items-center gap-2">
+                <label className="text-xs font-semibold text-zinc-500 tracking-wide ml-1 flex items-center gap-2">
                   <List className="w-3 h-3" />
                   Categoría
                 </label>
@@ -1286,7 +1257,7 @@ export default function Admin({ onLogout }: AdminProps) {
                 </select>
               </div>
               <div className="space-y-2">
-                <label className="text-xs font-black text-zinc-500 uppercase tracking-widest ml-1 flex items-center gap-2">
+                <label className="text-xs font-semibold text-zinc-500 tracking-wide ml-1 flex items-center gap-2">
                   <DollarSign className="w-3 h-3" />
                   Precio
                 </label>
@@ -1305,7 +1276,7 @@ export default function Admin({ onLogout }: AdminProps) {
 
             {!editingProduct && (
               <div className="space-y-2">
-                <label className="text-xs font-black text-zinc-500 uppercase tracking-widest ml-1 flex items-center gap-2">
+                <label className="text-xs font-semibold text-zinc-500 tracking-wide ml-1 flex items-center gap-2">
                   <Package className="w-3 h-3" />
                   Stock Inicial
                 </label>
@@ -1320,7 +1291,7 @@ export default function Admin({ onLogout }: AdminProps) {
             )}
 
             <div className="space-y-2">
-              <label className="text-xs font-black text-zinc-500 uppercase tracking-widest ml-1 flex items-center gap-2">
+              <label className="text-xs font-semibold text-zinc-500 tracking-wide ml-1 flex items-center gap-2">
                 <Activity className="w-3 h-3" />
                 Stock Mínimo (Opcional)
               </label>
@@ -1334,7 +1305,7 @@ export default function Admin({ onLogout }: AdminProps) {
             </div>
           </div>
 
-          <Button type="submit" className="w-full py-5 text-lg font-black tracking-tight shadow-xl shadow-sky-500/20">
+          <Button type="submit" className="w-full py-5 text-lg font-extrabold tracking-tight shadow-lg shadow-sky-500/15">
             {editingProduct ? 'ACTUALIZAR PRODUCTO' : 'CREAR PRODUCTO'}
           </Button>
         </form>
@@ -1354,14 +1325,14 @@ export default function Admin({ onLogout }: AdminProps) {
           <div className="space-y-6">
             <div className="bg-zinc-50 p-4 rounded-2xl border border-zinc-100 flex items-center justify-between">
               <div>
-                <h4 className="font-black text-zinc-900 uppercase tracking-tight">{stockUpdateProduct.name}</h4>
-                <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mt-1">Stock Actual</p>
+                <h4 className="font-extrabold text-zinc-900 tracking-tight">{stockUpdateProduct.name}</h4>
+                <p className="text-[10px] font-bold text-zinc-500 tracking-wide mt-1">Stock Actual</p>
               </div>
-              <span className="text-2xl font-black text-zinc-900">{stockUpdateProduct.stock}</span>
+              <span className="text-2xl font-extrabold text-zinc-900">{stockUpdateProduct.stock}</span>
             </div>
 
             <div className="space-y-2">
-              <label className="text-xs font-black text-zinc-500 uppercase tracking-widest ml-1 flex items-center gap-2">
+              <label className="text-xs font-semibold text-zinc-500 tracking-wide ml-1 flex items-center gap-2">
                 <Package className="w-3 h-3" />
                 Cantidad a agregar / quitar
               </label>
@@ -1369,20 +1340,20 @@ export default function Admin({ onLogout }: AdminProps) {
                 <Button 
                   variant="outline" 
                   onClick={() => setStockUpdateQuantity(prev => prev - 1)}
-                  className="w-12 h-12 rounded-2xl border-zinc-200 text-xl font-black"
+                  className="w-12 h-12 rounded-2xl border-zinc-200 text-xl font-extrabold"
                 >
                   -
                 </Button>
                 <input
                   type="number"
-                  className="flex-1 px-5 py-4 bg-zinc-50 border border-zinc-200 rounded-2xl focus:ring-2 focus:ring-sky-500 outline-none transition-all text-zinc-900 font-black text-center text-xl"
+                  className="flex-1 px-5 py-4 bg-zinc-50 border border-zinc-200 rounded-2xl focus:ring-2 focus:ring-sky-500 outline-none transition-all text-zinc-900 font-extrabold text-center text-xl"
                   value={stockUpdateQuantity}
                   onChange={e => setStockUpdateQuantity(Number(e.target.value))}
                 />
                 <Button 
                   variant="outline" 
                   onClick={() => setStockUpdateQuantity(prev => prev + 1)}
-                  className="w-12 h-12 rounded-2xl border-zinc-200 text-xl font-black"
+                  className="w-12 h-12 rounded-2xl border-zinc-200 text-xl font-extrabold"
                 >
                   +
                 </Button>
@@ -1393,8 +1364,8 @@ export default function Admin({ onLogout }: AdminProps) {
             </div>
 
             <div className="bg-sky-50 p-4 rounded-2xl border border-sky-100 flex items-center justify-between">
-              <span className="text-xs font-black text-sky-600 uppercase tracking-widest">Stock Final Esperado</span>
-              <span className="text-xl font-black text-sky-700">
+              <span className="text-xs font-extrabold text-sky-600 tracking-wide">Stock Final Esperado</span>
+              <span className="text-xl font-extrabold text-sky-700">
                 {stockUpdateProduct.stock + stockUpdateQuantity}
               </span>
             </div>
@@ -1402,7 +1373,7 @@ export default function Admin({ onLogout }: AdminProps) {
             <Button 
               onClick={handleStockUpdate} 
               disabled={stockUpdateQuantity === 0 || (stockUpdateProduct.stock + stockUpdateQuantity < 0)}
-              className="w-full py-5 text-lg font-black tracking-tight shadow-xl shadow-sky-500/20"
+              className="w-full py-5 text-lg font-extrabold tracking-tight shadow-lg shadow-sky-500/15"
             >
               CONFIRMAR AJUSTE
             </Button>
@@ -1424,9 +1395,9 @@ export default function Admin({ onLogout }: AdminProps) {
             {products.map(product => (
               <div key={product.id} className="flex items-center justify-between bg-white p-4 rounded-2xl border border-zinc-100 shadow-sm">
                 <div className="flex-1">
-                  <h4 className="font-black text-sm text-zinc-900 uppercase tracking-tight truncate pr-4">{product.name}</h4>
+                  <h4 className="font-extrabold text-sm text-zinc-900 tracking-tight truncate pr-4">{product.name}</h4>
                   <div className="flex items-center gap-2 mt-1">
-                    <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Actual:</span>
+                    <span className="text-[10px] font-bold text-zinc-500 tracking-wide">Actual:</span>
                     <Badge variant={product.stock <= 0 ? 'danger' : product.stock <= (product.min_stock ?? 5) ? 'warning' : 'success'} className="text-[9px] px-1.5 py-0">
                       {product.stock}
                     </Badge>
@@ -1436,7 +1407,7 @@ export default function Admin({ onLogout }: AdminProps) {
                   <input
                     type="number"
                     placeholder="+0"
-                    className="w-full px-3 py-2 bg-zinc-50 border border-zinc-200 rounded-xl focus:ring-2 focus:ring-sky-500 outline-none transition-all text-zinc-900 font-black text-center"
+                    className="w-full px-3 py-2 bg-zinc-50 border border-zinc-200 rounded-xl focus:ring-2 focus:ring-sky-500 outline-none transition-all text-zinc-900 font-extrabold text-center"
                     value={bulkStockUpdates[product.id] || ''}
                     onChange={e => {
                       const val = parseInt(e.target.value) || 0;
@@ -1454,7 +1425,7 @@ export default function Admin({ onLogout }: AdminProps) {
           <Button 
             onClick={() => setIsBulkStockPreviewOpen(true)}
             disabled={Object.values(bulkStockUpdates).every(v => v === 0)}
-            className="w-full py-5 text-lg font-black tracking-tight shadow-xl shadow-sky-500/20"
+            className="w-full py-5 text-lg font-extrabold tracking-tight shadow-lg shadow-sky-500/15"
           >
             REVISAR CAMBIOS
           </Button>
@@ -1497,14 +1468,14 @@ export default function Admin({ onLogout }: AdminProps) {
                 return (
                   <div key={productId} className="flex items-center justify-between bg-white p-3 rounded-xl border border-zinc-100">
                     <div className="flex-1 truncate pr-4">
-                      <span className="font-black text-xs text-zinc-900 uppercase">{product.name}</span>
+                      <span className="font-extrabold text-xs text-zinc-900 uppercase">{product.name}</span>
                     </div>
                     <div className="flex items-center gap-3 text-xs font-bold">
                       <span className="text-zinc-500 w-8 text-right">{product.stock}</span>
                       <span className={cn("w-12 text-center", numQty > 0 ? "text-emerald-500" : "text-red-500")}>
                         {numQty > 0 ? `+${numQty}` : numQty}
                       </span>
-                      <span className="text-zinc-900 w-8 text-right font-black">={finalStock}</span>
+                      <span className="text-zinc-900 w-8 text-right font-extrabold">={finalStock}</span>
                     </div>
                   </div>
                 );
@@ -1515,7 +1486,7 @@ export default function Admin({ onLogout }: AdminProps) {
             <Button 
               variant="outline" 
               onClick={() => setIsBulkStockPreviewOpen(false)}
-              className="flex-1 py-4 font-black tracking-tight"
+              className="flex-1 py-4 font-extrabold tracking-tight"
             >
               VOLVER A EDITAR
             </Button>
@@ -1525,7 +1496,7 @@ export default function Admin({ onLogout }: AdminProps) {
                 const product = products.find(p => p.id === id);
                 return product && (product.stock + qty < 0);
               })}
-              className="flex-1 py-4 font-black tracking-tight shadow-xl shadow-sky-500/20"
+              className="flex-1 py-4 font-extrabold tracking-tight shadow-lg shadow-sky-500/15"
             >
               CONFIRMAR
             </Button>
@@ -1546,7 +1517,7 @@ export default function Admin({ onLogout }: AdminProps) {
               <Link2 className="h-6 w-6" />
             </div>
             <div>
-              <p className="font-black text-zinc-900">Perfil público del complejo</p>
+              <p className="font-extrabold text-zinc-900">Perfil público del complejo</p>
               <p className="mt-1 text-sm leading-6 text-zinc-500">
                 Compartí este acceso para que tus clientes reserven directamente.
               </p>
@@ -1568,7 +1539,7 @@ export default function Admin({ onLogout }: AdminProps) {
               type="button"
               onClick={handleCopyPublicLink}
               disabled={!publicUrl}
-              className="rounded-2xl py-4 text-xs font-black uppercase tracking-widest"
+              className="rounded-2xl py-4 text-xs font-extrabold tracking-wide"
             >
               {hasCopiedPublicLink ? <Check className="mr-2 h-4 w-4" /> : <Copy className="mr-2 h-4 w-4" />}
               {hasCopiedPublicLink ? 'Copiado' : 'Copiar link'}
@@ -1578,7 +1549,7 @@ export default function Admin({ onLogout }: AdminProps) {
               variant="outline"
               onClick={handleSharePublicLink}
               disabled={!publicUrl}
-              className="rounded-2xl py-4 text-xs font-black uppercase tracking-widest"
+              className="rounded-2xl py-4 text-xs font-extrabold tracking-wide"
             >
               <Share2 className="mr-2 h-4 w-4" />
               Compartir
@@ -1590,7 +1561,7 @@ export default function Admin({ onLogout }: AdminProps) {
               href={publicUrl}
               target="_blank"
               rel="noreferrer"
-              className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-zinc-200 bg-white px-4 py-4 text-xs font-black uppercase tracking-widest text-zinc-700 transition hover:bg-zinc-50"
+              className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-zinc-200 bg-white px-4 py-4 text-xs font-extrabold tracking-wide text-zinc-700 transition hover:bg-zinc-50"
             >
               <ExternalLink className="h-4 w-4" />
               Abrir perfil público
@@ -1599,7 +1570,7 @@ export default function Admin({ onLogout }: AdminProps) {
             <button
               type="button"
               disabled
-              className="inline-flex w-full cursor-not-allowed items-center justify-center gap-2 rounded-2xl border border-zinc-200 bg-zinc-100 px-4 py-4 text-xs font-black uppercase tracking-widest text-zinc-400"
+              className="inline-flex w-full cursor-not-allowed items-center justify-center gap-2 rounded-2xl border border-zinc-200 bg-zinc-100 px-4 py-4 text-xs font-extrabold tracking-wide text-zinc-400"
             >
               <ExternalLink className="h-4 w-4" />
               Abrir perfil público

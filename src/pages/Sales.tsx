@@ -1,24 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import { format, isSameDay, startOfMonth, endOfMonth } from 'date-fns';
-import { es } from 'date-fns/locale';
-import { 
-  ShoppingBag, 
-  Plus, 
-  Search, 
-  TrendingUp, 
-  DollarSign, 
-  Package, 
-  Trash2, 
-  ChevronRight,
+import {
+  ShoppingBag,
+  Plus,
+  Search,
+  TrendingUp,
+  DollarSign,
+  Package,
+  Trash2,
   Beer,
   Utensils,
   Coffee,
-  CheckCircle2
+  CheckCircle2,
+  ArrowLeftRight,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Button } from '../components/Button';
-import { Card, CardContent, CardHeader } from '../components/Card';
-import { Badge } from '../components/Badge';
 import { Modal } from '../components/Modal';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { toast } from 'sonner';
@@ -26,6 +22,13 @@ import { dataService, api } from '../services/dataService';
 import { Product, Sale } from '../types';
 import { cn } from '../lib/utils';
 import { getEffectiveClientId } from '../lib/tenant';
+import { AdminPageHeader } from '../components/admin/AdminPageHeader';
+import { AdminMetricCard } from '../components/admin/AdminMetricCard';
+import { AdminSectionCard } from '../components/admin/AdminSectionCard';
+import { AdminEmptyState } from '../components/admin/AdminEmptyState';
+import { AdminActionButton } from '../components/admin/AdminActionButton';
+import { AdminToolbar } from '../components/admin/AdminToolbar';
+import { AdminStatusBadge } from '../components/admin/AdminStatusBadge';
 
 export default function SalesPage() {
   const [products, setProducts] = useState<Product[]>([]);
@@ -56,7 +59,7 @@ export default function SalesPage() {
     fetchData();
   }, [clientId, user]);
 
-  const filteredProducts = products.filter(p => 
+  const filteredProducts = products.filter(p =>
     p.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
@@ -96,7 +99,7 @@ export default function SalesPage() {
 
   const todaySales = sales.filter(s => isSameDay(s.date, new Date()));
   const todayIncome = todaySales.reduce((acc, s) => acc + s.totalPrice, 0);
-  
+
   const monthStart = startOfMonth(new Date());
   const monthEnd = endOfMonth(new Date());
   const monthSales = sales.filter(s => s.date >= monthStart && s.date <= monthEnd);
@@ -111,227 +114,239 @@ export default function SalesPage() {
   };
 
   return (
-    <div className="space-y-6 sm:space-y-8 pb-20">
-      <header className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-        <div>
-          <h1 className="text-3xl sm:text-4xl font-black text-zinc-900 tracking-tighter">Ventas & Bar</h1>
-          <p className="text-zinc-500 font-medium text-sm sm:text-base">Gestión de productos y consumos</p>
-        </div>
-        <div className="flex items-center gap-4 w-full lg:w-auto">
-          <div className="relative flex-1 lg:w-64">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-zinc-400" />
-            <input
-              type="text"
-              placeholder="Buscar producto..."
-              className="w-full pl-11 sm:pl-12 pr-4 py-2.5 sm:py-3 bg-white border border-zinc-100 rounded-2xl shadow-sm focus:ring-2 focus:ring-sky-500 outline-none transition-all text-zinc-900 text-sm"
-              value={searchTerm}
-              onChange={e => setSearchTerm(e.target.value)}
-            />
-          </div>
-        </div>
-      </header>
+    <div className="mx-auto w-full max-w-7xl space-y-5 pb-20">
+      <AdminPageHeader
+        title="Ventas & Bar"
+        meta="Operación comercial"
+        icon={<ShoppingBag className="h-6 w-6" />}
+        subtitle="Gestioná productos, consumos y ventas recientes desde una vista rápida."
+        actions={
+          <AdminToolbar className="w-full min-w-0 sm:w-[360px]">
+            <div className="relative w-full">
+              <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Buscar producto..."
+                className="w-full rounded-2xl border border-slate-200 bg-white py-3 pl-12 pr-4 text-sm font-semibold text-[#081A33] outline-none transition-all placeholder:text-slate-400 focus:border-sky-200 focus:ring-2 focus:ring-[#0EA5E9]/20"
+                value={searchTerm}
+                onChange={e => setSearchTerm(e.target.value)}
+              />
+            </div>
+          </AdminToolbar>
+        }
+      />
 
-      {/* Stats */}
-      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {[
-          { label: 'Ventas Hoy', value: todaySales.length, icon: ShoppingBag, color: 'bg-blue-500', show: true },
-          { label: 'Ingresos Hoy', value: `$${todayIncome}`, icon: DollarSign, color: 'bg-sky-500', show: isAdmin },
-          { label: 'Ingresos Mes', value: `$${monthIncome}`, icon: TrendingUp, color: 'bg-purple-500', show: isAdmin },
+          { label: 'Ventas hoy', value: todaySales.length, icon: ShoppingBag, tone: 'blue' as const, helperText: 'Operaciones del día', show: true },
+          { label: 'Ingresos hoy', value: `$${todayIncome}`, icon: DollarSign, tone: 'green' as const, helperText: 'Total cobrado hoy', show: isAdmin },
+          { label: 'Ingresos mes', value: `$${monthIncome}`, icon: TrendingUp, tone: 'gold' as const, helperText: 'Acumulado mensual', show: isAdmin },
         ].filter(s => s.show).map((stat, i) => (
           <motion.div
             key={stat.label}
-            initial={{ opacity: 0, y: 20 }}
+            initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: i * 0.1 }}
+            transition={{ delay: i * 0.08 }}
           >
-          <Card className="border-none shadow-sm overflow-hidden group bg-white">
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div className={cn("w-12 h-12 rounded-2xl flex items-center justify-center text-white shadow-lg", stat.color)}>
-                  <stat.icon className="w-6 h-6" />
-                </div>
-                <div className="text-right">
-                  <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest mb-1">{stat.label}</p>
-                  <p className="text-2xl font-black text-zinc-900">{stat.value}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+            <AdminMetricCard
+              label={stat.label}
+              value={stat.value}
+              icon={stat.icon}
+              tone={stat.tone}
+              helperText={stat.helperText}
+              className="h-full"
+            />
           </motion.div>
         ))}
       </section>
 
-      {/* Success Toast */}
       <AnimatePresence>
         {successMessage && (
           <motion.div
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
-            className="fixed top-24 right-6 z-50 bg-sky-500 text-white px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-3 font-bold"
+            className="fixed right-6 top-24 z-50 flex items-center gap-3 rounded-2xl border border-sky-200 bg-[#0EA5E9] px-6 py-4 font-bold text-white shadow-[0_18px_40px_rgba(14,165,233,0.28)]"
           >
-            <CheckCircle2 className="w-6 h-6" />
+            <CheckCircle2 className="h-6 w-6" />
             {successMessage}
           </motion.div>
         )}
       </AnimatePresence>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Products List */}
-        <div className="lg:col-span-2 space-y-4">
-          <h2 className="text-2xl font-black text-zinc-900 tracking-tight flex items-center gap-2">
-            <Package className="w-6 h-6 text-sky-500" />
-            Productos Disponibles
-          </h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {filteredProducts.map((product) => {
-              const Icon = getCategoryIcon(product.category);
-              const isOutOfStock = product.stock <= 0;
-              const isLowStock = product.stock > 0 && product.stock <= product.min_stock;
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <div className="lg:col-span-2">
+          <AdminSectionCard
+            title="Productos disponibles"
+            eyebrow={`${filteredProducts.length} visibles`}
+            icon={<Package className="h-5 w-5" />}
+          >
+            {filteredProducts.length === 0 ? (
+              <AdminEmptyState
+                icon={<Package className="h-5 w-5" />}
+                title="No hay productos para mostrar"
+                description="Probá con otra búsqueda o cargá productos desde Configuración."
+              />
+            ) : (
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                {filteredProducts.map((product) => {
+                  const Icon = getCategoryIcon(product.category);
+                  const isOutOfStock = product.stock <= 0;
+                  const isLowStock = product.stock > 0 && product.stock <= product.min_stock;
 
-              return (
-                <motion.div key={product.id} whileHover={!isOutOfStock ? { scale: 1.02 } : {}} whileTap={!isOutOfStock ? { scale: 0.98 } : {}}>
-                  <Card 
-                    className={cn(
-                      "border-none shadow-sm transition-all bg-white relative overflow-hidden",
-                      isOutOfStock ? "opacity-60 cursor-not-allowed" : "hover:shadow-xl cursor-pointer group",
-                      isLowStock ? "ring-2 ring-yellow-400" : ""
-                    )}
-                    onClick={() => {
-                      if (isOutOfStock) return;
-                      setSelectedProduct(product);
-                      setQuantity(1);
-                      setIsSaleModalOpen(true);
-                    }}
-                  >
-                    {isOutOfStock && (
-                      <div className="absolute inset-0 bg-red-500/10 z-10 flex items-center justify-center backdrop-blur-[1px]">
-                        <Badge variant="danger" className="font-black tracking-widest uppercase">Sin Stock</Badge>
-                      </div>
-                    )}
-                    <CardContent className="p-6 flex items-center justify-between">
-                      <div className="flex items-center gap-4">
-                        <div className="w-14 h-14 bg-zinc-50 rounded-2xl flex items-center justify-center text-zinc-400 group-hover:bg-sky-50 group-hover:text-sky-500 transition-colors">
-                          <Icon className="w-7 h-7" />
+                  return (
+                    <motion.button
+                      key={product.id}
+                      type="button"
+                      whileHover={!isOutOfStock ? { y: -3 } : {}}
+                      whileTap={!isOutOfStock ? { scale: 0.98 } : {}}
+                      disabled={isOutOfStock}
+                      onClick={() => {
+                        if (isOutOfStock) return;
+                        setSelectedProduct(product);
+                        setQuantity(1);
+                        setIsSaleModalOpen(true);
+                      }}
+                      className={cn(
+                        'group relative flex w-full items-center justify-between overflow-hidden rounded-[22px] border bg-white p-4 text-left shadow-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0EA5E9]/30 sm:p-5',
+                        isOutOfStock
+                          ? 'cursor-not-allowed border-red-100 bg-red-50/40 opacity-70'
+                          : 'border-slate-200/80 hover:border-sky-200 hover:shadow-[0_16px_36px_rgba(8,26,51,0.08)]',
+                        isLowStock && 'border-amber-200 bg-amber-50/30'
+                      )}
+                    >
+                      <div className="flex min-w-0 items-center gap-4">
+                        <div
+                          className={cn(
+                            'flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border transition-colors',
+                            isOutOfStock
+                              ? 'border-red-100 bg-white text-[#EF4444]'
+                              : 'border-slate-100 bg-[#F6F8FB] text-[#64748B] group-hover:bg-[#DDF3FF] group-hover:text-[#0EA5E9]'
+                          )}
+                        >
+                          <Icon className="h-7 w-7" />
                         </div>
-                        <div>
-                          <h4 className="font-black text-zinc-900 group-hover:text-sky-600 transition-colors">{product.name}</h4>
-                          <div className="flex items-center gap-2 mt-1">
-                            <p className="text-lg font-black text-zinc-400">${product.price}</p>
-                            <Badge variant={isLowStock ? "warning" : "neutral"} className={cn("text-[10px] font-bold uppercase", isLowStock ? "bg-yellow-100 text-yellow-700" : "")}>
+                        <div className="min-w-0">
+                          <h4 className="truncate font-extrabold text-[#0F2747] transition-colors group-hover:text-[#0EA5E9]">
+                            {product.name}
+                          </h4>
+                          <div className="mt-2 flex flex-wrap items-center gap-2">
+                            <span className="text-lg font-extrabold text-[#081A33]">${product.price}</span>
+                            <AdminStatusBadge tone={isOutOfStock ? 'danger' : isLowStock ? 'warning' : 'neutral'}>
                               Stock: {product.stock}
-                            </Badge>
+                            </AdminStatusBadge>
                           </div>
                         </div>
                       </div>
-                      <div className={cn(
-                        "w-10 h-10 rounded-full flex items-center justify-center transition-all",
-                        isOutOfStock ? "bg-zinc-100 text-zinc-300" : "bg-zinc-50 text-zinc-300 group-hover:bg-sky-500 group-hover:text-white"
-                      )}>
-                        <Plus className="w-5 h-5" />
+                      <div
+                        className={cn(
+                          'flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl transition-all',
+                          isOutOfStock
+                            ? 'bg-red-50 text-[#EF4444]'
+                            : 'bg-[#DDF3FF] text-[#0EA5E9] group-hover:bg-[#0EA5E9] group-hover:text-white'
+                        )}
+                      >
+                        <Plus className="h-5 w-5" />
                       </div>
-                    </CardContent>
-                  </Card>
-                </motion.div>
-              );
-            })}
-          </div>
+                    </motion.button>
+                  );
+                })}
+              </div>
+            )}
+          </AdminSectionCard>
         </div>
 
-        {/* Recent Sales */}
-        <div className="space-y-4">
-          <h2 className="text-2xl font-black text-zinc-900 tracking-tight flex items-center gap-2">
-            <TrendingUp className="w-6 h-6 text-sky-500" />
-            Ventas Recientes
-          </h2>
-          <Card className="border-none shadow-sm rounded-3xl overflow-hidden bg-white">
-            <CardContent className="p-0">
-              <div className="divide-y divide-zinc-50">
-                {sales.length === 0 ? (
-                  <div className="p-12 text-center text-zinc-400">
-                    <ShoppingBag className="w-12 h-12 mx-auto mb-4 opacity-20" />
-                    <p className="font-bold">No hay ventas registradas</p>
-                  </div>
-                ) : (
-                  sales.slice().reverse().slice(0, 10).map((sale) => {
-                    const product = products.find(p => p.id === sale.productId);
-                    const saleQuantity = sale.quantity ?? sale.items?.reduce((acc, item) => acc + item.quantity, 0) ?? 0;
-                    return (
-                      <div key={sale.id} className="p-4 flex items-center justify-between hover:bg-zinc-50 transition-colors">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 bg-zinc-100 rounded-xl flex items-center justify-center text-zinc-500">
-                            <span className="text-xs font-black">{sale.quantity}x</span>
-                          </div>
-                          <div>
-                            <p className="text-sm font-black text-zinc-900">{product?.name}</p>
-                            <div className="flex items-center gap-2 mt-0.5">
-                              <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">
-                                {format(sale.date, 'HH:mm')} hs
-                              </p>
-                              {sale.paymentMethod && (
-                                <Badge variant="neutral" className="text-[8px] px-1.5 py-0 uppercase">
-                                  {sale.paymentMethod}
-                                </Badge>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <p className="font-black text-sky-600">${sale.totalPrice}</p>
-                          {isAdmin && (
-                            <Button 
-                              variant="ghost" 
-                              size="sm" 
-                              className="w-8 h-8 rounded-lg text-red-400 hover:text-red-600 hover:bg-red-50"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleDeleteSale(sale.id);
-                              }}
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
+        <AdminSectionCard
+          title="Ventas recientes"
+          eyebrow="Últimos movimientos"
+          icon={<TrendingUp className="h-5 w-5" />}
+        >
+          <div className="divide-y divide-slate-100 overflow-hidden rounded-[20px] border border-slate-100 bg-white">
+            {sales.length === 0 ? (
+              <div className="p-4">
+                <AdminEmptyState
+                  icon={<ShoppingBag className="h-5 w-5" />}
+                  title="No hay ventas registradas"
+                  description="Cuando registres consumos van a aparecer acá."
+                />
+              </div>
+            ) : (
+              sales.slice().reverse().slice(0, 10).map((sale) => {
+                const product = products.find(p => p.id === sale.productId);
+                const saleQuantity = sale.quantity ?? sale.items?.reduce((acc, item) => acc + item.quantity, 0) ?? 0;
+                return (
+                  <div key={sale.id} className="flex items-center justify-between gap-3 p-4 transition-colors hover:bg-[#F6F8FB]">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-[#64748B]">
+                        <span className="text-xs font-extrabold">{saleQuantity}x</span>
+                      </div>
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-extrabold text-[#0F2747]">{product?.name || 'Producto'}</p>
+                        <div className="mt-1 flex flex-wrap items-center gap-2">
+                          <p className="text-xs font-bold text-[#64748B]">{format(sale.date, 'HH:mm')} hs</p>
+                          {sale.paymentMethod && (
+                            <AdminStatusBadge tone="neutral" className="px-2 py-0.5 text-[10px]">
+                              {sale.paymentMethod}
+                            </AdminStatusBadge>
                           )}
                         </div>
                       </div>
-                    );
-                  })
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <p className="font-extrabold text-[#10B981]">${sale.totalPrice}</p>
+                      {isAdmin && (
+                        <AdminActionButton
+                          variant="ghost"
+                          size="icon"
+                          className="h-9 w-9 text-[#EF4444] hover:bg-red-50 hover:text-red-600"
+                          aria-label="Eliminar venta"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteSale(sale.id);
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </AdminActionButton>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </AdminSectionCard>
       </div>
 
-      {/* Sale Modal */}
       <Modal
         isOpen={isSaleModalOpen}
         onClose={() => setIsSaleModalOpen(false)}
-        title="Registrar Venta"
+        title="Registrar venta"
       >
         <form onSubmit={handleSale} className="space-y-6">
-          <div className="flex items-center gap-4 p-6 bg-zinc-50 rounded-3xl border border-zinc-100">
-            <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center shadow-sm">
-              {selectedProduct && React.createElement(getCategoryIcon(selectedProduct.category), { className: "w-8 h-8 text-sky-500" })}
+          <div className="flex items-center gap-4 rounded-[22px] border border-slate-200 bg-[#F6F8FB] p-5">
+            <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-white shadow-sm ring-1 ring-slate-100">
+              {selectedProduct && React.createElement(getCategoryIcon(selectedProduct.category), { className: 'h-8 w-8 text-[#0EA5E9]' })}
             </div>
-            <div>
-              <h3 className="text-2xl font-black text-zinc-900">{selectedProduct?.name}</h3>
-              <p className="text-xl font-black text-sky-600">${selectedProduct?.price}</p>
+            <div className="min-w-0">
+              <h3 className="truncate text-2xl font-extrabold text-[#0F2747]">{selectedProduct?.name}</h3>
+              <p className="text-xl font-extrabold text-[#0EA5E9]">${selectedProduct?.price}</p>
             </div>
           </div>
 
           <div className="space-y-4">
             <div className="space-y-2">
-              <label className="text-sm font-bold text-zinc-700 ml-1">Cantidad</label>
-              <div className="flex items-center gap-4">
-                <Button 
-                  type="button" 
-                  variant="outline" 
-                  className="w-14 h-14 rounded-2xl text-2xl font-black"
+              <label className="ml-1 text-sm font-bold text-[#0F2747]">Cantidad</label>
+              <div className="flex items-center gap-3">
+                <AdminActionButton
+                  type="button"
+                  variant="secondary"
+                  size="icon"
+                  className="h-14 w-14 text-2xl"
                   onClick={() => setQuantity(Math.max(1, quantity - 1))}
                 >
                   -
-                </Button>
-                <div className="flex-1 h-14 bg-zinc-50 rounded-2xl flex items-center justify-center text-2xl font-black text-zinc-900 border border-zinc-200 overflow-hidden">
+                </AdminActionButton>
+                <div className="flex h-14 flex-1 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-[#F6F8FB] text-2xl font-extrabold text-[#081A33]">
                   <input
                     type="number"
                     min="1"
@@ -343,77 +358,76 @@ export default function SalesPage() {
                         setQuantity(Math.min(selectedProduct?.stock || 1, Math.max(1, val)));
                       }
                     }}
-                    className="w-full h-full text-center bg-transparent outline-none"
+                    className="h-full w-full bg-transparent text-center outline-none"
                   />
                 </div>
-                <Button 
-                  type="button" 
-                  variant="outline" 
-                  className="w-14 h-14 rounded-2xl text-2xl font-black"
+                <AdminActionButton
+                  type="button"
+                  variant="secondary"
+                  size="icon"
+                  className="h-14 w-14 text-2xl"
                   onClick={() => setQuantity(Math.min(selectedProduct?.stock || 1, quantity + 1))}
                   disabled={quantity >= (selectedProduct?.stock || 1)}
                 >
                   +
-                </Button>
+                </AdminActionButton>
               </div>
-              <p className="text-xs text-zinc-500 font-medium text-right mt-1">
+              <p className="mt-1 text-right text-xs font-medium text-[#64748B]">
                 Stock disponible: {selectedProduct?.stock}
               </p>
             </div>
 
             <div className="space-y-3">
-              <label className="text-sm font-bold text-zinc-700 ml-1">Método de Pago</label>
+              <label className="ml-1 text-sm font-bold text-[#0F2747]">Método de pago</label>
               <div className="grid grid-cols-2 gap-3">
                 <button
                   type="button"
                   onClick={() => setPaymentMethod('efectivo')}
                   className={cn(
-                    "h-14 rounded-2xl border-2 font-black transition-all flex items-center justify-center gap-2",
-                    paymentMethod === 'efectivo' 
-                      ? "border-sky-500 bg-sky-50 text-sky-700" 
-                      : "border-zinc-200 bg-white text-zinc-500 hover:border-zinc-300"
+                    'flex h-14 items-center justify-center gap-2 rounded-2xl border font-extrabold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0EA5E9]/30',
+                    paymentMethod === 'efectivo'
+                      ? 'border-sky-200 bg-[#DDF3FF] text-[#0F2747]'
+                      : 'border-slate-200 bg-white text-[#64748B] hover:border-sky-200 hover:text-[#0EA5E9]'
                   )}
                 >
-                  <DollarSign className="w-5 h-5" />
+                  <DollarSign className="h-5 w-5" />
                   Efectivo
                 </button>
                 <button
                   type="button"
                   onClick={() => setPaymentMethod('transferencia')}
                   className={cn(
-                    "h-14 rounded-2xl border-2 font-black transition-all flex items-center justify-center gap-2",
-                    paymentMethod === 'transferencia' 
-                      ? "border-sky-500 bg-sky-50 text-sky-700" 
-                      : "border-zinc-200 bg-white text-zinc-500 hover:border-zinc-300"
+                    'flex h-14 items-center justify-center gap-2 rounded-2xl border font-extrabold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0EA5E9]/30',
+                    paymentMethod === 'transferencia'
+                      ? 'border-sky-200 bg-[#DDF3FF] text-[#0F2747]'
+                      : 'border-slate-200 bg-white text-[#64748B] hover:border-sky-200 hover:text-[#0EA5E9]'
                   )}
                 >
-                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
-                  </svg>
+                  <ArrowLeftRight className="h-5 w-5" />
                   Transferencia
                 </button>
               </div>
             </div>
 
-            <div className="pt-4 border-t border-zinc-100 flex items-center justify-between">
-              <span className="text-zinc-500 font-bold">Total a cobrar:</span>
-              <span className="text-3xl font-black text-sky-600">
+            <div className="flex items-center justify-between border-t border-slate-100 pt-4">
+              <span className="font-bold text-[#64748B]">Total a cobrar:</span>
+              <span className="text-2xl font-extrabold text-[#0EA5E9]">
                 ${(selectedProduct?.price || 0) * quantity}
               </span>
             </div>
           </div>
 
-          <Button type="submit" className="w-full py-5 text-lg font-black tracking-tight shadow-xl shadow-sky-500/20">
-            REGISTRAR VENTA
-          </Button>
+          <AdminActionButton type="submit" size="lg" className="w-full">
+            Registrar venta
+          </AdminActionButton>
         </form>
       </Modal>
-      {/* Confirm Delete Sale Modal */}
+
       <ConfirmModal
         isOpen={!!confirmDeleteSale}
         onClose={() => setConfirmDeleteSale(null)}
         onConfirm={executeDeleteSale}
-        title="Eliminar Venta"
+        title="Eliminar venta"
         message="¿Estás seguro de que deseas eliminar este registro de venta? Esta acción no se puede deshacer."
         confirmText="ELIMINAR"
         cancelText="CANCELAR"

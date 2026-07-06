@@ -35,7 +35,7 @@ import { ArgentinaConfettiIntro } from './components/public/ArgentinaConfettiInt
 import { WorldCupCountdownCard } from './components/world-cup/WorldCupCountdownCard';
 import { cn } from './lib/utils';
 import { getEffectiveClientId } from './lib/tenant';
-import { dataService } from './services/dataService';
+import { dataService, api } from './services/dataService';
 import { User, Client } from './types';
 import { supabase, checkSupabaseConnection } from './lib/supabase';
 
@@ -593,7 +593,7 @@ export default function App() {
           <div className="w-20 h-20 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-6">
             <ShieldCheck className="w-10 h-10 text-red-500" />
           </div>
-          <h1 className="text-2xl font-black text-white uppercase tracking-tight mb-4">Servicio Suspendido</h1>
+          <h1 className="text-2xl font-extrabold text-white tracking-tight mb-4">Servicio suspendido</h1>
           <p className="text-zinc-400 mb-8">
             El servicio se encuentra temporalmente suspendido o ha expirado. Por favor, contacta al administrador del sistema para regularizar la situación.
           </p>
@@ -1156,123 +1156,136 @@ export default function App() {
   }
 
   return (
-    <div className="h-screen flex flex-col lg:flex-row bg-[#F6F8FB] text-[#081A33] overflow-hidden">
+    <div className="h-screen overflow-hidden bg-[#EEF3F8] text-[#081A33] lg:flex">
       {/* Sidebar / Desktop Nav */}
-      <aside className="z-40 hidden lg:flex flex-col shrink-0 fixed left-0 top-0 h-screen w-56 bg-[#081A33] border-r border-[#0F2747] shadow-[18px_0_45px_rgba(8,26,51,0.18)] transition-all duration-300">
-        <div className="p-4 flex flex-col items-center gap-2 border-b border-white/10">
-          <div className="relative group block w-20">
-            {activeUser.role === 'admin' && (
-              <input 
-                type="file" 
-                id="logo-upload-sidebar" 
-                className="hidden" 
-                onChange={handleLogoUpload} 
-                accept="image/*" 
-              />
-            )}
-            <div 
-              onClick={() => setIsLogoModalOpen(true)}
-              className={cn(
-                "w-20 h-20 rounded-[24px] border flex flex-col items-center justify-center transition-all overflow-hidden bg-white shadow-lg shadow-black/20 relative group/logo cursor-pointer",
-                customLogo 
-                  ? "border-transparent" 
-                  : "border-sky-200/70 hover:border-[#0EA5E9]"
-              )}
-            >
-              {customLogo ? (
-                <img src={customLogo} alt="Logo" className="w-full h-full object-contain p-1.5" />
-              ) : (
-                <div className="flex flex-col items-center justify-center p-1.5">
-                  <ArgentinaLogo size="sm" showText={false} className="scale-105" />
-                  <p className="text-[6px] font-black text-sky-600 uppercase tracking-widest text-center mt-0.5">
-                    {activeUser.role === 'admin' ? 'CONFIGURAR' : 'GOLAZO'}
-                  </p>
+      <aside className="fixed left-0 top-0 z-40 hidden h-screen w-[248px] shrink-0 flex-col border-r border-sky-100/10 bg-[radial-gradient(circle_at_18%_0%,rgba(56,189,248,0.18),transparent_30%),linear-gradient(180deg,#081A33_0%,#07182F_56%,#061126_100%)] text-white shadow-[18px_0_44px_rgba(8,26,51,0.20)] lg:flex">
+        <div className="px-4 pb-4 pt-5">
+          <div className="rounded-[20px] border border-white/10 bg-white/[0.055] p-3 shadow-[0_14px_34px_rgba(0,0,0,0.14)]">
+            <div className="flex items-center gap-3">
+              <div className="relative block shrink-0">
+                {activeUser.role === 'admin' && (
+                  <input
+                    type="file"
+                    id="logo-upload-sidebar"
+                    className="hidden"
+                    onChange={handleLogoUpload}
+                    accept="image/*"
+                  />
+                )}
+                <div
+                  onClick={() => setIsLogoModalOpen(true)}
+                  className={cn(
+                    "group/logo flex h-12 w-12 cursor-pointer items-center justify-center overflow-hidden rounded-[16px] border bg-white shadow-[0_12px_26px_rgba(0,0,0,0.22)] transition-all hover:-translate-y-0.5 hover:shadow-[0_16px_34px_rgba(14,165,233,0.20)]",
+                    customLogo ? "border-white/20" : "border-sky-100/80 hover:border-[#7DD3FC]"
+                  )}
+                >
+                  {customLogo ? (
+                    <img src={customLogo} alt="Logo" className="h-full w-full object-contain p-2" />
+                  ) : (
+                    <div className="flex flex-col items-center justify-center p-2">
+                      <ArgentinaLogo size="sm" showText={false} className="scale-95" />
+                      <p className="mt-0.5 text-center text-[6px] font-bold uppercase tracking-widest text-sky-600">
+                        {activeUser.role === 'admin' ? 'LOGO' : 'GOLAZO'}
+                      </p>
+                    </div>
+                  )}
                 </div>
-              )}
+              </div>
+
+              <div className="min-w-0 flex-1">
+                <p className="text-[11px] font-semibold text-[#7DD3FC]">
+                  GOLAZO <span className="font-medium text-slate-400">by SurByte's</span>
+                </p>
+                <h3 className="mt-1 truncate text-base font-extrabold leading-tight text-white">
+                  {clientConfig?.name || 'Complejo'}
+                </h3>
+                <p className="mt-1 text-[11px] font-semibold text-slate-400">Panel administrador</p>
+              </div>
             </div>
-          </div>
-          <div className="text-center mt-3 px-2 w-full min-w-0">
-            <h3 className="truncate text-white font-black text-sm leading-tight">
-              {clientConfig?.name || 'Complejo'}
-            </h3>
-            <p className="text-[#0EA5E9] font-semibold text-[10px] tracking-wide mt-1">
-              GOLAZO <span className="text-slate-500">by SurByte</span>
-            </p>
           </div>
         </div>
 
-        <nav className="flex-1 px-3 py-4 space-y-1.5">
-          {filteredNavItems.map((item) => (
-            <button
-              key={item.id}
-              onClick={() => setCurrentPage(item.id as Page)}
-              className={cn(
-                "w-full flex items-center gap-3 px-3.5 py-3 rounded-2xl font-bold transition-all shrink-0 border relative overflow-hidden group text-sm",
-                currentPage === item.id 
-                  ? "text-white bg-white/10 border-white/10 shadow-[0_14px_28px_rgba(0,0,0,0.16)]"
-                  : "text-slate-300 hover:bg-white/[0.06] hover:text-white border-transparent hover:border-white/10"
-              )}
-            >
-              {currentPage === item.id && (
-                <span className="absolute left-0 top-2 bottom-2 w-1 rounded-r-full bg-[#0EA5E9]" />
-              )}
-              <item.icon className={cn(
-                "w-5 h-5 relative z-10",
-                currentPage === item.id ? "text-[#7DD3FC]" : "text-slate-400 group-hover:text-[#DDF3FF]"
-              )} />
-              <span className="relative z-10 truncate tracking-[-0.01em]">{item.label}</span>
-            </button>
-          ))}
+        <nav className="flex-1 space-y-1.5 px-3 py-2">
+          {filteredNavItems.map((item) => {
+            const isActive = currentPage === item.id;
+
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => setCurrentPage(item.id as Page)}
+                aria-current={isActive ? 'page' : undefined}
+                className={cn(
+                  "group relative flex w-full items-center gap-3 overflow-hidden rounded-[16px] border px-3.5 py-3 text-left text-sm font-semibold transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#38BDF8]/70",
+                  isActive
+                    ? "border-white/10 bg-white/[0.095] text-white shadow-[0_10px_24px_rgba(0,0,0,0.16)]"
+                    : "border-transparent text-slate-300 hover:border-white/10 hover:bg-white/[0.055] hover:text-white"
+                )}
+              >
+                {isActive && (
+                  <span className="absolute bottom-3 left-0 top-3 w-0.5 rounded-r-full bg-[#38BDF8] shadow-[0_0_14px_rgba(56,189,248,0.70)]" />
+                )}
+                <span
+                  className={cn(
+                    "relative z-10 flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-xl transition-colors",
+                    isActive ? "bg-[#DDF3FF] text-[#0F2747]" : "bg-white/[0.05] text-slate-400 group-hover:bg-white/[0.08] group-hover:text-[#DDF3FF]"
+                  )}
+                >
+                  <item.icon className="h-4 w-4" />
+                </span>
+                <span className="relative z-10 min-w-0 flex-1 truncate leading-5">{item.label}</span>
+              </button>
+            );
+          })}
         </nav>
 
-        <div className="mt-auto p-4 border-t border-white/10 shrink-0 bg-[#07172d]">
-          {activeUser.role !== 'admin' ? (
-            <button 
-              onClick={() => setIsLogoutModalOpen(true)}
-              className="w-full px-4 py-3 rounded-2xl hover:bg-white/[0.06] transition-all group flex items-center justify-center"
-            >
-              <ArgentinaLogo size="sm" className="transition-all" />
-            </button>
-          ) : (
-            <div className="px-4 py-3 flex items-center justify-center opacity-90">
-              <ArgentinaLogo size="sm" />
+        <div className="mt-auto space-y-3 border-t border-white/10 bg-[#07162B]/80 p-4">
+          {activeUser.role === 'admin' && (
+            <div className="rounded-[18px] border border-white/10 bg-white/[0.045] p-3 shadow-[0_10px_24px_rgba(0,0,0,0.10)]">
+              <p className="text-[11px] font-semibold text-slate-400">Sesión admin</p>
+              <p className="mt-1 truncate text-sm font-bold text-white">{activeUser.name || 'Administrador'}</p>
+              <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-emerald-300/15 bg-emerald-400/10 px-2.5 py-1 text-[11px] font-semibold text-emerald-200">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-300" />
+                Operativo
+              </div>
             </div>
           )}
+          <button
+            type="button"
+            onClick={() => setIsLogoutModalOpen(true)}
+            className="flex w-full items-center justify-center gap-3 rounded-[18px] border border-white/10 bg-white/[0.045] px-4 py-3 text-sm font-bold text-slate-200 transition-all hover:border-red-300/30 hover:bg-red-500/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300/60"
+          >
+            <LogOut className="h-4 w-4" />
+            Cerrar sesión
+          </button>
         </div>
       </aside>
 
       {/* Mobile Nav */}
-      <header className="lg:hidden fixed top-0 left-0 right-0 border-b px-5 py-4 flex items-center justify-between z-40 bg-white/95 border-sky-100 shadow-[0_14px_35px_rgba(8,26,51,0.10)] backdrop-blur">
-        <div className="flex items-center gap-3">
+      <header className="fixed left-0 right-0 top-0 z-40 flex items-center justify-between border-b border-white/10 bg-[linear-gradient(135deg,#081A33_0%,#07182F_100%)] px-4 py-3.5 text-white shadow-[0_16px_36px_rgba(8,26,51,0.18)] backdrop-blur-xl lg:hidden">
+        <div className="flex min-w-0 items-center gap-3">
           {customLogo ? (
-            <div className="flex items-center gap-3">
-              <img src={customLogo} alt="Logo" className="w-10 h-10 object-cover rounded-2xl border border-sky-100 shadow-sm" />
-              <div className="flex flex-col">
-                <span className="text-[8px] font-black text-[#64748B] uppercase tracking-widest leading-none mb-1">
-                  {clientConfig?.name || 'Complejo'}
-                </span>
-                <span className="text-lg font-black tracking-tighter text-[#0F2747] leading-none">GOLAZO</span>
-                <span className="text-[7px] text-[#64748B] font-semibold uppercase tracking-widest mt-0.5">by SurByte</span>
-              </div>
-            </div>
+            <img src={customLogo} alt="Logo" className="h-11 w-11 shrink-0 rounded-2xl border border-white/15 bg-white object-contain p-1.5 shadow-sm" />
           ) : (
-            <div className="flex items-center gap-3">
-              <ArgentinaLogo size="md" />
-              <div className="flex flex-col">
-                <span className="text-[8px] font-black text-[#64748B] uppercase tracking-widest leading-none mb-1">
-                  {clientConfig?.name || 'Complejo'}
-                </span>
-                <span className="text-lg font-black tracking-tighter text-[#0F2747] leading-none">GOLAZO</span>
-                <span className="text-[7px] text-[#64748B] font-semibold uppercase tracking-widest mt-0.5">by SurByte</span>
-              </div>
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white shadow-sm">
+              <ArgentinaLogo size="sm" showText={false} />
             </div>
           )}
+          <div className="min-w-0">
+            <span className="block truncate text-xs font-bold text-[#7DD3FC]">
+              {clientConfig?.name || 'Complejo'}
+            </span>
+            <span className="block text-lg font-extrabold leading-none tracking-tight text-white">GOLAZO</span>
+            <span className="mt-0.5 block text-[10px] font-semibold text-slate-400">by SurByte's</span>
+          </div>
         </div>
-        <button 
+        <button
+          type="button"
           onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-          className="p-2.5 hover:bg-[#DDF3FF] rounded-2xl transition-colors text-[#0F2747]"
+          className="rounded-2xl border border-white/10 bg-white/[0.06] p-2.5 text-white transition-colors hover:bg-white/[0.12] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#38BDF8]/70"
+          aria-label="Abrir menú"
         >
-          {isMobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+          {isMobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
         </button>
       </header>
 
@@ -1284,53 +1297,61 @@ export default function App() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setIsMobileMenuOpen(false)}
-              className="lg:hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-40"
+              className="fixed inset-0 z-40 bg-slate-950/70 backdrop-blur-sm lg:hidden"
             />
             <motion.div
               initial={{ opacity: 0, y: -20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
-              className="lg:hidden fixed inset-x-4 top-[80px] z-50 p-4 space-y-3 rounded-[24px] shadow-2xl border bg-white border-sky-100 max-h-[calc(100vh-120px)] overflow-y-auto scrollbar-thin scrollbar-thumb-zinc-200"
+              className="fixed inset-x-4 top-[76px] z-50 max-h-[calc(100vh-120px)] space-y-2 overflow-y-auto rounded-[24px] border border-slate-200 bg-white p-3 shadow-2xl scrollbar-thin scrollbar-thumb-zinc-200 lg:hidden"
             >
-            {filteredNavItems.map((item) => (
-              <button
-                key={item.id}
-                onClick={() => {
-                  setCurrentPage(item.id as Page);
-                  setIsMobileMenuOpen(false);
-                }}
-                className={cn(
-                  "w-full flex items-center gap-3 px-5 py-4 rounded-2xl font-bold text-base transition-all relative overflow-hidden border",
-                  currentPage === item.id 
-                    ? "text-[#0F2747] shadow-lg shadow-sky-500/15 border-sky-200 bg-[#F6FBFF]"
-                    : "text-[#64748B] hover:bg-[#F6F8FB] border-transparent"
-                )}
-              >
-                {currentPage === item.id && (
-                  <span className="absolute left-0 top-3 bottom-3 w-1 rounded-r-full bg-[#0EA5E9]" />
-                )}
-                <item.icon className={cn("w-5 h-5 relative z-10", currentPage === item.id ? "text-[#0EA5E9]" : "text-slate-400")} />
-                <span className="relative z-10">{item.label}</span>
-              </button>
-            ))}
-            <div className="pt-3 border-t border-slate-100 space-y-2">
-              <Button 
-                variant="ghost" 
-                className="w-full justify-start gap-4 py-4 text-[#EF4444]"
-                onClick={handleLogout}
-              >
-                <LogOut className="w-6 h-6" />
-                Cerrar Sesión
-              </Button>
-            </div>
-          </motion.div>
-        </>
-      )}
-    </AnimatePresence>
+              {filteredNavItems.map((item) => {
+                const isActive = currentPage === item.id;
+
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => {
+                      setCurrentPage(item.id as Page);
+                      setIsMobileMenuOpen(false);
+                    }}
+                    aria-current={isActive ? 'page' : undefined}
+                    className={cn(
+                      "relative flex w-full items-center gap-3 overflow-hidden rounded-[18px] border px-4 py-4 text-left text-base font-bold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0EA5E9]/40",
+                      isActive
+                        ? "border-sky-200 bg-[#F6FBFF] text-[#0F2747] shadow-lg shadow-sky-500/15"
+                        : "border-transparent text-[#64748B] hover:bg-[#F6F8FB] hover:text-[#0F2747]"
+                    )}
+                  >
+                    {isActive && (
+                      <span className="absolute bottom-3 left-0 top-3 w-1 rounded-r-full bg-[#0EA5E9]" />
+                    )}
+                    <span className={cn("relative z-10 flex h-10 w-10 items-center justify-center rounded-2xl", isActive ? "bg-[#DDF3FF] text-[#0EA5E9]" : "bg-slate-100 text-slate-400")}>
+                      <item.icon className="h-5 w-5" />
+                    </span>
+                    <span className="relative z-10">{item.label}</span>
+                  </button>
+                );
+              })}
+              <div className="space-y-2 border-t border-slate-100 pt-3">
+                <Button
+                  variant="ghost"
+                  className="w-full justify-start gap-4 rounded-[18px] py-4 text-[#EF4444] hover:bg-red-50 hover:text-red-600"
+                  onClick={handleLogout}
+                >
+                  <LogOut className="h-6 w-6" />
+                  Cerrar sesión
+                </Button>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
 
       {/* Main Content */}
-      <main className="flex-1 lg:ml-56 pt-24 lg:pt-0 p-4 sm:p-6 lg:p-7 xl:p-8 w-full relative h-screen overflow-y-auto custom-scrollbar bg-[#F6F8FB]">
-        <div className="max-w-[1400px] mx-auto w-full">
+      <main className="relative h-screen w-full flex-1 overflow-y-auto bg-[#EEF3F8] px-4 pb-8 pt-24 custom-scrollbar sm:px-6 lg:ml-[248px] lg:px-7 lg:pt-7 xl:px-8">
+        <div className="mx-auto w-full max-w-[1400px]">
           <motion.div
             key={currentPage}
             initial={{ opacity: 0, y: 10 }}
@@ -1399,9 +1420,9 @@ export default function App() {
         isOpen={isLogoutModalOpen}
         onClose={() => setIsLogoutModalOpen(false)}
         onConfirm={handleLogout}
-        title="Cerrar Sesión"
+        title="Cerrar sesión"
         message="¿Estás seguro que deseas cerrar la sesión?"
-        confirmText="Cerrar Sesión"
+        confirmText="Cerrar sesión"
         cancelText="Cancelar"
       />
     </div>

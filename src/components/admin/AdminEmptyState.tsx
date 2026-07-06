@@ -1,11 +1,11 @@
-import React from 'react';
+import type { ReactNode } from 'react';
 import { cn } from '../../lib/utils';
 
-interface AdminEmptyStateProps {
-  icon?: React.ReactNode;
-  title: React.ReactNode;
-  description?: React.ReactNode;
-  action?: React.ReactNode;
+export interface AdminEmptyStateProps {
+  icon?: ReactNode;
+  title: ReactNode;
+  description?: ReactNode;
+  action?: ReactNode;
   className?: string;
 }
 
@@ -19,20 +19,20 @@ export function AdminEmptyState({
   return (
     <div
       className={cn(
-        'flex items-center gap-4 rounded-[20px] border border-sky-100 bg-[#F6FBFF] p-4',
+        'flex flex-col gap-3 rounded-[18px] border border-[#DDE7F0] bg-white/70 p-4 sm:flex-row sm:items-center',
         className
       )}
     >
       {icon && (
-        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white text-[#0EA5E9] shadow-sm ring-1 ring-sky-100">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-white text-[#0EA5E9] shadow-sm ring-1 ring-sky-100">
           {icon}
         </div>
       )}
 
       <div className="min-w-0 flex-1">
-        <p className="font-black tracking-[-0.02em] text-[#0F2747]">{title}</p>
+          <p className="font-bold leading-tight text-[#0F2747]">{title}</p>
         {description && (
-          <p className="mt-0.5 text-sm font-semibold leading-5 text-[#64748B]">
+          <p className="mt-0.5 text-sm font-medium leading-5 text-[#64748B]">
             {description}
           </p>
         )}

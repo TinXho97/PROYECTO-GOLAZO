@@ -1,14 +1,14 @@
-import React from 'react';
+import type { ReactNode } from 'react';
 import { cn } from '../../lib/utils';
 
-interface AdminPageHeaderProps {
-  title: React.ReactNode;
-  subtitle?: React.ReactNode;
-  badge?: React.ReactNode;
-  icon?: React.ReactNode;
-  actions?: React.ReactNode;
-  meta?: React.ReactNode;
-  children?: React.ReactNode;
+export interface AdminPageHeaderProps {
+  title: ReactNode;
+  subtitle?: ReactNode;
+  badge?: ReactNode;
+  icon?: ReactNode;
+  actions?: ReactNode;
+  meta?: ReactNode;
+  children?: ReactNode;
   className?: string;
 }
 
@@ -25,37 +25,34 @@ export function AdminPageHeader({
   return (
     <section
       className={cn(
-        'relative overflow-hidden rounded-[24px] border border-sky-100/80 bg-white p-5 shadow-[0_18px_45px_rgba(8,26,51,0.08)] sm:p-6 lg:p-7',
+        'rounded-[22px] border border-[#DDE7F0] bg-[#F8FBFF] p-4 shadow-[0_8px_22px_rgba(8,26,51,0.05)] sm:p-5',
         className
       )}
     >
-      <div className="pointer-events-none absolute -right-16 -top-20 h-48 w-48 rounded-full bg-[#DDF3FF]/70 blur-3xl" />
-      <div className="pointer-events-none absolute bottom-0 left-8 h-1 w-24 rounded-full bg-[#F6C453]" />
-
-      <div className="relative flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="flex min-w-0 items-start gap-4">
           {icon && (
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[18px] bg-[#DDF3FF] text-[#0EA5E9] ring-1 ring-sky-100">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-white text-[#0EA5E9] shadow-sm ring-1 ring-sky-100">
               {icon}
             </div>
           )}
 
-          <div className="min-w-0 space-y-2">
+          <div className="min-w-0 space-y-1.5">
             {meta && (
-              <div className="text-[11px] font-extrabold uppercase tracking-[0.22em] text-[#64748B]">
+              <div className="text-xs font-semibold text-[#64748B]">
                 {meta}
               </div>
             )}
 
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-              <h1 className="text-3xl font-black tracking-[-0.045em] text-[#0F2747] sm:text-4xl">
+              <h1 className="text-2xl font-bold leading-tight text-[#0F2747] sm:text-[1.7rem]">
                 {title}
               </h1>
               {badge}
             </div>
 
             {subtitle && (
-              <div className="text-sm font-semibold text-[#64748B] sm:text-base">
+              <div className="text-sm font-medium leading-6 text-[#64748B]">
                 {subtitle}
               </div>
             )}
@@ -69,7 +66,7 @@ export function AdminPageHeader({
         )}
       </div>
 
-      {children && <div className="relative mt-5">{children}</div>}
+      {children && <div className="mt-4 border-t border-slate-200/70 pt-4">{children}</div>}
     </section>
   );
 }

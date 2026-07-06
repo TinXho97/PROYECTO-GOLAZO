@@ -30,6 +30,12 @@ import { Button } from '../components/Button';
 import { Modal } from '../components/Modal';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { Badge } from '../components/Badge';
+import { AdminPageHeader } from '../components/admin/AdminPageHeader';
+import { AdminMetricCard } from '../components/admin/AdminMetricCard';
+import { AdminEmptyState } from '../components/admin/AdminEmptyState';
+import { AdminFilterBar } from '../components/admin/AdminFilterBar';
+import { AdminBookingGroup } from '../components/admin/AdminBookingGroup';
+import { AdminBookingRow } from '../components/admin/AdminBookingRow';
 import { dataService, api } from '../services/dataService';
 import { Booking, Pitch, User, BookingStatus } from '../types';
 import { cn } from '../lib/utils';
@@ -42,6 +48,7 @@ interface BookingsListProps {
 export default function BookingsList({ user }: BookingsListProps) {
   const effectiveClientId = getEffectiveClientId(user);
   const isPlayerUser = user.role === 'client';
+  const isAdminView = user.role === 'admin';
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [pitches, setPitches] = useState<Pitch[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -151,6 +158,12 @@ export default function BookingsList({ user }: BookingsListProps) {
     }));
   }, [filteredBookings]);
 
+  const adminSummary = useMemo(() => ({
+    total: filteredBookings.length,
+    pending: filteredBookings.filter(booking => booking.status === 'pending').length,
+    confirmed: filteredBookings.filter(booking => booking.status === 'confirmed').length,
+  }), [filteredBookings]);
+
   const handleStatusUpdate = async (id: string, status: BookingStatus) => {
     try {
       const clientId = effectiveClientId;
@@ -199,6 +212,34 @@ export default function BookingsList({ user }: BookingsListProps) {
     const total = pitch?.price || 0;
     const deposit = booking.depositAmount || 0;
     const debt = total - deposit;
+
+    if (isAdminView) {
+      return (
+        <motion.div
+          key={booking.id}
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: i * 0.04 }}
+          layout
+        >
+          <AdminBookingRow
+            booking={booking}
+            pitchName={pitch?.name || 'Cancha eliminada'}
+            pitchPrice={pitch?.price || 0}
+            bookingCount={bookingCount}
+            isInPlay={isInPlay}
+            isFinished={isFinished}
+            onOpenDetails={() => setSelectedBookingForDetail(booking)}
+            onWhatsApp={() => window.open(`https://wa.me/${booking.clientPhone.replace(/\D/g, '')}`, '_blank')}
+            onViewReceipt={booking.receiptUrl ? () => setSelectedReceipt(booking.receiptUrl!) : undefined}
+            onCharge={!booking.isPaid && booking.status !== 'cancelled' ? () => handleTogglePayment(booking.id) : undefined}
+            onConfirm={booking.status === 'pending' ? () => handleStatusUpdate(booking.id, 'confirmed') : undefined}
+            onComplete={booking.status === 'confirmed' && !isInPlay ? () => handleStatusUpdate(booking.id, 'completed') : undefined}
+            onCancel={booking.status !== 'cancelled' && booking.status !== 'no_show' && booking.status !== 'completed' && !isInPlay ? () => setConfirmCancel(booking.id) : undefined}
+          />
+        </motion.div>
+      );
+    }
 
     return (
       <motion.div
@@ -422,7 +463,69 @@ export default function BookingsList({ user }: BookingsListProps) {
   }
 
   return (
-    <div className={cn("w-full pb-20", isPlayerUser ? "space-y-4" : "space-y-8")}>
+    <div className={cn("w-full pb-20", isPlayerUser ? "space-y-4" : isAdminView ? "space-y-5" : "space-y-8")}>
+      {isAdminView ? (
+        <>
+          <AdminPageHeader
+            title="Gestión de reservas"
+            meta="Reservas admin"
+            icon={<CalendarIcon className="h-5 w-5" />}
+            subtitle="Controlá turnos, pagos y estados desde una vista operativa."
+            className="bg-[#F8FBFF]"
+          />
+
+          <section className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <AdminMetricCard
+              label="Reservas filtradas"
+              value={adminSummary.total}
+              icon={CalendarIcon}
+              tone="blue"
+              helperText="Según búsqueda y estado"
+            />
+            <AdminMetricCard
+              label="Pendientes"
+              value={adminSummary.pending}
+              icon={AlertCircle}
+              tone="gold"
+              helperText="Requieren revisión"
+            />
+            <AdminMetricCard
+              label="Confirmadas"
+              value={adminSummary.confirmed}
+              icon={CheckCircle2}
+              tone="green"
+              helperText="Turnos activos"
+            />
+          </section>
+
+          <AdminFilterBar
+            searchTerm={searchTerm}
+            onSearchTermChange={setSearchTerm}
+            status={filterStatus}
+            onStatusChange={setFilterStatus}
+            searchPlaceholder="Buscar por nombre o teléfono..."
+            resultLabel={`${adminSummary.total} ${adminSummary.total === 1 ? 'resultado' : 'resultados'}`}
+          />
+
+          <div className="space-y-7">
+            {groupedBookings.map((group) => (
+              <AdminBookingGroup key={group.title} title={group.title} count={group.bookings.length}>
+                {group.bookings.map((booking, i) => renderBookingCard(booking, i))}
+              </AdminBookingGroup>
+            ))}
+
+            {filteredBookings.length === 0 && (
+              <AdminEmptyState
+                icon={<AlertCircle className="h-5 w-5" />}
+                title="No se encontraron reservas"
+                description="Cambiá la búsqueda o el estado para ver otros turnos."
+                className="bg-[#F8FBFF]"
+              />
+            )}
+          </div>
+        </>
+      ) : (
+        <>
       <header className={cn(
         "flex flex-col md:flex-row md:items-center justify-between",
         isPlayerUser ? "gap-3 rounded-[24px] border border-white/10 bg-white/95 p-4 shadow-2xl shadow-slate-950/20 backdrop-blur-xl sm:p-5" : "gap-6"
@@ -527,6 +630,8 @@ export default function BookingsList({ user }: BookingsListProps) {
           </motion.div>
         )}
       </div>
+        </>
+      )}
 
       {/* Booking Detail Modal */}
       <Modal

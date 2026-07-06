@@ -1,14 +1,14 @@
-import React from 'react';
+import type { ComponentType, ReactNode } from 'react';
 import { cn } from '../../lib/utils';
 
-type AdminMetricTone = 'blue' | 'green' | 'purple' | 'orange' | 'neutral';
+export type AdminMetricTone = 'blue' | 'green' | 'gold' | 'danger' | 'purple' | 'orange' | 'neutral';
 
-interface AdminMetricCardProps {
-  label: React.ReactNode;
-  value: React.ReactNode;
-  icon?: React.ElementType;
+export interface AdminMetricCardProps {
+  label: ReactNode;
+  value: ReactNode;
+  icon?: ComponentType<{ className?: string }>;
   tone?: AdminMetricTone;
-  helperText?: React.ReactNode;
+  helperText?: ReactNode;
   className?: string;
 }
 
@@ -23,15 +23,25 @@ const toneClasses: Record<AdminMetricTone, { icon: string; ring: string; accent:
     ring: 'group-hover:border-emerald-200 group-hover:shadow-emerald-950/10',
     accent: 'bg-[#10B981]',
   },
+  gold: {
+    icon: 'bg-amber-50 text-[#F6C453]',
+    ring: 'group-hover:border-amber-200 group-hover:shadow-amber-950/10',
+    accent: 'bg-[#F6C453]',
+  },
+  danger: {
+    icon: 'bg-red-50 text-[#EF4444]',
+    ring: 'group-hover:border-red-200 group-hover:shadow-red-950/10',
+    accent: 'bg-[#EF4444]',
+  },
   purple: {
-    icon: 'bg-violet-50 text-violet-600',
-    ring: 'group-hover:border-violet-200 group-hover:shadow-violet-950/10',
-    accent: 'bg-violet-500',
+    icon: 'bg-[#DDF3FF] text-[#0EA5E9]',
+    ring: 'group-hover:border-sky-200 group-hover:shadow-sky-950/10',
+    accent: 'bg-[#0EA5E9]',
   },
   orange: {
-    icon: 'bg-orange-50 text-orange-500',
-    ring: 'group-hover:border-orange-200 group-hover:shadow-orange-950/10',
-    accent: 'bg-orange-400',
+    icon: 'bg-amber-50 text-[#F6C453]',
+    ring: 'group-hover:border-amber-200 group-hover:shadow-amber-950/10',
+    accent: 'bg-[#F6C453]',
   },
   neutral: {
     icon: 'bg-slate-100 text-[#0F2747]',
@@ -53,31 +63,36 @@ export function AdminMetricCard({
   return (
     <div
       className={cn(
-        'group relative overflow-hidden rounded-[24px] border border-slate-200/70 bg-white p-5 shadow-[0_14px_35px_rgba(8,26,51,0.06)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_18px_45px_rgba(8,26,51,0.10)]',
+        'group relative overflow-hidden rounded-[20px] border border-[#DDE7F0] bg-[#F8FBFF] p-4 shadow-[0_8px_20px_rgba(8,26,51,0.045)] transition-all duration-200 hover:-translate-y-0.5 hover:bg-white hover:shadow-[0_12px_26px_rgba(8,26,51,0.07)]',
         styles.ring,
         className
       )}
     >
-      <div className={cn('absolute left-5 top-0 h-1 w-12 rounded-b-full', styles.accent)} />
+      <div className={cn('absolute left-5 top-0 h-0.5 w-10 rounded-b-full', styles.accent)} />
 
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
-          <p className="text-xs font-extrabold uppercase tracking-[0.18em] text-[#64748B]">
+          <p className="text-xs font-semibold text-[#64748B]">
             {label}
           </p>
-          <p className="mt-3 text-3xl font-black tracking-[-0.045em] text-[#081A33] sm:text-4xl">
+          <p className="mt-2 text-2xl font-bold leading-none text-[#081A33] sm:text-[1.7rem]">
             {value}
           </p>
           {helperText && (
-            <p className="mt-2 text-sm font-semibold text-[#64748B]">
+            <p className="mt-2 text-sm font-medium text-[#64748B]">
               {helperText}
             </p>
           )}
         </div>
 
         {Icon && (
-          <div className={cn('flex h-12 w-12 shrink-0 items-center justify-center rounded-[18px] ring-1 ring-white/70', styles.icon)}>
-            <Icon className="h-6 w-6" />
+          <div
+            className={cn(
+              'flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl ring-1 ring-white/70',
+              styles.icon
+            )}
+          >
+            <Icon className="h-[18px] w-[18px]" />
           </div>
         )}
       </div>

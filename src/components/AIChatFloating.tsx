@@ -3,20 +3,11 @@ import {
   User, 
   X, 
   Send, 
-  MessageSquare,
-  ChevronDown,
-  Settings,
-  DollarSign,
-  Info,
-  Coffee,
-  Star
+  MessageSquare
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { dataService, api } from '../services/dataService';
-import { supabase } from '../lib/supabase';
 import { cn } from '../lib/utils';
 import { processMessage } from '../bot';
-import { BotResponse } from '../bot/responses';
 
 interface Message {
   role: 'user' | 'bot';
@@ -32,7 +23,7 @@ export default function AIChatFloating() {
       role: 'bot', 
       text: '¡Hola! Soy el asistente virtual de reservas. ¿En qué te puedo ayudar hoy?',
       options: [
-        { label: 'Reservar Cancha', value: 'reservar' },
+        { label: 'Reservar cancha', value: 'reservar' },
         { label: 'Ayuda', value: 'ayuda' }
       ]
     }
@@ -80,63 +71,23 @@ export default function AIChatFloating() {
 
   return (
     <>
-      {/* Floating Button (The "Gauchito Mascot") */}
+      {/* Floating Button */}
       <motion.button
-        whileHover={{ scale: 1.1 }}
-        whileTap={{ scale: 0.9 }}
+        whileHover={{ scale: 1.04 }}
+        whileTap={{ scale: 0.96 }}
         onClick={() => setIsOpen(!isOpen)}
+        aria-label={isOpen ? 'Cerrar asistente' : 'Abrir asistente'}
         className={cn(
-          "fixed bottom-8 right-8 w-20 h-20 rounded-full flex items-center justify-center z-50 transition-all group",
-          isOpen 
-            ? "bg-white text-zinc-900 shadow-2xl border border-zinc-200" 
-            : "bg-transparent"
+          "fixed bottom-5 right-5 z-40 flex h-14 w-14 items-center justify-center rounded-2xl border transition-all",
+          isOpen
+            ? "border-slate-200 bg-white text-[#081A33] shadow-[0_16px_34px_rgba(8,26,51,0.16)]"
+            : "border-white/15 bg-[#081A33] text-white shadow-[0_16px_34px_rgba(8,26,51,0.22)] hover:bg-[#0F2747]"
         )}
       >
         {isOpen ? (
-          <X className="w-8 h-8" />
+          <X className="h-5 w-5" />
         ) : (
-          <div className="relative w-full h-full flex items-center justify-center">
-            {/* The "Pelota Gauchita" Mascot */}
-            <div className="relative w-16 h-16 bg-sky-400 rounded-full border-4 border-zinc-900 shadow-xl flex items-center justify-center overflow-visible">
-              {/* Soccer ball inspired pattern */}
-              <div className="absolute inset-0 rounded-full overflow-hidden pointer-events-none">
-                {/* Central Pentagon */}
-                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-6 h-6 bg-zinc-900" style={{ clipPath: 'polygon(50% 0%, 100% 38%, 82% 100%, 18% 100%, 0% 38%)' }} />
-                
-                {/* Lines connecting pentagons */}
-                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-0.5 bg-zinc-900/40 rotate-0" />
-                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-0.5 bg-zinc-900/40 rotate-[72deg]" />
-                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-0.5 bg-zinc-900/40 rotate-[144deg]" />
-                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-0.5 bg-zinc-900/40 rotate-[216deg]" />
-                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-0.5 bg-zinc-900/40 rotate-[288deg]" />
-
-                {/* Surrounding partial pentagons */}
-                <div className="absolute -top-2 left-1/2 -translate-x-1/2 w-5 h-5 bg-zinc-900" style={{ clipPath: 'polygon(50% 0%, 100% 38%, 82% 100%, 18% 100%, 0% 38%)' }} />
-                <div className="absolute top-2 -left-2 w-5 h-5 bg-zinc-900 rotate-[-45deg]" style={{ clipPath: 'polygon(50% 0%, 100% 38%, 82% 100%, 18% 100%, 0% 38%)' }} />
-                <div className="absolute top-2 -right-2 w-5 h-5 bg-zinc-900 rotate-[45deg]" style={{ clipPath: 'polygon(50% 0%, 100% 38%, 82% 100%, 18% 100%, 0% 38%)' }} />
-                <div className="absolute -bottom-2 left-2 w-5 h-5 bg-zinc-900 rotate-[180deg]" style={{ clipPath: 'polygon(50% 0%, 100% 38%, 82% 100%, 18% 100%, 0% 38%)' }} />
-                <div className="absolute -bottom-2 right-2 w-5 h-5 bg-zinc-900 rotate-[180deg]" style={{ clipPath: 'polygon(50% 0%, 100% 38%, 82% 100%, 18% 100%, 0% 38%)' }} />
-              </div>
-
-              {/* Eyes */}
-              <div className="relative z-20 flex gap-3 mt-1">
-                <div className="w-3 h-3 bg-zinc-900 rounded-full flex items-center justify-center">
-                  <div className="w-1 h-1 bg-white rounded-full -mt-1 -ml-1" />
-                </div>
-                <div className="w-3 h-3 bg-zinc-900 rounded-full flex items-center justify-center">
-                  <div className="w-1 h-1 bg-white rounded-full -mt-1 -ml-1" />
-                </div>
-              </div>
-
-              {/* Smile */}
-              <div className="absolute bottom-3 left-1/2 -translate-x-1/2 w-6 h-3 border-b-2 border-zinc-900 rounded-full" />
-            </div>
-            
-            {/* Notification Badge */}
-            <div className="absolute top-2 right-2 w-5 h-5 bg-yellow-500 rounded-full border-2 border-white flex items-center justify-center shadow-lg z-50">
-              <span className="text-[8px] font-black text-zinc-900">!</span>
-            </div>
-          </div>
+          <MessageSquare className="h-5 w-5" />
         )}
       </motion.button>
 
@@ -147,27 +98,27 @@ export default function AIChatFloating() {
             initial={{ opacity: 0, y: 20, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 20, scale: 0.95 }}
-            className="fixed bottom-0 right-0 w-full h-[100dvh] sm:bottom-28 sm:right-8 sm:w-[400px] sm:h-[600px] sm:max-h-[700px] bg-white sm:rounded-[32px] shadow-2xl z-[60] overflow-hidden border-t sm:border border-zinc-200 flex flex-col"
+            className="fixed bottom-20 left-4 right-4 z-50 flex h-[min(78dvh,560px)] flex-col overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_24px_70px_rgba(8,26,51,0.18)] sm:left-auto sm:right-5 sm:w-[360px]"
           >
-            {/* Header - SaaS Premium Style */}
-            <div className="px-6 py-5 bg-white border-b border-zinc-100 flex items-center justify-between">
+            <div className="flex items-center justify-between border-b border-white/10 bg-[#081A33] px-5 py-4 text-white">
               <div className="flex items-center gap-3">
                 <div className="relative">
-                  <div className="w-10 h-10 bg-sky-50 rounded-xl flex items-center justify-center border border-sky-100">
-                    <User className="w-6 h-6 text-sky-500" />
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-white/10">
+                    <User className="h-5 w-5 text-sky-200" />
                   </div>
-                  <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-500 border-2 border-white rounded-full" />
+                  <div className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-[#081A33] bg-emerald-400" />
                 </div>
                 <div>
-                  <h3 className="font-bold text-zinc-900 text-sm leading-none">LIO</h3>
-                  <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest mt-1">En línea ahora</p>
+                  <h3 className="text-sm font-bold leading-none">LIO</h3>
+                  <p className="mt-1 text-[10px] font-semibold text-emerald-200">En línea ahora</p>
                 </div>
               </div>
               <button 
                 onClick={() => setIsOpen(false)}
-                className="p-2 hover:bg-zinc-50 rounded-xl transition-colors text-zinc-400 hover:text-zinc-600"
+                aria-label="Cerrar asistente"
+                className="rounded-xl p-2 text-white/70 transition-colors hover:bg-white/10 hover:text-white"
               >
-                <X className="w-5 h-5" />
+                <X className="h-5 w-5" />
               </button>
             </div>
 
@@ -204,7 +155,7 @@ export default function AIChatFloating() {
                       ))}
                     </div>
                   )}
-                  <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-tighter mt-1.5 px-1">
+                  <span className="mt-1.5 px-1 text-[9px] font-semibold text-zinc-400">
                     {msg.role === 'user' ? 'Tú' : 'Lio'} • {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </span>
                 </motion.div>
@@ -228,7 +179,7 @@ export default function AIChatFloating() {
                 <div className="relative flex-1">
                   <input 
                     type="text"
-                    placeholder="Escribe tu mensaje..."
+                    placeholder="Escribí tu mensaje..."
                     className="w-full bg-zinc-50 border border-zinc-200 rounded-2xl py-3.5 pl-5 pr-12 text-sm font-medium focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 outline-none transition-all text-zinc-900 placeholder:text-zinc-400"
                     value={chatInput}
                     onChange={e => setChatInput(e.target.value)}
@@ -236,13 +187,14 @@ export default function AIChatFloating() {
                   <button 
                     type="submit"
                     disabled={!chatInput.trim() || isTyping}
+                    aria-label="Enviar mensaje"
                     className="absolute right-2 top-1/2 -translate-y-1/2 w-9 h-9 bg-sky-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-sky-600/20 hover:bg-sky-500 transition-all disabled:opacity-50 disabled:grayscale"
                   >
                     <Send className="w-4 h-4" />
                   </button>
                 </div>
               </form>
-              <p className="text-[9px] text-center text-zinc-400 font-medium mt-3 uppercase tracking-widest">
+              <p className="mt-3 text-center text-[9px] font-medium text-zinc-400">
                 Desarrollado por Golazo AI
               </p>
             </div>

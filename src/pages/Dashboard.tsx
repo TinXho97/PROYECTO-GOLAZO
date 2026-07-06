@@ -12,12 +12,9 @@ import {
   MapPin, 
   Phone, 
   User, 
-  TrendingUp, 
   DollarSign, 
-  Users, 
   Activity,
   Trophy,
-  LayoutGrid,
   List,
   Maximize2,
   Minimize2,
@@ -28,10 +25,7 @@ import {
   FileText,
   Download,
   Timer,
-  Zap,
   ShoppingBag,
-  Package,
-  Settings,
   Banknote
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -42,9 +36,11 @@ import ArgentinaCountdown from '../components/ArgentinaCountdown';
 import { ArgentinaLogo } from '../components/ArgentinaLogo';
 import { NotificationsPanel } from '../components/NotificationsPanel';
 import { AdminPageHeader } from '../components/admin/AdminPageHeader';
-import { AdminMetricCard } from '../components/admin/AdminMetricCard';
-import { AdminSectionCard } from '../components/admin/AdminSectionCard';
 import { AdminEmptyState } from '../components/admin/AdminEmptyState';
+import { AdminActionButton } from '../components/admin/AdminActionButton';
+import { AdminOperationalPanel } from '../components/admin/AdminOperationalPanel';
+import { AdminTodayAgenda } from '../components/admin/AdminTodayAgenda';
+import { AdminStatusBadge, type AdminStatusBadgeTone } from '../components/admin/AdminStatusBadge';
 import { dataService, api } from '../services/dataService';
 import { Pitch, Booking, User as UserType, Sale, Product, Client } from '../types';
 import { supabase } from '../lib/supabase';
@@ -376,13 +372,52 @@ export default function Dashboard({ user, onNavigate, onLogout, onNotificationCl
     generalStatus = { text: 'Alta Demanda', color: 'bg-yellow-100 text-yellow-700 border-yellow-200' };
   }
 
-  const nextBooking = bookings
-    .filter(b => b.startTime > new Date() && b.status === 'confirmed')
-    .sort((a, b) => a.startTime.getTime() - b.startTime.getTime())[0];
-
   const lowStockProducts = products.filter(p => p.stock <= p.min_stock);
 
   const lastSale = [...sales].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
+
+  const sortedTodayBookings = [...todayBookings].sort((a, b) => a.startTime.getTime() - b.startTime.getTime());
+  const upcomingTodayBookings = sortedTodayBookings.filter(b => b.endTime >= new Date());
+  const agendaSourceBookings = upcomingTodayBookings.length > 0 ? upcomingTodayBookings : sortedTodayBookings;
+  const agendaPreviewBookings = agendaSourceBookings.slice(0, 5);
+  const hiddenTodayBookings = Math.max(sortedTodayBookings.length - agendaPreviewBookings.length, 0);
+  const depositTodayBookings = todayBookings.filter(b => !b.isPaid && (b.depositAmount || 0) > 0).length;
+  const pendingPaymentBookings = todayBookings.filter(b => !b.isPaid && !(b.depositAmount || 0)).length;
+  const todayDepositTotal = todayBookings.reduce((acc, b) => acc + (b.depositAmount || 0), 0);
+  const activePitchCount = pitches.filter((pitch) => pitch.active !== false).length;
+  const hasReservationFeature = !clientConfig || clientConfig.features?.reservas !== false;
+  const hasSalesFeature = !clientConfig || clientConfig.features?.ventas !== false;
+
+  const getBookingStatusMeta = (status: Booking['status']): { label: string; tone: AdminStatusBadgeTone } => {
+    if (status === 'confirmed') return { label: 'Confirmada', tone: 'info' };
+    if (status === 'completed') return { label: 'Completada', tone: 'success' };
+    if (status === 'pending') return { label: 'Pendiente', tone: 'warning' };
+    if (status === 'cancelled') return { label: 'Cancelada', tone: 'danger' };
+    return { label: 'Ausente', tone: 'danger' };
+  };
+
+  const getBookingPaymentMeta = (booking: Booking): { label: string; tone: AdminStatusBadgeTone } => {
+    if (booking.isPaid) return { label: 'Pago', tone: 'success' };
+    if ((booking.depositAmount || 0) > 0) return { label: `Seña $${booking.depositAmount}`, tone: 'gold' };
+    return { label: 'Cobro pendiente', tone: 'warning' };
+  };
+
+  const agendaItems = agendaPreviewBookings.map((booking) => {
+    const statusMeta = getBookingStatusMeta(booking.status);
+    const paymentMeta = getBookingPaymentMeta(booking);
+
+    return {
+      id: booking.id,
+      time: format(booking.startTime, 'HH:mm'),
+      clientName: booking.clientName,
+      clientPhone: booking.clientPhone,
+      pitchName: pitches.find(p => p.id === booking.pitchId)?.name || 'Cancha',
+      statusLabel: statusMeta.label,
+      statusTone: statusMeta.tone,
+      paymentLabel: paymentMeta.label,
+      paymentTone: paymentMeta.tone,
+    };
+  });
 
   const [weather, setWeather] = useState<{ temp: number; condition: string; icon: string; locationName: string }>({
     temp: 22,
@@ -635,28 +670,31 @@ export default function Dashboard({ user, onNavigate, onLogout, onNotificationCl
   }
 
   return (
-    <div className="mx-auto max-w-7xl space-y-6 pb-16">
-      {/* 1. HEADER INTELIGENTE */}
+    <div className="mx-auto w-full max-w-[1400px] space-y-5 pb-16">
       <AdminPageHeader
-        title="Resumen del día"
+        title={clientConfig?.name ? clientConfig.name : 'Inicio administrador'}
         meta="Panel operativo"
-        icon={<Activity className="h-6 w-6" />}
+        icon={<Activity className="h-5 w-5" />}
+        className="bg-[#F8FBFF]"
         badge={
-          <span className={cn("inline-flex items-center rounded-full border px-3 py-1 text-xs font-black tracking-wide", generalStatus.color)}>
+          <AdminStatusBadge
+            tone={generalStatus.text === 'Saturado' ? 'danger' : generalStatus.text === 'Alta Demanda' ? 'warning' : 'success'}
+            className="px-3 py-1.5 text-sm"
+          >
             {generalStatus.text}
-          </span>
+          </AdminStatusBadge>
         }
         subtitle={
-          <div className="flex items-center gap-2 text-[#64748B]">
-            <CalendarIcon className="h-5 w-5 text-[#0EA5E9]" />
-            <span className="text-base font-semibold capitalize sm:text-lg">
+          <div className="flex flex-wrap items-center gap-2 text-[#64748B]">
+            <CalendarIcon className="h-[18px] w-[18px] text-[#0EA5E9]" />
+            <span className="text-sm font-semibold capitalize sm:text-base">
               {format(new Date(), "EEEE d 'de' MMMM, yyyy", { locale: es })}
             </span>
           </div>
         }
         actions={
           <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center">
-            <div className="hidden md:block sm:mr-1">
+            <div className="sm:mr-1">
               <NotificationsPanel onNotificationClick={async (bookingId) => {
                 if (onNotificationClick) {
                   onNotificationClick(bookingId);
@@ -676,231 +714,133 @@ export default function Dashboard({ user, onNavigate, onLogout, onNotificationCl
                 }
               }} />
             </div>
-            {(!clientConfig || clientConfig.features?.reservas !== false) && (
-              <Button
+            {hasReservationFeature && (
+              <AdminActionButton
                 onClick={() => onNavigate && onNavigate('calendar')}
-                className="rounded-2xl bg-[#0EA5E9] px-5 py-5 text-sm font-black tracking-wide text-white shadow-lg shadow-sky-500/25 hover:-translate-y-0.5 hover:bg-sky-500 sm:px-6"
+                size="lg"
+                className="w-full sm:w-auto"
               >
-                <Plus className="h-5 w-5" />
+                <Plus className="h-[18px] w-[18px]" />
                 Nueva reserva
-              </Button>
+              </AdminActionButton>
             )}
-            {(!clientConfig || clientConfig.features?.ventas !== false) && (
-              <Button
-                variant="outline"
+            {hasSalesFeature && (
+              <AdminActionButton
+                variant="secondary"
                 onClick={() => onNavigate && onNavigate('sales')}
-                className="rounded-2xl border-slate-200 bg-white px-5 py-5 text-sm font-black tracking-wide text-[#0F2747] shadow-sm hover:-translate-y-0.5 hover:border-sky-200 hover:bg-[#F6FBFF] sm:px-6"
+                size="lg"
+                className="w-full sm:w-auto"
               >
-                <ShoppingBag className="h-5 w-5" />
+                <ShoppingBag className="h-[18px] w-[18px]" />
                 Nueva venta
-              </Button>
+              </AdminActionButton>
             )}
           </div>
         }
       />
 
-      {/* 2. MÉTRICAS CLAVE */}
-      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {[
-          (!clientConfig || clientConfig.features?.reservas !== false) && { label: 'Turnos del día', value: todayBookings.length, icon: CalendarIcon, tone: 'blue', helperText: 'Reservas confirmadas' },
-          (!clientConfig || clientConfig.features?.ventas !== false) && { label: 'Ingresos del día', value: `$${todayTotalIncome}`, icon: DollarSign, tone: 'green', helperText: 'Reservas y ventas' },
-          (!clientConfig || clientConfig.features?.ventas !== false) && { label: 'Ventas del día', value: todaySales.length, icon: ShoppingBag, tone: 'purple', helperText: 'Operaciones registradas' },
-          (!clientConfig || clientConfig.features?.reservas !== false) && { label: 'Ocupación', value: `${occupancyPercentage}%`, icon: Activity, tone: 'orange', helperText: 'Uso estimado de canchas' },
-        ].filter(Boolean).map((stat: any, i) => (
-          <motion.div
-            key={stat.label}
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: i * 0.08 }}
-          >
-            <AdminMetricCard
-              label={stat.label}
-              value={stat.value}
-              icon={stat.icon}
-              tone={stat.tone}
-              helperText={stat.helperText}
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.7fr)_minmax(320px,0.9fr)]">
+        <div className="space-y-5">
+          {hasReservationFeature && (
+            <AdminTodayAgenda
+              bookings={agendaItems}
+              totalCount={sortedTodayBookings.length}
+              hiddenCount={hiddenTodayBookings}
+              onViewAll={() => onNavigate && onNavigate('bookings')}
+              onCreateBooking={() => onNavigate && onNavigate('calendar')}
+              onOpenCalendar={() => onNavigate && onNavigate('calendar')}
             />
-          </motion.div>
-        ))}
-      </section>
+          )}
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        {/* 3. ZONA OPERATIVA */}
-        <section className="lg:col-span-2">
-          <AdminSectionCard
-            title="Próximas acciones"
-            eyebrow="Operación"
-            icon={<Zap className="h-5 w-5" />}
+          <AdminOperationalPanel
+            title="Avisos para atender"
+            eyebrow="Solo lo importante"
+            icon={<CheckCircle2 className="h-5 w-5" />}
           >
-            <div className="grid grid-cols-1 gap-3">
-              {/* Próxima Reserva */}
-              {(!clientConfig || clientConfig.features?.reservas !== false) && (
-                <div className="rounded-[22px] border border-slate-200/70 bg-white p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:border-sky-200 hover:shadow-md sm:p-5">
-                  <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="flex min-w-0 items-start gap-4">
-                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#DDF3FF] text-[#0EA5E9]">
-                        <Clock className="h-5 w-5" />
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-xs font-extrabold uppercase tracking-[0.18em] text-[#64748B]">Próxima reserva</p>
-                        {nextBooking ? (
-                          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
-                            <span className="text-lg font-black text-[#081A33]">{format(nextBooking.startTime, 'HH:mm')}</span>
-                            <span className="text-slate-300">•</span>
-                            <span className="font-semibold text-[#64748B]">{pitches.find(p => p.id === nextBooking.pitchId)?.name}</span>
-                            <span className="text-slate-300">•</span>
-                            <span className="font-semibold text-[#64748B]">{nextBooking.clientName}</span>
-                          </div>
-                        ) : (
-                          <AdminEmptyState
-                            className="mt-3"
-                            icon={<Clock className="h-5 w-5" />}
-                            title="Sin reservas próximas"
-                            description="Los próximos turnos confirmados aparecerán acá."
-                          />
-                        )}
-                      </div>
+            <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+              {hasReservationFeature && (
+                <div className="rounded-[18px] border border-[#DDE7F0] bg-white p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-[#64748B]">Cobros</p>
+                      <p className="mt-1 text-base font-bold text-[#0F2747]">
+                        {pendingPaymentBookings > 0
+                          ? `${pendingPaymentBookings} turnos sin cobrar`
+                          : depositTodayBookings > 0
+                            ? `Señas registradas por $${todayDepositTotal}`
+                            : 'Sin cobros pendientes'}
+                      </p>
                     </div>
-                    {nextBooking && (
-                      <Button variant="ghost" className="rounded-xl text-[#0EA5E9] hover:bg-[#DDF3FF] hover:text-[#0F2747]" onClick={() => {
-                        setSelectedBooking(nextBooking);
-                        setIsBookingDetailModalOpen(true);
-                      }}>
-                        Ver detalle
-                      </Button>
-                    )}
+                    <AdminStatusBadge tone={pendingPaymentBookings > 0 ? 'warning' : 'success'}>
+                      {pendingPaymentBookings > 0 ? 'Revisar' : 'Al día'}
+                    </AdminStatusBadge>
                   </div>
                 </div>
               )}
 
-              {/* Stock Bajo */}
-              {(!clientConfig || clientConfig.features?.ventas !== false) && (
-                <div className="rounded-[22px] border border-slate-200/70 bg-white p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:border-red-200 hover:shadow-md sm:p-5">
-                  <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="flex min-w-0 items-start gap-4">
-                      <div className={cn("flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl", lowStockProducts.length > 0 ? "bg-red-50 text-[#EF4444]" : "bg-emerald-50 text-[#10B981]")}>
-                        <Package className="h-5 w-5" />
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-xs font-extrabold uppercase tracking-[0.18em] text-[#64748B]">Alertas de stock</p>
-                        {lowStockProducts.length > 0 ? (
-                          <div className="mt-1 flex flex-wrap items-center gap-2">
-                            <span className="text-lg font-black text-[#EF4444]">{lowStockProducts.length} productos</span>
-                            <span className="font-semibold text-[#64748B]">por debajo del mínimo</span>
-                          </div>
-                        ) : (
-                          <AdminEmptyState
-                            className="mt-3 border-emerald-100 bg-emerald-50/60"
-                            icon={<CheckCircle2 className="h-5 w-5" />}
-                            title="Stock en niveles normales"
-                            description="Sin reposiciones urgentes por ahora."
-                          />
-                        )}
-                      </div>
+              {hasSalesFeature && (
+                <div className="rounded-[18px] border border-[#DDE7F0] bg-white p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-[#64748B]">Stock</p>
+                      <p className="mt-1 text-base font-bold text-[#0F2747]">
+                        {lowStockProducts.length > 0
+                          ? `${lowStockProducts.length} productos en mínimo`
+                          : 'Stock sin alertas'}
+                      </p>
                     </div>
-                    {lowStockProducts.length > 0 && (
-                      <Button variant="ghost" className="rounded-xl text-[#EF4444] hover:bg-red-50 hover:text-red-700" onClick={() => onNavigate && onNavigate('admin')}>
-                        Reponer
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* Última Venta */}
-              {(!clientConfig || clientConfig.features?.ventas !== false) && (
-                <div className="rounded-[22px] border border-slate-200/70 bg-white p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:border-emerald-200 hover:shadow-md sm:p-5">
-                  <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="flex min-w-0 items-start gap-4">
-                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-emerald-50 text-[#10B981]">
-                        <DollarSign className="h-5 w-5" />
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-xs font-extrabold uppercase tracking-[0.18em] text-[#64748B]">Última venta</p>
-                        {lastSale ? (
-                          <div className="mt-1 flex flex-wrap items-center gap-2">
-                            <span className="text-lg font-black text-[#10B981]">${lastSale.totalPrice}</span>
-                            <span className="text-slate-300">•</span>
-                            <span className="font-semibold text-[#64748B]">{formatDistanceToNow(new Date(lastSale.date), { addSuffix: true, locale: es })}</span>
-                          </div>
-                        ) : (
-                          <AdminEmptyState
-                            className="mt-3"
-                            icon={<ShoppingBag className="h-5 w-5" />}
-                            title="Sin ventas recientes"
-                            description="Las próximas ventas del día aparecerán acá."
-                          />
-                        )}
-                      </div>
-                    </div>
-                    {lastSale && (
-                      <Button variant="ghost" className="rounded-xl text-[#0EA5E9] hover:bg-[#DDF3FF] hover:text-[#0F2747]" onClick={() => onNavigate && onNavigate('sales')}>
-                        Ver ventas
-                      </Button>
-                    )}
+                    <AdminStatusBadge tone={lowStockProducts.length > 0 ? 'warning' : 'success'}>
+                      {lowStockProducts.length > 0 ? 'Revisar' : 'Normal'}
+                    </AdminStatusBadge>
                   </div>
                 </div>
               )}
             </div>
-          </AdminSectionCard>
-        </section>
+          </AdminOperationalPanel>
+        </div>
 
-        {/* 4. SECCIÓN SECUNDARIA */}
-        <section>
-          <AdminSectionCard
-            title="Accesos rápidos"
-            eyebrow="Atajos"
-            icon={<LayoutGrid className="h-5 w-5" />}
-          >
-            <div className="grid grid-cols-1 gap-3">
-              {(!clientConfig || clientConfig.features?.reservas !== false) && (
-                <button
-                  onClick={() => onNavigate && onNavigate('calendar')}
-                  className="group flex w-full items-center gap-4 rounded-[22px] border border-slate-200/70 bg-white p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-sky-200 hover:bg-[#F6FBFF] hover:shadow-md"
-                >
-                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#DDF3FF] text-[#0EA5E9] transition-transform group-hover:scale-105">
-                    <CalendarIcon className="h-5 w-5" />
-                  </div>
-                  <div className="min-w-0">
-                    <h3 className="font-black text-[#0F2747]">Ir a Reservas</h3>
-                    <p className="text-sm font-semibold text-[#64748B]">Gestionar turnos de canchas</p>
-                  </div>
-                  <ChevronRight className="ml-auto h-5 w-5 shrink-0 text-slate-300 transition-colors group-hover:text-[#0EA5E9]" />
-                </button>
-              )}
-          
-              {(!clientConfig || clientConfig.features?.ventas !== false) && (
-                <button
-                  onClick={() => onNavigate && onNavigate('sales')}
-                  className="group flex w-full items-center gap-4 rounded-[22px] border border-slate-200/70 bg-white p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-violet-200 hover:bg-violet-50/40 hover:shadow-md"
-                >
-                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-violet-50 text-violet-600 transition-transform group-hover:scale-105">
-                    <ShoppingBag className="h-5 w-5" />
-                  </div>
-                  <div className="min-w-0">
-                    <h3 className="font-black text-[#0F2747]">Ir a Ventas</h3>
-                    <p className="text-sm font-semibold text-[#64748B]">Kiosco y productos</p>
-                  </div>
-                  <ChevronRight className="ml-auto h-5 w-5 shrink-0 text-slate-300 transition-colors group-hover:text-violet-600" />
-                </button>
-              )}
+        <AdminOperationalPanel
+          title="Resumen simple"
+          eyebrow="Hoy"
+          icon={<Activity className="h-5 w-5" />}
+          className="xl:sticky xl:top-7"
+        >
+          <div className="space-y-3">
+            {hasReservationFeature && (
+              <div className="rounded-[18px] border border-[#DDE7F0] bg-white p-4">
+                <p className="text-sm font-semibold text-[#64748B]">Agenda</p>
+                <p className="mt-1 text-base font-bold text-[#0F2747]">
+                  {sortedTodayBookings.length > 0
+                    ? `${sortedTodayBookings.length} turnos para hoy`
+                    : 'Sin turnos cargados'}
+                </p>
+              </div>
+            )}
 
-              <button 
-                onClick={() => onNavigate && onNavigate('admin')}
-                className="group flex w-full items-center gap-4 rounded-[22px] border border-slate-200/70 bg-white p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-slate-300 hover:bg-slate-50 hover:shadow-md"
-              >
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-slate-100 text-[#0F2747] transition-transform group-hover:scale-105">
-                  <Settings className="h-5 w-5" />
-                </div>
-                <div className="min-w-0">
-                  <h3 className="font-black text-[#0F2747]">Configuración</h3>
-                  <p className="text-sm font-semibold text-[#64748B]">Ajustes del sistema</p>
-                </div>
-                <ChevronRight className="ml-auto h-5 w-5 shrink-0 text-slate-300 transition-colors group-hover:text-[#0F2747]" />
-              </button>
-            </div>
-          </AdminSectionCard>
-        </section>
+            {hasReservationFeature && (
+              <div className="rounded-[18px] border border-[#DDE7F0] bg-white p-4">
+                <p className="text-sm font-semibold text-[#64748B]">Canchas</p>
+                <p className="mt-1 text-base font-bold text-[#0F2747]">
+                  {activePitchCount > 0 ? `${activePitchCount} activas` : 'Sin canchas activas'}
+                </p>
+              </div>
+            )}
+
+            {hasSalesFeature && (
+              <div className="rounded-[18px] border border-[#DDE7F0] bg-white p-4">
+                <p className="text-sm font-semibold text-[#64748B]">Caja</p>
+                <p className="mt-1 text-base font-bold text-[#0F2747]">
+                  {todayTotalIncome > 0 ? `$${todayTotalIncome} registrado hoy` : 'Sin ingresos cargados'}
+                </p>
+                {lastSale && (
+                  <p className="mt-1 text-sm font-medium text-[#64748B]">
+                    Última venta {formatDistanceToNow(new Date(lastSale.date), { addSuffix: true, locale: es })}
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        </AdminOperationalPanel>
       </div>
 
       {/* Pitch Schedule Modal (Time Selection Menu) */}
@@ -918,13 +858,13 @@ export default function Dashboard({ user, onNavigate, onLogout, onNotificationCl
                 <Trophy className="w-6 h-6" />
               </div>
               <div>
-                <h4 className="font-black text-zinc-900">{selectedPitch?.name}</h4>
-                <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">{selectedPitch?.type} • ${selectedPitch?.price}/hr</p>
+                <h4 className="font-extrabold text-zinc-900">{selectedPitch?.name}</h4>
+                <p className="text-[10px] font-extrabold text-zinc-400 tracking-wide">{selectedPitch?.type} • ${selectedPitch?.price}/hr</p>
               </div>
             </div>
             <div className="text-right">
-              <p className="text-xs font-black text-zinc-400 uppercase tracking-widest mb-1">Fecha</p>
-              <p className="text-sm font-black text-sky-600">
+              <p className="text-xs font-semibold text-zinc-500 mb-1">Fecha</p>
+              <p className="text-sm font-extrabold text-sky-600">
                 {format(selectedDate, "d 'de' MMM", { locale: es })}
               </p>
             </div>
@@ -934,11 +874,11 @@ export default function Dashboard({ user, onNavigate, onLogout, onNotificationCl
           <div className="flex items-center gap-4 px-2">
             <div className="flex items-center gap-2">
               <div className="w-3 h-3 rounded-full bg-sky-500" />
-              <span className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Disponible</span>
+              <span className="text-[10px] font-extrabold text-zinc-400 tracking-wide">Disponible</span>
             </div>
             <div className="flex items-center gap-2">
               <div className="w-3 h-3 rounded-full bg-red-500" />
-              <span className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Ocupado</span>
+              <span className="text-[10px] font-extrabold text-zinc-400 tracking-wide">Ocupado</span>
             </div>
           </div>
 
@@ -986,9 +926,9 @@ export default function Dashboard({ user, onNavigate, onLogout, onNotificationCl
                       : "bg-white border-zinc-100 text-zinc-900 hover:border-sky-500 hover:bg-sky-50 hover:text-sky-600"
                   )}
                 >
-                  <span className="text-lg font-black">{timeStr}</span>
+                  <span className="text-lg font-extrabold">{timeStr}</span>
                   <span className={cn(
-                    "text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full",
+                    "text-[9px] font-bold tracking-wide px-2 py-0.5 rounded-full",
                     isBooked ? "bg-red-100 text-red-600" : "bg-sky-100 text-sky-600"
                   )}>
                     {isBooked ? 'Ocupado' : 'Libre'}
@@ -1001,7 +941,7 @@ export default function Dashboard({ user, onNavigate, onLogout, onNotificationCl
           <div className="pt-2">
             <Button 
               variant="outline" 
-              className="w-full py-5 rounded-3xl font-black tracking-widest uppercase border-zinc-200"
+              className="w-full py-5 rounded-3xl font-bold tracking-wide border-zinc-200"
               onClick={() => setIsPitchScheduleModalOpen(false)}
             >
               VOLVER AL DASHBOARD
@@ -1019,7 +959,7 @@ export default function Dashboard({ user, onNavigate, onLogout, onNotificationCl
         {bookingTimer !== null && (
           <div className="flex items-center justify-center gap-2 bg-red-50 text-red-600 py-3 rounded-2xl border border-red-100 mb-6 animate-pulse">
             <Timer className="w-5 h-5" />
-            <span className="font-black tracking-widest uppercase text-xs">
+            <span className="font-bold tracking-wide text-xs">
               Tiempo restante: {Math.floor(bookingTimer / 60)}:{(bookingTimer % 60).toString().padStart(2, '0')}
             </span>
           </div>
@@ -1123,7 +1063,7 @@ export default function Dashboard({ user, onNavigate, onLogout, onNotificationCl
                   type="button"
                   onClick={() => setFormData({ ...formData, paymentMethod: 'transferencia' })}
                   className={cn(
-                    "flex-1 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all border",
+                    "flex-1 py-3 rounded-xl text-xs font-bold tracking-wide transition-all border",
                     formData.paymentMethod === 'transferencia' 
                       ? "bg-sky-50 text-sky-600 border-sky-200" 
                       : "bg-white text-zinc-500 border-zinc-200 hover:bg-zinc-50"
@@ -1135,7 +1075,7 @@ export default function Dashboard({ user, onNavigate, onLogout, onNotificationCl
                   type="button"
                   onClick={() => setFormData({ ...formData, paymentMethod: 'mercadopago' })}
                   className={cn(
-                    "flex-1 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all border",
+                    "flex-1 py-3 rounded-xl text-xs font-bold tracking-wide transition-all border",
                     formData.paymentMethod === 'mercadopago' 
                       ? "bg-emerald-50 text-emerald-600 border-emerald-200" 
                       : "bg-white text-zinc-500 border-zinc-200 hover:bg-zinc-50"
@@ -1180,14 +1120,14 @@ export default function Dashboard({ user, onNavigate, onLogout, onNotificationCl
                         <div className="w-10 h-10 bg-sky-500 rounded-full flex items-center justify-center text-white shadow-lg">
                           <CheckCircle2 className="w-5 h-5" />
                         </div>
-                        <p className="text-xs font-black text-sky-600 uppercase tracking-widest">¡Comprobante cargado!</p>
+                        <p className="text-xs font-extrabold text-sky-600 tracking-wide">¡Comprobante cargado!</p>
                         <button 
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
                             setFormData(prev => ({ ...prev, receipt: null }));
                           }}
-                          className="text-[9px] font-black text-zinc-400 hover:text-red-500 uppercase tracking-widest"
+                          className="text-[9px] font-extrabold text-zinc-400 hover:text-red-500 tracking-wide"
                         >
                           Cambiar imagen
                         </button>
@@ -1199,7 +1139,7 @@ export default function Dashboard({ user, onNavigate, onLogout, onNotificationCl
                         </div>
                         <div className="text-center">
                           <p className="text-xs font-bold text-zinc-600">Haz clic para subir el comprobante</p>
-                          <p className="text-[9px] font-black text-zinc-400 uppercase tracking-widest mt-1">MP, Transferencia, etc.</p>
+                          <p className="text-[9px] font-extrabold text-zinc-400 tracking-wide mt-1">MP, Transferencia, etc.</p>
                         </div>
                       </>
                     )}
@@ -1220,7 +1160,7 @@ export default function Dashboard({ user, onNavigate, onLogout, onNotificationCl
             )}
           </div>
 
-          <Button type="submit" className="w-full py-5 text-lg font-black tracking-tight shadow-xl shadow-sky-500/20">
+          <Button type="submit" className="w-full py-5 text-lg font-extrabold tracking-tight shadow-lg shadow-sky-500/15">
             CONFIRMAR RESERVA
           </Button>
         </form>
@@ -1239,8 +1179,8 @@ export default function Dashboard({ user, onNavigate, onLogout, onNotificationCl
                   <User className="w-6 h-6 text-sky-500" />
                 </div>
                 <div>
-                  <p className="text-sm font-bold text-zinc-400 uppercase tracking-widest">Cliente</p>
-                  <p className="text-xl font-black text-zinc-900">{selectedBooking.clientName}</p>
+                  <p className="text-sm font-semibold text-zinc-500">Cliente</p>
+                  <p className="text-xl font-extrabold text-zinc-900">{selectedBooking.clientName}</p>
                 </div>
               </div>
               
@@ -1250,8 +1190,8 @@ export default function Dashboard({ user, onNavigate, onLogout, onNotificationCl
                     <Phone className="w-6 h-6 text-sky-500" />
                   </div>
                   <div>
-                    <p className="text-sm font-bold text-zinc-400 uppercase tracking-widest">Teléfono</p>
-                    <p className="text-xl font-black text-zinc-900">{selectedBooking.clientPhone}</p>
+                    <p className="text-sm font-semibold text-zinc-500">Teléfono</p>
+                    <p className="text-xl font-extrabold text-zinc-900">{selectedBooking.clientPhone}</p>
                   </div>
                 </div>
                 <Button 
@@ -1271,8 +1211,8 @@ export default function Dashboard({ user, onNavigate, onLogout, onNotificationCl
                   <Clock className="w-6 h-6 text-sky-500" />
                 </div>
                 <div>
-                  <p className="text-sm font-bold text-zinc-400 uppercase tracking-widest">Horario</p>
-                  <p className="text-xl font-black text-zinc-900">
+                  <p className="text-sm font-semibold text-zinc-500">Horario</p>
+                  <p className="text-xl font-extrabold text-zinc-900">
                     {format(selectedBooking.startTime, 'HH:mm')} hs - {format(selectedBooking.startTime, 'dd/MM/yyyy')}
                   </p>
                 </div>
@@ -1284,8 +1224,8 @@ export default function Dashboard({ user, onNavigate, onLogout, onNotificationCl
                     <DollarSign className="w-6 h-6 text-sky-500" />
                   </div>
                   <div>
-                    <p className="text-sm font-bold text-zinc-400 uppercase tracking-widest">Seña</p>
-                    <p className="text-xl font-black text-sky-600">${selectedBooking.depositAmount}</p>
+                    <p className="text-sm font-semibold text-zinc-500">Seña</p>
+                    <p className="text-xl font-extrabold text-sky-600">${selectedBooking.depositAmount}</p>
                   </div>
                 </div>
               )}
@@ -1296,15 +1236,15 @@ export default function Dashboard({ user, onNavigate, onLogout, onNotificationCl
                     <CheckCircle2 className="w-6 h-6 text-sky-500" />
                   </div>
                   <div>
-                    <p className="text-sm font-bold text-zinc-400 uppercase tracking-widest">Referencia Mercado Pago</p>
-                    <p className="text-xl font-black text-zinc-900">{selectedBooking.paymentUrl}</p>
+                    <p className="text-sm font-semibold text-zinc-500">Referencia Mercado Pago</p>
+                    <p className="text-xl font-extrabold text-zinc-900">{selectedBooking.paymentUrl}</p>
                   </div>
                 </div>
               )}
 
               {selectedBooking.receiptUrl && (
                 <div className="space-y-2">
-                  <p className="text-sm font-bold text-zinc-400 uppercase tracking-widest">Comprobante</p>
+                  <p className="text-sm font-semibold text-zinc-500">Comprobante</p>
                   <div className="relative group aspect-video rounded-2xl overflow-hidden border border-zinc-200 bg-zinc-100 flex items-center justify-center">
                     {selectedBooking.receiptUrl.startsWith('data:application/pdf') ? (
                       <div className="flex flex-col items-center gap-3 p-6 text-center">
@@ -1366,7 +1306,7 @@ export default function Dashboard({ user, onNavigate, onLogout, onNotificationCl
               </Button>
               <Button 
                 variant="danger" 
-                className="flex-1 py-4 rounded-2xl font-black"
+                className="flex-1 py-4 rounded-2xl font-extrabold"
                 onClick={async () => {
                   try {
                     await api.cancelBooking(selectedBooking.id, effectiveClientId || undefined);
